@@ -1,0 +1,78 @@
+name: Deploy to server
+
+# Deploys to the server of the branch it runs on (staging or production). The
+# job connects over SSH, downloads docker-compose.yml and deploy.sh for the
+# commit being deployed, and runs ./deploy.sh, which pulls the published
+# images. Nothing is built here or on the server, and the server needs no git.
+#
+# Two ways to start it:
+#   - manually (Actions, Deploy to server, Run workflow). To roll back, set
+#     image_tag to an earlier sha-<commit> tag.
+#   - automatically after "Publish Docker images", if the repository variable
+#     AUTO_DEPLOY_STAGING or AUTO_DEPLOY_PRODUCTION is "true" (see
+#     publish-images.yml). Add required reviewers to the environment if the
+#     deployment should wait for approval.
+#
+# The server needs Docker with Compose, curl, and deploy/infra/root.env (which
+# becomes .env). The repository must be public for the download to work.
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to run. Leave empty for the branch name (staging or production)."
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      image_tag:
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.ref_name == 'staging' || github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    # The environment is named after the branch and holds that server's secrets.
+    environment: ${{ github.ref_name }}
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        env:
+          BRANCH: ${{ github.ref_name }}
+          RAW_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.JUMP_HOST }}
+          proxy_username: ${{ secrets.JUMP_USER }}
+          proxy_key: ${{ secrets.JUMP_KEY }}
+          envs: BRANCH,RAW_URL,IMAGE_TAG
+          script: |
+            set -euo pipefail
+
+            echo "=== Deploying $BRANCH at $(date -u '+%Y-%m-%d %H:%M:%S UTC') ==="
+            cd deploy
+            mkdir -p dharini
+            cd dharini
+
+            # Config only: the code runs from the published images.
+            for f in docker-compose.yml deploy.sh; do
+              curl -fsSL "$RAW_URL/$f" -o "$f.new"
+              mv "$f.new" "$f"
+            done
+            chmod +x deploy.sh
+
+            cp ../infra/root.env .env
+
+            ./deploy.sh "$BRANCH"

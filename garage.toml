@@ -1,0 +1,30 @@
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+# Secret shared by Garage nodes for internal RPC: 32 bytes as 64 hex characters.
+# Replace the placeholder before first use with the output of
+# `openssl rand -hex 32` (setup.sh does this for you). Garage will not start
+# with the placeholder.
+rpc_secret = "REPLACE_WITH_RPC_SECRET"
+
+bootstrap_peers = []
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.localhost"
+
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"
+# Token for Garage's admin API. Replace the placeholder before first use with
+# the output of `openssl rand -hex 32` (setup.sh does this for you).
+admin_token = "REPLACE_WITH_ADMIN_TOKEN"

@@ -1,0 +1,47 @@
+---
+title: Dharini
+description: One Health surveillance platform
+template: splash
+hero:
+  tagline: One Health surveillance platform for integrated disease monitoring
+  actions:
+    - text: Read the Documentation
+      link: /introduction/
+      icon: right-arrow
+      variant: primary
+    - text: Download Android App
+      link: https://github.com/dsih-artpark/dharini/releases/latest/download/dharini.apk
+      icon: external
+      variant: secondary
+    - text: Run Dharini yourself
+      link: /administrator-guide/
+      icon: right-arrow
+      variant: secondary
+    - text: Visit Dharini Flagship Instance (IN)
+      link: https://in.dharini.artpark.ai
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Field collection" icon="pin">
+    Offline-first Android app for sites, visits and samples, with GPS, barcode scanning and photos. See the [Field Collector guide](/user-guide/field-collector/).
+  </Card>
+  <Card title="Laboratory workflow" icon="rocket">
+    Receive, pre-process, extract and test samples, then issue reports. See the [Lab Technician guide](/user-guide/lab-technician/).
+  </Card>
+  <Card title="Projects, workspaces and monitoring" icon="setting">
+    Self-serve workspaces, teams, invites, dashboards, bulk XLSX import and the Data Playground. See the [Project Admin guide](/user-guide/project-admin/).
+  </Card>
+  <Card title="GeoLens and sequencing" icon="random">
+    Map surveillance sites against environmental risk layers, and run genomic sequencing analysis. See the [product requirements](/reference/product-requirements/).
+  </Card>
+  <Card title="Deploy and operate" icon="laptop">
+    Set up a deployment with Docker Compose. See the [Administrator guide](/administrator-guide/).
+  </Card>
+  <Card title="Architecture and API" icon="document">
+    Read the [platform architecture](/reference/architecture/) and the [API reference](/api-reference/).
+  </Card>
+</CardGrid>

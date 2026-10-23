@@ -1,0 +1,59 @@
+name: es_platform_mobile
+
+packages:
+  - packages/**
+  - widgetbook
+
+scripts:
+  analyze:
+    run: flutter analyze .
+    description: Run Flutter analyze for all packages
+    
+  test:
+    run: flutter test
+    description: Run tests for all packages
+    
+  format:
+    run: dart format .
+    description: Format all packages
+
+  format:check:
+    run: dart format --set-exit-if-changed .
+    description: Check format for all packages
+
+  doc:
+    run: dart doc .
+    description: Generate documentation for all packages
+
+  barrel:generate:
+    run: dart run melos exec -c 1 --depends-on="barrel_files_annotation" -- "dart run build_runner build --delete-conflicting-outputs"
+    description: Generate barrel files for packages with barrel_files_annotation
+
+  schema:generate:
+    run: |
+      cd packages/domain && \
+      dart run build_runner build --delete-conflicting-outputs
+    description: Generate schema files for domain package
+
+  widgetbook:build:
+    run: |
+      cd widgetbook && \
+      dart pub run build_runner build --delete-conflicting-outputs
+    description: Generate widgetbook for design system
+
+  widgetbook:dev:
+    run: |
+      cd widgetbook && \
+      dart pub run build_runner watch
+    description: Watch widgetbook for design system  
+
+  widgetbook:run:
+    run: |
+      cd widgetbook && \
+      flutter run -d chrome -t lib/main.dart
+    description: Run widgetbook for design system
+
+command:
+  bootstrap:
+    usePubspecOverrides: true
+sdkPath: .fvm/flutter_sdk

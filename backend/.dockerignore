@@ -1,0 +1,13 @@
+.env
+.env.dev
+node_modules
+dist
+*.log
+
+# Seeder data: only the gzipped copies go into the image. A local checkout may
+# also hold the uncompressed originals (~335 MB), which git ignores too.
+src/seeder/data/*
+!src/seeder/data/*.gz
+# Never bake in data we may not republish, even from a local checkout.
+src/seeder/data/list-of-poultry-farms-in-india.csv.gz
+src/seeder/data/cattle-market.csv.gz

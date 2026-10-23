@@ -1,0 +1,235 @@
+/* App.css - Professional Dashboard Styles */
+:root {
+  --sidebar-bg: #1a252f;
+  --sidebar-hover: #2c3e50;
+  --accent-blue: #3498db;
+  --accent-green: #27ae60;
+  --text-light: #ecf0f1;
+  --text-dark: #2c3e50;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+}
+
+.dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  width: 100vw;
+  overflow: hidden;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+.dashboard-header {
+  height: 60px;
+  background: white;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  justify-content: space-between;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modern-select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #dfe6e9;
+  background: #fff;
+  font-size: 11px;
+  color: var(--text-dark);
+  outline: none;
+  cursor: pointer;
+  min-width: 90px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.modern-select:hover {
+  border-color: var(--accent-blue);
+}
+
+.dashboard-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 260px;
+  background: var(--sidebar-bg);
+  color: var(--text-light);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+  z-index: 900;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 20px 15px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sidebar-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #95a5a6;
+  margin-bottom: 15px;
+  letter-spacing: 0.8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.sidebar-item:hover {
+  background: var(--sidebar-hover);
+}
+
+.sidebar-item.active {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Map Area */
+.map-viewport {
+  flex: 1;
+  position: relative;
+  background: #f0f2f5;
+}
+
+/* Right Comparison Panel */
+.comparison-panel {
+  width: 400px;
+  background: white;
+  border-left: 1px solid #e0e0e0;
+  display: flex;
+  flex-direction: column;
+  z-index: 850;
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.05);
+}
+
+.panel-header {
+  padding: 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Custom Selects & Inputs */
+.modern-select {
+  padding: 6px 10px;
+  border: 1px solid #dfe6e9;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.compare-btn {
+  background: white;
+  border: 2px solid var(--accent-blue);
+  color: var(--accent-blue);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.compare-btn:hover {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Table Styles */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.comparison-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #95a5a6;
+  padding: 8px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.comparison-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #f9f9f9;
+  font-size: 13px;
+}
+
+.metric-label {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-high {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.status-medium {
+  background: #fef3c7;
+  color: #d97706;
+}
+.status-low {
+  background: #d1fae5;
+  color: #059669;
+}
+
+/* Radar Chart Area */
+.radar-container {
+  margin-top: 25px;
+  height: 250px;
+  width: 100%;
+}

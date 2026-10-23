@@ -1,0 +1,191 @@
+# Dependabot configuration for Dharini project
+# Documentation: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # ===================
+  # WEB (Next.js Frontend)
+  # ===================
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    reviewers:
+      - "snehasaisneha"
+    open-pull-requests-limit: 5
+    # Only allow patch and minor updates (no breaking major changes)
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group Next.js and React together
+      next-react:
+        patterns:
+          - "next"
+          - "react"
+          - "react-dom"
+          - "eslint-config-next"
+      # Group all TypeScript type definitions
+      types:
+        patterns:
+          - "@types/*"
+      # Group linting tools
+      linting:
+        patterns:
+          - "eslint*"
+          - "prettier*"
+          - "postcss*"
+          - "tailwindcss*"
+      # Group mapping/visualization libraries
+      visualization:
+        patterns:
+          - "leaflet*"
+          - "react-leaflet*"
+          - "@turf/*"
+          - "d3"
+          - "recharts"
+    commit-message:
+      prefix: "chore(web)"
+
+  # ===================
+  # BACKEND (NestJS)
+  # ===================
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    reviewers:
+      - "snehasaisneha"
+    open-pull-requests-limit: 5
+    # Only allow patch and minor updates
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group all NestJS packages
+      nestjs:
+        patterns:
+          - "@nestjs/*"
+      # Group AWS SDK packages
+      aws-sdk:
+        patterns:
+          - "@aws-sdk/*"
+      # Group Bull/Queue packages
+      bull-queue:
+        patterns:
+          - "@bull-board/*"
+          - "bullmq"
+      # Group authentication packages
+      auth:
+        patterns:
+          - "passport*"
+          - "bcrypt"
+          - "@casl/*"
+      # Group TypeScript type definitions
+      types:
+        patterns:
+          - "@types/*"
+      # Group linting and formatting tools
+      linting:
+        patterns:
+          - "eslint*"
+          - "@typescript-eslint/*"
+          - "prettier*"
+          - "husky*"
+          - "lint-staged*"
+      # Group testing tools
+      testing:
+        patterns:
+          - "jest*"
+          - "ts-jest*"
+          - "supertest*"
+    commit-message:
+      prefix: "chore(backend)"
+
+  # ===================
+  # MOBILE (Flutter) - DISABLED FOR NOW
+  # ===================
+  # - package-ecosystem: "pub"
+  #   directory: "/mobile"
+  #   schedule:
+  #     interval: "weekly"
+  #     day: "monday"
+  #     time: "09:00"
+  #     timezone: "Asia/Kolkata"
+  #   target-branch: "staging"
+  #   reviewers:
+  #     - "snehasaisneha"
+  #   open-pull-requests-limit: 5
+  #   # Only allow patch and minor updates
+  #   ignore:
+  #     - dependency-name: "*"
+  #       update-types: ["version-update:semver-major"]
+  #   groups:
+  #     # Group Flutter/Dart SDK packages
+  #     flutter-sdk:
+  #       patterns:
+  #         - "flutter"
+  #         - "flutter_test"
+  #         - "flutter_localizations"
+  #     # Group state management
+  #     state-management:
+  #       patterns:
+  #         - "flutter_bloc"
+  #         - "bloc"
+  #         - "flutter_hooks"
+  #         - "provider"
+  #     # Group networking packages
+  #     networking:
+  #       patterns:
+  #         - "dio"
+  #         - "http"
+  #         - "connectivity*"
+  #     # Group UI packages
+  #     ui:
+  #       patterns:
+  #         - "google_fonts"
+  #         - "flutter_svg*"
+  #         - "cached_network_image"
+  #         - "flutter_animate"
+  #     # Group mapping/location packages
+  #     mapping:
+  #       patterns:
+  #         - "flutter_map*"
+  #         - "geolocator*"
+  #         - "latlong2"
+  #     # Group storage packages
+  #     storage:
+  #       patterns:
+  #         - "hive*"
+  #         - "flutter_secure_storage"
+  #     # Group code generation packages
+  #     codegen:
+  #       patterns:
+  #         - "freezed*"
+  #         - "json_serializable"
+  #         - "json_annotation"
+  #         - "build_runner"
+  #         - "built_value*"
+  #   commit-message:
+  #     prefix: "chore(mobile)"
+
+  # ===================
+  # GitHub Actions (third-party actions are pinned to commit SHAs)
+  # ===================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    open-pull-requests-limit: 5

@@ -1,0 +1,195 @@
+//
+// AUTO-GENERATED FILE, DO NOT MODIFY!
+//
+
+// ignore_for_file: unused_element
+import 'package:built_collection/built_collection.dart';
+import 'package:built_value/json_object.dart';
+import 'package:built_value/built_value.dart';
+import 'package:built_value/serializer.dart';
+
+part 'create_project_dto.g.dart';
+
+/// CreateProjectDto
+///
+/// Properties:
+/// * [name] - Name of the project
+/// * [code] - Code associated with the project
+/// * [diseases] - Unique identifier for the disease
+/// * [surveillanceTypes] - List of unique identifiers for surveillance types
+/// * [regions] - List of unique identifiers for locations
+/// * [teams] - Email associated with the project
+@BuiltValue()
+abstract class CreateProjectDto implements Built<CreateProjectDto, CreateProjectDtoBuilder> {
+  /// Name of the project
+  @BuiltValueField(wireName: r'name')
+  String get name;
+
+  /// Code associated with the project
+  @BuiltValueField(wireName: r'code')
+  String get code;
+
+  /// Unique identifier for the disease
+  @BuiltValueField(wireName: r'diseases')
+  BuiltList<String> get diseases;
+
+  /// List of unique identifiers for surveillance types
+  @BuiltValueField(wireName: r'surveillanceTypes')
+  BuiltList<String> get surveillanceTypes;
+
+  /// List of unique identifiers for locations
+  @BuiltValueField(wireName: r'regions')
+  BuiltList<String> get regions;
+
+  /// Email associated with the project
+  @BuiltValueField(wireName: r'teams')
+  BuiltList<JsonObject> get teams;
+
+  CreateProjectDto._();
+
+  factory CreateProjectDto([void updates(CreateProjectDtoBuilder b)]) = _$CreateProjectDto;
+
+  @BuiltValueHook(initializeBuilder: true)
+  static void _defaults(CreateProjectDtoBuilder b) => b;
+
+  @BuiltValueSerializer(custom: true)
+  static Serializer<CreateProjectDto> get serializer => _$CreateProjectDtoSerializer();
+}
+
+class _$CreateProjectDtoSerializer implements PrimitiveSerializer<CreateProjectDto> {
+  @override
+  final Iterable<Type> types = const [CreateProjectDto, _$CreateProjectDto];
+
+  @override
+  final String wireName = r'CreateProjectDto';
+
+  Iterable<Object?> _serializeProperties(
+    Serializers serializers,
+    CreateProjectDto object, {
+    FullType specifiedType = FullType.unspecified,
+  }) sync* {
+    yield r'name';
+    yield serializers.serialize(
+      object.name,
+      specifiedType: const FullType(String),
+    );
+    yield r'code';
+    yield serializers.serialize(
+      object.code,
+      specifiedType: const FullType(String),
+    );
+    yield r'diseases';
+    yield serializers.serialize(
+      object.diseases,
+      specifiedType: const FullType(BuiltList, [FullType(String)]),
+    );
+    yield r'surveillanceTypes';
+    yield serializers.serialize(
+      object.surveillanceTypes,
+      specifiedType: const FullType(BuiltList, [FullType(String)]),
+    );
+    yield r'regions';
+    yield serializers.serialize(
+      object.regions,
+      specifiedType: const FullType(BuiltList, [FullType(String)]),
+    );
+    yield r'teams';
+    yield serializers.serialize(
+      object.teams,
+      specifiedType: const FullType(BuiltList, [FullType(JsonObject)]),
+    );
+  }
+
+  @override
+  Object serialize(
+    Serializers serializers,
+    CreateProjectDto object, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    return _serializeProperties(serializers, object, specifiedType: specifiedType).toList();
+  }
+
+  void _deserializeProperties(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+    required List<Object?> serializedList,
+    required CreateProjectDtoBuilder result,
+    required List<Object?> unhandled,
+  }) {
+    for (var i = 0; i < serializedList.length; i += 2) {
+      final key = serializedList[i] as String;
+      final value = serializedList[i + 1];
+      switch (key) {
+        case r'name':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.name = valueDes;
+          break;
+        case r'code':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(String),
+          ) as String;
+          result.code = valueDes;
+          break;
+        case r'diseases':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>;
+          result.diseases.replace(valueDes);
+          break;
+        case r'surveillanceTypes':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>;
+          result.surveillanceTypes.replace(valueDes);
+          break;
+        case r'regions':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>;
+          result.regions.replace(valueDes);
+          break;
+        case r'teams':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(BuiltList, [FullType(JsonObject)]),
+          ) as BuiltList<JsonObject>;
+          result.teams.replace(valueDes);
+          break;
+        default:
+          unhandled.add(key);
+          unhandled.add(value);
+          break;
+      }
+    }
+  }
+
+  @override
+  CreateProjectDto deserialize(
+    Serializers serializers,
+    Object serialized, {
+    FullType specifiedType = FullType.unspecified,
+  }) {
+    final result = CreateProjectDtoBuilder();
+    final serializedList = (serialized as Iterable<Object?>).toList();
+    final unhandled = <Object?>[];
+    _deserializeProperties(
+      serializers,
+      serialized,
+      specifiedType: specifiedType,
+      serializedList: serializedList,
+      unhandled: unhandled,
+      result: result,
+    );
+    return result.build();
+  }
+}
+
+

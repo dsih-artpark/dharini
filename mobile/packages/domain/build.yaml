@@ -1,0 +1,16 @@
+targets:
+  $default:
+    builders:
+      schema_validation|schema_builder:
+        enabled: true
+        generate_for:
+          - lib/src/models/**.dart
+
+builders:
+  schema_builder:
+    import: "package:schema_validation/src/schema/generator/schema_generator.dart"
+    builder_factories: ["schemaBuilder"]
+    build_extensions: {".dart": [".schema.g.part"]}
+    auto_apply: dependents
+    build_to: source
+    applies_builders: ["source_gen|combining_builder"] 

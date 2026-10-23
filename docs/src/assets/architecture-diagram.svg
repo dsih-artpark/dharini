@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 580" style="background:#fafafa">
+  <defs>
+    <style>
+      .box { fill: #ffffff; stroke-width: 2; rx: 8; }
+      .mobile { stroke: #16a34a; }
+      .backend { stroke: #2563eb; }
+      .database { stroke: #db2777; }
+      .service { stroke: #d97706; }
+      .web { stroke: #7c3aed; }
+      .label { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 14px; fill: #1e293b; font-weight: 600; }
+      .sublabel { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px; fill: #475569; }
+      .title { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; fill: #64748b; letter-spacing: 1px; }
+      .arrow { stroke: #94a3b8; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+      .arrow-data { stroke: #16a34a; stroke-width: 2; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowhead-green); }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" class="title">DHARINI PLATFORM ARCHITECTURE</text>
+
+  <!-- Mobile App -->
+  <rect x="40" y="60" width="180" height="190" class="box mobile"/>
+  <text x="130" y="90" text-anchor="middle" class="label">Mobile App</text>
+  <text x="130" y="110" text-anchor="middle" class="sublabel">Flutter 3.29 / Dart</text>
+  <line x1="60" y1="125" x2="200" y2="125" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="70" y="145" class="sublabel">• Offline-first (Hive)</text>
+  <text x="70" y="162" class="sublabel">• GPS + Camera</text>
+  <text x="70" y="179" class="sublabel">• Barcode Scanning</text>
+  <text x="70" y="196" class="sublabel">• Photo Sync</text>
+  <text x="70" y="213" class="sublabel">• BLoC + fquery</text>
+  <text x="70" y="230" class="sublabel">• Android</text>
+
+  <!-- Web App -->
+  <rect x="40" y="290" width="180" height="200" class="box web"/>
+  <text x="130" y="320" text-anchor="middle" class="label">Web Dashboard</text>
+  <text x="130" y="340" text-anchor="middle" class="sublabel">Next.js 15 / React 18</text>
+  <line x1="60" y1="355" x2="200" y2="355" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="70" y="375" class="sublabel">• Lab Accession</text>
+  <text x="70" y="392" class="sublabel">• Admin + Monitor</text>
+  <text x="70" y="409" class="sublabel">• GeoLens Maps</text>
+  <text x="70" y="426" class="sublabel">• Sequencing + SNPs</text>
+  <text x="70" y="443" class="sublabel">• Data Playground</text>
+  <text x="70" y="460" class="sublabel">• Jotai + Tailwind</text>
+
+  <!-- Backend API -->
+  <rect x="300" y="120" width="240" height="290" class="box backend"/>
+  <text x="420" y="152" text-anchor="middle" class="label">Backend API</text>
+  <text x="420" y="172" text-anchor="middle" class="sublabel">NestJS 11 / TypeScript</text>
+  <line x1="320" y1="187" x2="520" y2="187" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="318" y="207" class="sublabel">• JWT + OTP Auth</text>
+  <text x="318" y="224" class="sublabel">• CASL Policy Guards</text>
+  <text x="318" y="241" class="sublabel">• Workspaces + Invites</text>
+  <text x="318" y="258" class="sublabel">• Visits + Sample Lifecycle</text>
+  <text x="318" y="275" class="sublabel">• Sequencing + Webhook</text>
+  <text x="318" y="292" class="sublabel">• GeoLens Layers</text>
+  <text x="318" y="309" class="sublabel">• XLSX Import + Purge</text>
+  <text x="318" y="326" class="sublabel">• BullMQ Jobs + Cron</text>
+  <text x="318" y="343" class="sublabel">• Audit Logging</text>
+  <text x="318" y="360" class="sublabel">• helmet + CORS + Throttle</text>
+  <text x="318" y="377" class="sublabel">• OpenAPI /docs, /health</text>
+
+  <!-- Database -->
+  <rect x="600" y="60" width="200" height="100" class="box database"/>
+  <text x="700" y="90" text-anchor="middle" class="label">PostgreSQL 16</text>
+  <text x="700" y="108" text-anchor="middle" class="sublabel">+ PostGIS 3.4</text>
+  <line x1="620" y1="120" x2="780" y2="120" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="620" y="140" class="sublabel">• TypeORM  • Geospatial</text>
+  <text x="620" y="154" class="sublabel" style="font-size:9px">RDS or bundled container</text>
+
+  <!-- Storage and cache row -->
+  <rect x="580" y="190" width="130" height="64" class="box service"/>
+  <text x="645" y="216" text-anchor="middle" class="label">S3 / Garage</text>
+  <text x="645" y="236" text-anchor="middle" class="sublabel">Media, uploads</text>
+
+  <rect x="730" y="190" width="150" height="64" class="box service"/>
+  <text x="805" y="216" text-anchor="middle" class="label">Redis</text>
+  <text x="805" y="236" text-anchor="middle" class="sublabel">Job queue + cache</text>
+
+  <!-- External services -->
+  <rect x="580" y="280" width="300" height="120" class="box service"/>
+  <text x="730" y="304" text-anchor="middle" class="label">External Services</text>
+  <line x1="600" y1="314" x2="860" y2="314" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="595" y="334" class="sublabel">• Twilio (SMS / OTP)</text>
+  <text x="595" y="351" class="sublabel">• SMTP (email)</text>
+  <text x="595" y="368" class="sublabel">• NCBI (GenBank)</text>
+  <text x="595" y="385" class="sublabel">• eBird, OpenWeatherMap</text>
+  <text x="775" y="368" class="sublabel">• Map tiles</text>
+  <text x="775" y="385" class="sublabel">  Stadia, OSM</text>
+
+  <!-- Sequencing pipeline -->
+  <rect x="580" y="430" width="140" height="80" class="box service"/>
+  <text x="650" y="456" text-anchor="middle" class="label">Pipeline</text>
+  <text x="650" y="474" text-anchor="middle" class="sublabel">External sequencing</text>
+  <text x="650" y="490" text-anchor="middle" class="sublabel">analysis service</text>
+
+  <!-- Observability -->
+  <rect x="735" y="430" width="145" height="80" class="box" style="stroke: #e11d48;"/>
+  <text x="807" y="454" text-anchor="middle" class="label">Observability</text>
+  <line x1="750" y1="462" x2="865" y2="462" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="747" y="480" class="sublabel" style="font-size:10px">• PostHog: web, mobile</text>
+  <text x="747" y="497" class="sublabel" style="font-size:10px">• Sentry: mobile only</text>
+
+  <!-- Arrows -->
+  <!-- Mobile to Backend -->
+  <path d="M 220 150 L 290 190" class="arrow-data"/>
+  <text x="250" y="150" class="sublabel" fill="#16a34a">sync</text>
+
+  <!-- Web to Backend -->
+  <path d="M 220 350 L 290 300" class="arrow"/>
+
+  <!-- Backend to Database -->
+  <path d="M 540 160 L 590 120" class="arrow"/>
+
+  <!-- Backend to S3, Redis, External -->
+  <path d="M 540 215 L 570 222" class="arrow"/>
+  <path d="M 540 190 Q 650 160 725 205" class="arrow"/>
+  <path d="M 540 300 L 570 320" class="arrow"/>
+
+  <!-- Backend to Pipeline and webhook back -->
+  <path d="M 400 410 L 400 470 L 570 470" class="arrow"/>
+  <text x="420" y="525" class="sublabel" style="font-size:10px">submit job; signed (HMAC) webhook back</text>
+  <path d="M 570 490 L 440 490 L 440 415" class="arrow-data"/>
+
+  <!-- Web and mobile to Observability (analytics) -->
+  <path d="M 130 490 L 130 565 L 807 565 L 807 520" class="arrow" style="stroke-dasharray: 4 3;"/>
+  <text x="450" y="559" text-anchor="middle" class="sublabel" style="font-size:10px">analytics and error events sent from the apps</text>
+
+  <!-- Legend -->
+  <rect x="200" y="535" width="10" height="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <text x="216" y="544" class="sublabel" style="font-size:10px">Mobile</text>
+  <rect x="260" y="535" width="10" height="10" fill="#ffffff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="276" y="544" class="sublabel" style="font-size:10px">Web</text>
+</svg>

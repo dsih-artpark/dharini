@@ -1,0 +1,299 @@
+---
+title: Platform Architecture
+description: Technical architecture overview of the Dharini disease surveillance platform.
+---
+
+import { Image } from 'astro:assets';
+import architectureDiagram from '../../../assets/architecture-diagram.svg';
+
+<Image src={architectureDiagram} alt="Dharini Platform Architecture Diagram" />
+
+This document summarizes the end-to-end architecture of Dharini, a disease surveillance and sample collection platform. It traces data flow from mobile field collection through laboratory processing to administrative dashboards.
+
+## Software Data Flow
+
+### Field Collection (Mobile)
+
+The mobile app (Flutter/Dart) operates in an offline-first mode. Field collectors authenticate via OTP, select or create collection sites, and record visits with associated samples.
+
+**Collection Flow:**
+
+```
+Login (OTP) → Site Selection/Creation → Visit Creation → Sample Collection → Submission
+```
+
+1. **Site Management**: Collectors select nearby sites (cached locally) or create new ones with GPS coordinates. Sites link to projects and diseases under surveillance.
+
+2. **Visit Creation**: Each visit captures surveillance type, scheduled date, and site reference. Visits are generated automatically from collection plans and move through `UPCOMING`, `OVERDUE`, `SKIPPED` and `COMPLETED`. An upcoming visit can be rescheduled to a later date, and a past-due visit can be marked skipped.
+
+3. **Sample Recording**: For each sample, collectors:
+   - Scan barcode (with optional replicates)
+   - Capture photos (compressed on the phone before upload)
+   - Select sample type and associated diseases
+   - Fill disease-specific questionnaires (configured per project)
+   - Add comments
+
+4. **Local Persistence**: Data is stored in Hive boxes before sync:
+   - `pendingSubmissions`: Queue of visits awaiting upload
+   - `completedVisits`: Offline visit display cache
+   - `photoUploadMappings`: Local path → S3 URL mappings
+   - `visitIdMap` / `siteIdMap`: Local ID → server ID resolution
+
+5. **Sync Pipeline**: When online, `SyncService` executes:
+   - Sync locally-created sites and visits (establishes server IDs)
+   - Batch upload photos (groups of 3, concurrent)
+   - Replace local paths with S3 URLs
+   - Submit visit payload via `PUT /projects/{projectId}/visits/{visitId}/submit-visit`
+   - Clean up local storage and invalidate query caches
+
+### Backend Processing
+
+The NestJS backend receives submissions and manages sample lifecycle through laboratory stages.
+
+**Sample Status Flow:**
+
+```
+PENDING → PICKED_UP → RECEIVED → PRE_PROCESSED → VIRUS_ISOLATION → EXTRACTED → TESTED → TEST_REPORT_GENERATED
+                          ↓ (at any stage)
+                      REJECTED
+```
+
+`PENDING` and `PICKED_UP` are the two pre-lab states (the statistics code groups them as "collected"). `VIRUS_ISOLATION` is an optional step, used for Avian Influenza samples, between pre-processing and extraction. Each transition records the responsible user, timestamp, and stage-specific metadata (volumes, storage conditions, extraction kits, etc.).
+
+**Key API Endpoints:**
+
+| Endpoint | Purpose |
+|----------|---------|
+| `PUT /projects/{projectId}/visits/{visitId}/submit-visit` | Mobile submission intake |
+| `PATCH /projects/{projectId}/visits/{visitId}/reschedule` | Reschedule an upcoming visit |
+| `GET /projects/{projectId}/samples` | Filtered sample listing |
+| `PATCH /projects/{projectId}/samples/{sampleId}` | Status transition & metadata update |
+| `POST /projects/{projectId}/samples/{sampleId}/lab-tests` | Create disease-specific tests |
+| `PATCH /projects/{projectId}/samples/{sampleId}/lab-tests` | Record test results |
+
+The complete, current list is in the [API Reference](/api-reference/).
+
+**Sample Pooling**: Samples can be pooled for batch testing. When parent sample results are recorded, they propagate to pooled children automatically.
+
+**Audit Trail**: `SampleAudit` entity captures all changes with user attribution and before/after snapshots.
+
+### Laboratory View (Web)
+
+Lab technicians use the Next.js web app to process samples through the accession pipeline.
+
+**Accession Stages:**
+
+1. **Receiving**: Accept/reject samples, record received volume and storage location
+2. **Pre-processing**: Document homogenization, filtration, aliquoting steps
+3. **Virus isolation**: Record virus isolation details where the project uses this step
+4. **Extraction**: Select extraction kit, record volumes used and remaining
+5. **Testing**: Assign tests per disease, record Ct values and results (Positive/Negative/Unclear)
+6. **Completion**: Attach test report files (stored in S3)
+
+**Bulk Processing**: Lab staff can select multiple samples and process them through a stage simultaneously via the bulk processing modal.
+
+**Filtering & Export**: Samples are filterable by disease, sample type, status, and date range. CSV export available for reporting.
+
+### Admin Dashboard (Web)
+
+Administrators access project-level analytics and management through the manage and monitor views.
+
+**Dashboard Components:**
+
+- **Statistics**: Sample counts per pipeline stage, visualized as progress bars
+- **Project KPIs**: Projects grouped by disease, showing location coverage
+- **Disease Monitoring**: Site-wise sample breakdown with test result aggregation
+- **User Management**: Team assignments, role-based permissions
+
+**Access Control (CASL):**
+
+Each role has a scope that decides how far its permissions reach.
+
+| Scope | Access Level |
+|-------|--------------|
+| System | Whole deployment (`super-admin`) |
+| Workspace | All projects and members of one workspace (`workspace-admin`) |
+| Project | Single project (`project-viewer`, read-only) |
+| Team | Team data only (`team-admin`, `team-member`, `collector-admin`, `collector`, `lab-admin`, `lab-member`, `lab-tech`) |
+
+The `sequencing-partner` role is for external sequencing labs and is limited to the sequencing features. See [Product Requirements](/reference/product-requirements/#6-user-roles-and-permissions) for what each role can do.
+
+---
+
+## Platform Features
+
+### Workspaces and Self-Serve Signup
+
+A **workspace** is the top-level tenant: it groups an organization's projects, teams and members. A new organization can sign up on its own (`POST /auth/signup`, then `POST /auth/signup/verify` with the OTP). This creates a workspace and makes the signer its workspace admin. Users who belong to several workspaces choose one after login and can switch later. Workspace admins manage members and projects through the `/workspaces` endpoints.
+
+### Invites
+
+Admins invite people into a role by email or phone. An invite carries a token; the invitee opens the link and accepts it through the public `GET /invites/{token}` and `POST /invites/accept/{token}` routes. Creating and listing invites (`/invites`) requires authentication.
+
+### Sequencing
+
+The sequencing module lets lab staff run genomic analysis on samples.
+
+- **Upload**: the web app asks the backend for a presigned URL (`POST /sequencing/uploads/presign`) and uploads large sequence files directly to S3, so they never pass through the API.
+- **Sources**: a submission can start from a lab sample, an uploaded file, or an NCBI GenBank accession (`GET /sequencing/ncbi/preview`).
+- **Analysis**: jobs are submitted to an external analysis pipeline at `PIPELINE_URL` (`POST /sequencing/jobs/submit`). The backend sends its own callback URL (`PIPELINE_CALLBACK_URL`) with each run.
+- **Webhook**: the pipeline reports progress to `POST /sequencing/pipeline/webhook`. This route is public, but every request is verified with an HMAC-SHA256 signature (`X-Dharini-Signature`, computed over the timestamp and raw body with `WEBHOOK_SECRET`) and a freshness check on the timestamp.
+- **Reconciliation**: a job that runs every 10 minutes asks the pipeline about jobs that have been non-terminal for more than an hour (`SEQUENCING_RECONCILE_AFTER_S`) and applies the final result, so a missed webhook does not leave a job stuck.
+- **Results**: job progress, variants and output artifacts are available through `/sequencing/jobs/{id}/...`.
+
+### GeoLens
+
+GeoLens overlays surveillance sites on environmental and risk context. Reference layers are stored in PostGIS: water bodies, wetlands, poultry farms and livestock (cattle) markets. No poultry farm or livestock market list ships with Dharini or its Docker images; each deployment can load its own from the `geolens-data` folder (see `DATA_SOURCES.md` in the repository). Bird observations (eBird) and current and historical weather (OpenWeatherMap) are fetched on demand through the `/geolens` endpoints. The reference layers are loaded in the background after the API starts (see [Startup Sequence](#startup-sequence)).
+
+### Bulk Data Import
+
+Admins can import existing collection and lab records from XLSX files through `/projects/{projectId}/data-import`: download a template (`GET .../template`), then upload it for collection data (`POST .../collection`) or lab data (`POST .../lab`). Rows are validated before they are saved.
+
+### Purge
+
+Super admins can permanently delete a sample, visit, site or project through the `/purge` endpoints. The delete cascades to dependent records (for example, purging a project removes its sites, visits, samples and tests). The platform asks for a typed confirmation first. This is separate from user deletion, which only anonymizes the account.
+
+### Data Playground
+
+The Data Playground, in workspace settings, is a query builder for the project data API. An admin picks projects and a response format (JSON or CSV), previews the result in a table, sees the equivalent `curl` command, and can download the data.
+
+### Health Check
+
+`GET /health` is public and returns `status`, a timestamp and process uptime. Use it for uptime monitoring.
+
+### Startup Sequence
+
+When the backend starts outside development mode, it:
+
+1. Runs pending TypeORM migrations (the process exits if a migration fails).
+2. Runs the seeder (roles, permissions and reference data).
+3. Starts listening on `PORT` (default 4000).
+4. Seeds the GeoLens layers in the background. This can take a while on a new database, and the API serves requests meanwhile.
+
+In development mode, migrations and seeding are skipped and TypeORM `synchronize` creates the schema instead.
+
+### Security Layer
+
+- **Authentication**: a global JWT guard protects every route. Routes opt out with the `@Public()` decorator (login, signup, invite acceptance, `/health`, the pipeline webhook).
+- **Authorization**: controllers that expose project data use a CASL policy guard (`PoliciesGuard`), which checks the user's role for the specific project, workspace or team.
+- **Headers**: `helmet` sets security headers, including a content security policy, `frame-ancestors 'none'` and HSTS.
+- **CORS**: browsers may only call the API from origins listed in `CORS_ORIGINS`. The backend refuses to start outside development if it is empty. Requests without an `Origin` header (mobile app, server-side calls, webhook) are not subject to CORS.
+- **Throttling**: the auth controller (login, OTP, signup) is limited to 10 requests per 60 seconds per IP. Other routes are not throttled by the backend.
+- **Tokens**: login returns a signed JWT valid for 7 days. There is no refresh token. The web app stores it in an httpOnly cookie that lasts as long as the token plus a one-day grace period (so the app can tell an expired session from a missing one). Web users sign in again after 7 days.
+
+---
+
+## Tech Stack & Services
+
+### Mobile (`/mobile`)
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Flutter 3.29, Dart 3.5 |
+| State | BLoC (flutter_bloc), flutter_hooks, fquery (react-query port) |
+| Local DB | Hive (offline-first persistence) |
+| HTTP | Dio via `es_client` (OpenAPI-generated) |
+| Routing | go_router |
+| Maps | flutter_map (Stadia Maps tiles) |
+| Analytics / errors | PostHog, Sentry |
+| Location | geolocator |
+
+### Backend (`/backend`)
+
+| Layer | Technology |
+|-------|------------|
+| Framework | NestJS 11, TypeScript |
+| Database | PostgreSQL 16 + PostGIS (TypeORM) |
+| Auth | JWT + Passport, OTP via SMS (Twilio) or email |
+| Authorization | CASL |
+| Storage | S3-compatible: AWS S3, or self-hosted Garage |
+| Queue and cache | BullMQ and a cache on Redis (`ioredis`) |
+| Scheduling | `@nestjs/schedule` (sequencing reconciliation), BullMQ (visit scheduling) |
+| Email | Nodemailer over SMTP (for example AWS SES) |
+| Hardening | helmet, `@nestjs/throttler`, CORS allowlist |
+
+The backend does not use PostHog or Sentry.
+
+### Web (`/web`)
+
+| Layer | Technology |
+|-------|------------|
+| Framework | Next.js 15 (App Router), React 18 |
+| State | Jotai (atomic state management) |
+| HTTP | Axios with JWT interceptor |
+| Styling | Tailwind CSS |
+| Maps | Leaflet (OpenStreetMap tiles) |
+| Analytics | PostHog |
+| Auth | httpOnly cookie (token lifetime + 1-day grace) |
+
+### Infrastructure
+
+| Service | Provider |
+|---------|----------|
+| Database | PostgreSQL + PostGIS: AWS RDS, or the bundled `postgis/postgis` container |
+| Redis | Job queue and cache (container) |
+| File Storage | AWS S3, or Garage (optional `garage` Compose profile) |
+| pgAdmin | Database admin UI (container) |
+| Mobile web | Flutter web build served on port 3002 (built per deployment, not published) |
+| Android APK | GitHub Release built by the Mobile CI workflow; the web login page links to it with `NEXT_PUBLIC_APK_DOWNLOAD_URL` |
+| Documentation | Astro Starlight site (`/docs`) |
+| CI/CD | GitHub Actions (see [GitHub Actions Workflows](#github-actions-workflows)) |
+
+**External services:**
+
+| Service | Used for |
+|---------|----------|
+| Twilio | OTP and other SMS |
+| SMTP (e.g. AWS SES) | Email |
+| S3 (AWS or Garage) | Photos, reports, sequencing uploads |
+| Stadia Maps, OpenStreetMap | Map tiles (mobile, web) |
+| NCBI | GenBank accession import for sequencing |
+| eBird, OpenWeatherMap | GeoLens bird and weather lookups |
+| External analysis pipeline | Genomic sequencing runs (`PIPELINE_URL`) |
+| PostHog | Product analytics (web and mobile) |
+| Sentry | Error tracking (mobile only) |
+
+### GitHub Actions Workflows
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| OpenAPI Spec Check | Automatic on pull requests touching `backend/` or `docs/public/openapi/`; manual | Regenerates the OpenAPI spec and fails if the committed file is out of date |
+| Smoke Test | Pull requests into `staging` or `production`; manual | Jobs Build Backend, Build Web and Build Mobile (Flutter): builds the backend and web, and analyzes and builds the mobile app |
+| Mobile CI | Manual only | On `staging` or `production`, builds the signed APK and Flutter web build and publishes the APK as a GitHub Release (see [Mobile App](/administrator-guide/mobile-app/)) |
+| Publish Docker images | Push (merged pull request) to `staging` or `production`; manual | Builds and pushes the `dharini-backend` and `dharini-frontend` images to Docker Hub, tagged with the branch name and `sha-<short commit>` (linux/amd64) |
+| Deploy to server | Manual (on `staging` or `production`), or automatic after images are published when `AUTO_DEPLOY_STAGING` / `AUTO_DEPLOY_PRODUCTION` is `true` | Connects to the server over SSH, updates the checkout and runs `./deploy.sh`, which pulls the published images; an optional `image_tag` input deploys an earlier build |
+| Deploy Documentation to Production | Manual only (on `production`) | Builds the docs site and copies it to the docs host |
+
+Smoke Test builds all three apps and runs the backend tests. No workflow enforces linting or runs the web or mobile tests, so contributors run lint and tests locally before opening a pull request (see `CONTRIBUTING.md`). The full list, with the variables and secrets each needs, is in [CI/CD with GitHub Actions](/administrator-guide/github-actions/).
+
+### Service Dependencies
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Mobile    │────▶│   Backend   │────▶│  PostgreSQL │
+│  (Flutter)  │     │  (NestJS)   │     │  + PostGIS  │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                           │
+   ┌──────────┬────────────┼───────────┬─────────────┐
+   ▼          ▼            ▼           ▼             ▼
+┌───────┐ ┌───────┐  ┌──────────┐ ┌─────────┐ ┌──────────────┐
+│ S3 or │ │ Redis │  │ SMTP     │ │ Twilio  │ │ Sequencing   │
+│Garage │ │queue +│  │ (email)  │ │ (SMS)   │ │ pipeline     │
+│       │ │ cache │  │          │ │         │ │ (webhook back)│
+└───────┘ └───────┘  └──────────┘ └─────────┘ └──────────────┘
+
+┌─────────────┐
+│     Web     │────▶ Backend API (same as mobile)
+│  (Next.js)  │
+└─────────────┘
+```
+
+---
+
+:::note[Engineering Notes]
+For known issues and technical debt, see [engg.artpark.ai](https://engg.artpark.ai).
+:::
+
+---
+
+*Document generated from the staging branch. Last updated: October 2026.*
