@@ -629,59 +629,39 @@ async function openArtifactInNewTab(
   }
 }
 
-// "View" plus an icon-only "open in new tab" for one browser-viewable
-// (HTML) artifact.
-function ViewArtifactButtons({
+// Opens one browser-viewable (HTML) artifact in the in-page viewer, which
+// has its own "Open in new tab".
+function ViewArtifactButton({
   label,
   title,
   icon,
   isLoading,
-  isOpeningNewTab,
   onView,
-  onOpenInNewTab,
 }: {
   label: string;
   /** Full filename, shown on hover since a long label is truncated. */
   title: string;
   icon: React.ReactNode;
   isLoading: boolean;
-  isOpeningNewTab: boolean;
   onView: () => void;
-  onOpenInNewTab: () => void;
 }) {
   return (
     // max-w-full + min-w-0 let a long filename truncate instead of pushing
-    // the pair past the edge of a narrow panel.
-    <div className="inline-flex max-w-full items-center gap-1">
-      <button
-        type="button"
-        className={`inline-flex h-9 min-w-0 items-center gap-2 rounded-lg border border-blue-40 bg-white px-3.5 text-xs font-semibold text-blue-40 shadow-sm hover:bg-grey-10 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
-        onClick={onView}
-        disabled={isLoading}
-        title={title}
-      >
-        {isLoading ? (
-          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
-        ) : (
-          icon
-        )}
-        <span className="max-w-[14rem] truncate">{label}</span>
-      </button>
-      <button
-        type="button"
-        onClick={onOpenInNewTab}
-        disabled={isOpeningNewTab}
-        title={`Open ${title} in a new browser tab`}
-        aria-label={`Open ${title} in a new browser tab`}
-        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-grey-20 bg-white text-grey-70 hover:bg-grey-10 hover:text-grey-90 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
-      >
-        {isOpeningNewTab ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-        ) : (
-          <ExternalLink className="h-3.5 w-3.5" />
-        )}
-      </button>
-    </div>
+    // the button past the edge of a narrow panel.
+    <button
+      type="button"
+      className={`inline-flex h-9 min-w-0 max-w-full items-center gap-2 rounded-lg border border-blue-40 bg-white px-3.5 text-xs font-semibold text-blue-40 shadow-sm hover:bg-grey-10 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
+      onClick={onView}
+      disabled={isLoading}
+      title={title}
+    >
+      {isLoading ? (
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+      ) : (
+        icon
+      )}
+      <span className="max-w-[14rem] truncate">{label}</span>
+    </button>
   );
 }
 
@@ -898,62 +878,58 @@ export default function SequencingRecordDetailPanel({
 
               {(viewableArtifacts.length > 0 ||
                 downloadableArtifacts.length > 0) && (
-                  <div className="rounded-xl border border-grey-20 bg-white p-5 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grey-20 pb-4">
-                      <div>
-                        <h3 className="text-base font-semibold text-grey-90">
-                          Analysis Results & Visualization
-                        </h3>
-                        <p className="text-xs text-grey-60">
-                          Interactive plot and output artifacts
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {SHOW_NEXTGEN_VISUALIZER_BUTTON && (
-                          <button
-                            type="button"
-                            className={`inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700 transition ${FOCUS_RING}`}
-                            onClick={() => setIsNativePlotOpen(true)}
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            NextGen Visualizer
-                          </button>
-                        )}
-                        {viewableArtifacts.map((artifact) => (
-                          <ViewArtifactButtons
+                <div className="rounded-xl border border-grey-20 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grey-20 pb-4">
+                    <div>
+                      <h3 className="text-base font-semibold text-grey-90">
+                        Analysis Results & Visualization
+                      </h3>
+                      <p className="text-xs text-grey-60">
+                        Interactive plot and output artifacts
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {SHOW_NEXTGEN_VISUALIZER_BUTTON && (
+                        <button
+                          type="button"
+                          className={`inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700 transition ${FOCUS_RING}`}
+                          onClick={() => setIsNativePlotOpen(true)}
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          NextGen Visualizer
+                        </button>
+                      )}
+                      {viewableArtifacts.map((artifact) => (
+                        <ViewArtifactButton
+                          key={`${artifact.kind}-${artifact.filename}`}
+                          label={htmlArtifactName(artifact)}
+                          title={artifact.filename}
+                          icon={<Eye className="h-3.5 w-3.5 shrink-0" />}
+                          isLoading={isViewerLoadingUrl(artifact)}
+                          onView={() => handleView(artifact)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {downloadableArtifacts.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-grey-60">
+                        Generated Artifacts ({downloadableArtifacts.length})
+                      </h4>
+                      <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {downloadableArtifacts.map((artifact) => (
+                          <ArtifactRow
                             key={`${artifact.kind}-${artifact.filename}`}
-                            label={htmlArtifactName(artifact)}
-                            title={artifact.filename}
-                            icon={<Eye className="h-3.5 w-3.5 shrink-0" />}
-                            isLoading={isViewerLoadingUrl(artifact)}
-                            isOpeningNewTab={
-                              openingNewTabFor === artifact.filename
-                            }
-                            onView={() => handleView(artifact)}
-                            onOpenInNewTab={() => handleOpenInNewTab(artifact)}
+                            jobId={job.id}
+                            artifact={artifact}
                           />
                         ))}
                       </div>
                     </div>
-
-                    {downloadableArtifacts.length > 0 && (
-                      <div className="mt-4">
-                        <h4 className="text-xs font-semibold uppercase tracking-wider text-grey-60">
-                          Generated Artifacts ({downloadableArtifacts.length})
-                        </h4>
-                        <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                          {downloadableArtifacts.map((artifact) => (
-                            <ArtifactRow
-                              key={`${artifact.kind}-${artifact.filename}`}
-                              jobId={job.id}
-                              artifact={artifact}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  )}
+                </div>
+              )}
 
               <RunMetricsSummary
                 metrics={job.metrics}
@@ -1031,40 +1007,40 @@ export default function SequencingRecordDetailPanel({
 
               {(viewerState.status === "loading-frame" ||
                 viewerState.status === "ready") && (
-                  <>
-                    {viewerState.status === "loading-frame" && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-sm text-grey-70">
-                        <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
-                        Loading {viewerState.artifact.filename} — this file
-                        can be a few MB, so it can take a moment…
-                      </div>
-                    )}
-                    {/* Fetched directly from S3 via a presigned, inline URL
+                <>
+                  {viewerState.status === "loading-frame" && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-sm text-grey-70">
+                      <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
+                      Loading {viewerState.artifact.filename} — this file can be
+                      a few MB, so it can take a moment…
+                    </div>
+                  )}
+                  {/* Fetched directly from S3 via a presigned, inline URL
                       minted only now that the user asked for it — the
                       bytes go browser<->S3 and never touch apiClient.
                       `allow-same-origin` is intentionally omitted alongside
                       allow-scripts: together they'd let the report script
                       our origin instead of being sandboxed. */}
-                    <iframe
-                      key={viewerState.url}
-                      src={viewerState.url}
-                      title={`${viewerState.artifact.filename} - ${job.seqId}`}
-                      className="h-full w-full border-0"
-                      sandbox="allow-scripts"
-                      onLoad={() =>
-                        setViewerState((prev) =>
-                          prev.status === "loading-frame"
-                            ? {
+                  <iframe
+                    key={viewerState.url}
+                    src={viewerState.url}
+                    title={`${viewerState.artifact.filename} - ${job.seqId}`}
+                    className="h-full w-full border-0"
+                    sandbox="allow-scripts"
+                    onLoad={() =>
+                      setViewerState((prev) =>
+                        prev.status === "loading-frame"
+                          ? {
                               status: "ready",
                               artifact: prev.artifact,
                               url: prev.url,
                             }
-                            : prev,
-                        )
-                      }
-                    />
-                  </>
-                )}
+                          : prev,
+                      )
+                    }
+                  />
+                </>
+              )}
             </div>
           </div>
         </div>
