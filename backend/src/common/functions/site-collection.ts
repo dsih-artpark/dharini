@@ -111,7 +111,7 @@ export function calculateNextCollectionDate(
 
     if (singleWeekday) {
       const diffDays = (singleWeekday - startDate.weekday + 7) % 7;
-      let nextVisitDate = startDate.plus({ days: diffDays });
+      let nextVisitDate: DateTime = startDate.plus({ days: diffDays });
 
       if (nextVisitDate >= now) {
         return nextVisitDate;
