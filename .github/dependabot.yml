@@ -15,7 +15,7 @@ updates:
       timezone: "Asia/Kolkata"
     target-branch: "staging"
     reviewers:
-      - "snehasaisneha"
+      - "dsih-artpark/dharini"
     open-pull-requests-limit: 5
     # Only allow patch and minor updates (no breaking major changes)
     ignore:
@@ -63,7 +63,7 @@ updates:
       timezone: "Asia/Kolkata"
     target-branch: "staging"
     reviewers:
-      - "snehasaisneha"
+      - "dsih-artpark/dharini"
     open-pull-requests-limit: 5
     # Only allow patch and minor updates
     ignore:
@@ -122,7 +122,7 @@ updates:
   #     timezone: "Asia/Kolkata"
   #   target-branch: "staging"
   #   reviewers:
-  #     - "snehasaisneha"
+  #     - "dsih-artpark/dharini"
   #   open-pull-requests-limit: 5
   #   # Only allow patch and minor updates
   #   ignore:
