@@ -196,7 +196,9 @@ export default function SequencingRecordsTable({
   onRefetchNeeded,
 }: Props) {
   return (
-    <div className="overflow-x-auto rounded-b-xl border-x border-b border-grey-20 bg-white">
+    // A size container, so the expanded panel below can be sized to this
+    // box's visible width (100cqw) rather than to the table.
+    <div className="overflow-x-auto rounded-b-xl border-x border-b border-grey-20 bg-white [container-type:inline-size]">
       <table className="w-full min-w-[840px] border-collapse">
         <thead>
           <tr className="border-b border-grey-20 bg-blue-10">
@@ -292,11 +294,13 @@ export default function SequencingRecordsTable({
                   </tr>
                   {isExpanded && (
                     <tr className="border-b border-grey-20 bg-grey-10/70 last:border-b-0">
-                      <td
-                        colSpan={COLUMN_COUNT}
-                        className="max-w-full overflow-hidden px-4 py-4 sm:px-6 sm:py-5"
-                      >
-                        <div className="w-full max-w-full min-w-0">
+                      <td colSpan={COLUMN_COUNT} className="p-0">
+                        {/* An auto-layout table grows to fit its widest
+                            content, so the panel's wide parts (stage
+                            tracker, variants table) used to stretch every
+                            column past the screen. Sized to the container
+                            instead, they scroll inside their own boxes. */}
+                        <div className="w-[100cqw] px-4 py-4 sm:px-6 sm:py-5">
                           <SequencingRecordDetailPanel
                             record={record}
                             job={

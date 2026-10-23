@@ -288,9 +288,9 @@ export default function RunVariantsTable({ variants }: Props) {
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Search Input */}
-            <div className="relative">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            {/* Search Input — fills the row on a narrow screen */}
+            <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-grey-50" />
               <input
                 type="text"
@@ -300,7 +300,7 @@ export default function RunVariantsTable({ variants }: Props) {
                   setCurrentPage(1);
                 }}
                 placeholder="Search gene, position, effect…"
-                className={`h-8 w-52 rounded-lg border border-grey-20 bg-white pl-8 pr-7 text-xs text-grey-90 placeholder:text-grey-50 ${FOCUS_RING}`}
+                className={`h-8 w-full rounded-lg border border-grey-20 bg-white pl-8 pr-7 text-xs text-grey-90 placeholder:text-grey-50 sm:w-52 ${FOCUS_RING}`}
               />
               {searchQuery && (
                 <button
@@ -318,7 +318,7 @@ export default function RunVariantsTable({ variants }: Props) {
               type="button"
               onClick={handleExportCsv}
               title="Download filtered variants as CSV"
-              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 text-xs font-semibold text-grey-70 hover:bg-grey-10 hover:text-grey-90 ${FOCUS_RING}`}
+              className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 text-xs font-semibold text-grey-70 hover:bg-grey-10 hover:text-grey-90 ${FOCUS_RING}`}
             >
               <Download className="h-3.5 w-3.5" />
               <span>CSV</span>
@@ -521,7 +521,7 @@ export default function RunVariantsTable({ variants }: Props) {
 
           {/* Compact Pagination Bar */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-grey-20 bg-grey-10/50 px-4 py-2.5 text-xs text-grey-70">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span>
                 Showing{" "}
                 <strong className="text-grey-90">

@@ -182,12 +182,12 @@ export default function RunMetricsSummary({
     <div className="rounded-xl border border-grey-20 bg-white p-5 shadow-sm">
       {/* Top Header: Title & Metadata Badges */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grey-20 pb-4">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <h3 className="text-base font-semibold text-grey-90">Run Overview</h3>
           {runId && (
-            <div className="flex items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
+            <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
               <span className="font-medium text-grey-60">Run ID:</span>
-              <span className="font-mono font-semibold text-grey-90">
+              <span className="break-all font-mono font-semibold text-grey-90">
                 {runId}
               </span>
               <CopyButton text={runId} label="Run ID" />
@@ -213,11 +213,13 @@ export default function RunMetricsSummary({
       <div className="mt-4 flex flex-col gap-5">
         {/* Headline Stat Counters */}
         {headlineStats.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 max-w-xl">
+          // Wraps instead of a fixed 3 columns, so tiles stack on a narrow
+          // panel rather than squeezing their numbers out of the box.
+          <div className="flex max-w-xl flex-wrap gap-3 sm:gap-4">
             {headlineStats.map((stat) => (
               <div
                 key={stat.label}
-                className="flex flex-col rounded-lg border border-grey-20 bg-grey-10/50 px-3.5 py-2.5 transition-colors hover:bg-grey-10"
+                className="flex min-w-[7rem] flex-1 flex-col rounded-lg border border-grey-20 bg-grey-10/50 px-3.5 py-2.5 transition-colors hover:bg-grey-10"
               >
                 <span className="text-xs font-semibold uppercase tracking-wider text-grey-60">
                   {stat.label}
@@ -299,7 +301,7 @@ export default function RunMetricsSummary({
                       className="flex items-center gap-2.5 text-xs"
                     >
                       <span
-                        className="w-36 shrink-0 truncate font-medium text-grey-80"
+                        className="w-24 shrink-0 truncate font-medium text-grey-80 sm:w-36"
                         title={humanizeEffect(effect)}
                       >
                         {humanizeEffect(effect)}

@@ -51,6 +51,13 @@ export default function Home() {
     deleteToken().catch(() => undefined);
   }, []);
 
+  // A heads-up, not something the page stays in: hide it after 4 seconds.
+  useEffect(() => {
+    if (!sessionExpired) return;
+    const timer = setTimeout(() => setSessionExpired(false), 4000);
+    return () => clearTimeout(timer);
+  }, [sessionExpired]);
+
   useEffect(() => {
     if (identifier.length > 0) {
       if (loginType === "email") {
