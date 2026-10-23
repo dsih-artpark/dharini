@@ -118,7 +118,7 @@ Dharini uses role-based access control. Each role has a **scope** that decides h
 |-------------------------------------------|--------------|
 | Field Collector | `collector`, `collector-admin` |
 | Lab Technician | `lab-member`, `lab-admin` |
-| Project Admin | `workspace-admin`, `team-admin`, `project-viewer` (read-only) |
+| Team Admin | `workspace-admin`, `team-admin`, `project-viewer` (read-only) |
 
 ### 6.3 Access rules
 

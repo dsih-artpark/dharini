@@ -1,28 +1,24 @@
 ---
 title: Lab Technician Guide
 description: Complete workflow guide for Lab Technicians using the Dharini web portal
+sidebar:
+  order: 5
 ---
 
-Lab technicians use the Dharini web portal to receive samples, process them step by step, record test results. In Dharini these users have the **Lab Member** or **Lab Admin** role. This guide covers the lab workflow from the moment a sample arrives to its final result.
+Lab technicians use the Dharini web portal to receive samples, process them step by step, and record test results. In Dharini these users have the **Lab Member** or **Lab Admin** role. This guide covers the lab workflow from the moment a sample arrives to its final result.
 
 ## Getting Started
 
-### Logging In
-
-1. Go to the web portal: [https://in.dharini.artpark.ai/](https://in.dharini.artpark.ai/)
-2. Choose **Email** or **Phone** and enter the address or number your admin registered for you.
-3. Select **Send OTP**.
-4. Enter the 6-digit code you received and select **Verify & Login**.
-5. If you belong to more than one workspace, choose your workspace from the **Select a workspace** list.
-
-:::tip
-The code is valid for 3 minutes. If it does not arrive, wait for the countdown to finish and select **Resend OTP**. If you typed the wrong email or number, select **Try different Email** (or **Try different Phone Number**).
-:::
+Log in with your email or phone number and a one-time code, and choose your workspace if asked. See [Getting Started](/user-guide/getting-started).
 
 ### Opening the Lab Screen
 
 1. In the left-hand menu, select **Lab Processing**.
 2. If you do not see **Lab Processing**, your account does not have lab access. Ask your admin.
+
+:::note
+If your role covers several projects and none is selected, the list is **read-only** and asks you to select a specific project before you can process samples.
+:::
 
 You can switch workspace at any time from the workspace name at the top of the left-hand menu.
 
@@ -57,11 +53,11 @@ Below the summary, the **Received Samples** list has a tab for each stage:
 | **Rejected** | Samples rejected at receiving |
 | **Test Results** | Samples with finished test results |
 
-Each row shows the **Sample ID** (barcode), **Site Name**, **Round**, **Disease**, **Location**, **Farm Type** and **Last Activity**. The **Collected** tab also shows **Collected By**. Some organizations also see an **Accession ID** column.
+Each row shows the **Sample ID** (barcode), **Site Name**, **Round**, **Disease**, **Location**, **Farm Type** and **Last Activity**. The **Collected** tab also shows **Collected By**.
 
 To find samples:
 
-1. Select **Filter** to open the filters: **Sample Barcode**, **Disease**, **Sample Type**, **Site**, **Date Range** (with quick presets such as **Today**, **Last 7 Days**, **This Month** and **Last 30 Days**), **State**, **Round**, **Batch Ref ID**, **Accession ID**, and **Test Result** (Positive, Negative or Unclear).
+1. Select **Filter** to open the filters: **Sample Barcode**, **Disease**, **Sample Type**, **Site**, **Date Range** (with quick presets such as **Today**, **Last 7 Days**, **This Month** and **Last 30 Days**), **State**, **Round**, **Batch Ref ID**, and **Test Result** (Positive, Negative or Unclear).
 2. Select **Apply** to use the filters.
 3. Select **Clear all filters** to start again.
 
@@ -73,7 +69,7 @@ Select **Columns** to show or hide columns, and use **Show** to change how many 
 - **Accession** – Starts processing a sample in the **Collected** tab
 - **Process** – Continues processing a sample in any later stage
 - **Retest** – Appears in the **Test Results** tab
-- **Edit Details** – Lets project admins and lab admins correct the details of a sample
+- **Edit Details** – Lets team admins and lab admins correct the details of a sample
 
 ## Processing a Sample
 
@@ -116,7 +112,6 @@ Use this step when the physical samples arrive.
 Every sample needs a decision before you can save. Receiving date, time and **Received By** are required if you accept any sample, and rejected samples must have a reason.
 :::
 
-If your organization uses accession IDs, the **Accession ID** column shows "Auto-generated". Dharini creates the accession ID when you save.
 
 **What happens after rejection:** the sample moves to the **Rejected** tab with your reason recorded. If you reject every sample, you are returned to the list. The sample's final screen reads "The sample is rejected" and shows the reason.
 
@@ -217,7 +212,7 @@ If you attached a report file during the testing step, it stays linked to that s
 
 ## Correcting Sample Details
 
-Lab admins and project admins can correct the details recorded for a sample after the fact.
+Lab admins and team admins can correct the details recorded for a sample after the fact.
 
 1. Find the sample in the list.
 2. Select **Edit Details**.
@@ -251,7 +246,8 @@ For common issues and their solutions, see the [Troubleshooting Guide](/user-gui
 
 ## Next Steps
 
-- [Learn about Project Admin workflows](/user-guide/project-admin)
-- [Learn about Field Collector workflows](/user-guide/field-collector)
-- [View Troubleshooting Guide](/user-guide/troubleshooting)
+- [Dashboards & Analysis](/user-guide/dashboard): see results across the project
+- [SNP Analysis](/user-guide/snp-analysis): submit sequences for positive samples
+- [Team Admin Guide](/user-guide/team-admin)
+- [Troubleshooting Guide](/user-guide/troubleshooting)
 - [Return to User Guide Overview](/user-guide/)

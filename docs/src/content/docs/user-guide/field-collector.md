@@ -1,6 +1,8 @@
 ---
 title: Field Collector Guide
 description: Complete workflow guide for Field Collectors using the Dharini mobile app
+sidebar:
+  order: 4
 ---
 
 Field collectors use the Dharini mobile app to collect samples and record site information directly from the field. This guide covers the workflows and features available in the mobile app.
@@ -23,7 +25,7 @@ You log in with a one-time password (OTP). You can receive the OTP by **Phone** 
 1. Open the Dharini app. You will see the login screen.
 2. At the top, choose **Email** or **Phone**.
 3. Enter your registered email address or phone number.
-   - It must already have been added by your project admin. If it has not, the app will not send you a code.
+   - It must already have been added by your team admin. If it has not, the app will not send you a code.
 4. Tap **Send OTP**.
 5. Enter the verification code you received, then tap **Log in**.
 
@@ -375,7 +377,7 @@ For common issues and their solutions, see the [Troubleshooting Guide](/user-gui
 
 ## Next Steps
 
-- [Learn about Project Admin workflows](/user-guide/project-admin)
+- [Learn about Team Admin workflows](/user-guide/team-admin)
 - [Learn about Lab Technician workflows](/user-guide/lab-technician)
 - [View Troubleshooting Guide](/user-guide/troubleshooting)
 - [Return to User Guide Overview](/user-guide/)

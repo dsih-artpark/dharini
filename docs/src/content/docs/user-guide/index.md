@@ -1,18 +1,21 @@
 ---
 title: Overview
 description: Complete user guide for the Dharini platform
+sidebar:
+  order: 1
 ---
 
 This guide helps new users quickly understand and start using the Dharini platform without external support. Please read the sections relevant to your role and follow the steps as you use the platform.
 
 ## Introduction
 
-Dharini is a digital platform built to manage end-to-end disease surveillance and field sampling workflows. It replaces manual, paper-based processes with a guided digital system that ensures accuracy, traceability, and accountability.
+Dharini is an open-source platform for end-to-end disease surveillance and field sampling, covering environmental and clinical surveillance of livestock diseases. It connects field sampling, laboratory work and genomic analysis. It replaces manual, paper-based processes with a guided digital system that ensures accuracy, traceability, and accountability.
 
-Dharini has two parts:
+Dharini has three components:
 
-- **The mobile app (Android)** – used in the field to register sites, complete scheduled visits, and collect samples. It works without internet.
-- **The web portal** – used in the office and the laboratory to process samples, manage projects and teams, monitor results, and export data.
+- **The mobile app (Android)** – used in the field to register sites, complete scheduled visits, and collect samples. It works without internet and syncs when connectivity returns.
+- **The web portal** – used in the office and the laboratory to set up projects, sites and teams, process samples, monitor results, and import and export data.
+- **The hosted service** – Dharini is hosted on AWS, which stores the master data, configuration and field-entered data. If you prefer not to use the cloud instance, you can run your own instance in your data centre or on your own server, because Dharini is fully open source.
 
 By using Dharini, organizations can:
 
@@ -20,6 +23,20 @@ By using Dharini, organizations can:
 - Track samples seamlessly from field to laboratory
 - Reduce human errors and missing information
 - Monitor operations and test results in near real time
+
+Dharini is designed for use by **Field Collectors**, **Lab Technicians**, and **Team Admins**, all working together on a single connected platform.
+
+## Modules
+
+| Module | What it covers |
+| --- | --- |
+| [Getting Started](/user-guide/getting-started) | Creating an account and workspace, logging in, roles and navigation |
+| [Team Admin Guide](/user-guide/team-admin) | Projects, teams and access, sites, collection plans, data import, user management |
+| [Field Collector Guide](/user-guide/field-collector) | Collecting samples in the mobile app, online or offline |
+| [Lab Technician Guide](/user-guide/lab-technician) | Receiving, processing and testing samples |
+| [Dashboards & Analysis](/user-guide/dashboard) | Home, the disease surveillance Dashboard, and Comparison |
+| [GeoLens](/user-guide/geolens) | Map layers, proximity analysis and site comparison for planning sampling |
+| [SNP Analysis](/user-guide/snp-analysis) | Variant calling and interactive genome views for pathogen sequences |
 
 ## Platform Overview
 
@@ -56,27 +73,25 @@ Dharini is organized in layers. It helps to know where you sit:
 
 ## User Roles
 
-Your role decides which screens and buttons you see. The role names below are the ones shown in Dharini.
+Your role decides which screens and buttons you see. Dharini has five roles, described in more detail in [Getting Started](/user-guide/getting-started#roles).
 
 | Role | Where you work | What you do |
 | --- | --- | --- |
-| **Workspace Admin** | Web portal | Creates projects, invites people, manages workspace settings, and can export or remove data |
-| **Project Admin** | Web portal | Views a project's dashboards, sites, visits, samples, and team progress |
-| **Team Admin** | Web portal | Manages a team's members, sites, visits, samples, and lab tests |
+| **Team Admin** | Web portal | Oversees a project and its teams: sites, visits, samples, test results and team progress, and the dashboards |
 | **Collector Admin** | Mobile app | A lead collector who collects samples and also adds and removes team members and tracks team progress |
 | **Collector** | Mobile app | Registers sites, completes visits, and collects samples |
 | **Lab Admin** | Web portal | Manages lab team members and processes samples through the lab flow |
 | **Lab Member** | Web portal | Processes samples through the lab flow (the day-to-day lab technician role) |
 
-Some people hold a **Super Admin** role. Super admins manage the whole Dharini installation and can reach everything, including the system-wide **Settings** page.
+The person who creates a workspace automatically has full control of it, and some people hold a **Super Admin** role that manages the whole Dharini installation. Neither is one of the five roles you assign.
 
 :::note
 A person can hold more than one role, and roles can be limited to a workspace, a project or a team. If you cannot see a menu item or button that this guide mentions, your role may not include it. Ask your admin.
 :::
 
-### [Workspace and Project Admin](/user-guide/project-admin)
+### [Team Admin](/user-guide/team-admin)
 
-Admins use the web portal to run projects and people. Depending on their role, they can:
+Team admins use the web portal to run projects and people. Depending on their access, they can:
 
 - Create projects and set up teams
 - Invite people to the workspace and to projects
@@ -86,7 +101,7 @@ Admins use the web portal to run projects and people. Depending on their role, t
 - Watch dashboards, GeoLens maps, comparison charts and sequencing results
 - Download project data as CSV or through the Data Playground
 
-[Learn more about admin workflows →](/user-guide/project-admin)
+[Learn more about Team Admin workflows →](/user-guide/team-admin)
 
 ### [Field Collector](/user-guide/field-collector)
 
@@ -108,6 +123,7 @@ Lab technicians (Lab Members and Lab Admins) use the web portal to process sampl
 - See samples by stage: Collected, Received, Virus Isolation, Pre-processed, Extracted, Rejected and Test Results
 - Receive samples, accepting or rejecting each one
 - Record pre-processing (including pooling), virus isolation, extraction and testing
+- Record results, including Ct values and subtypes
 - Process many samples together with **Process Selected**
 - Retest samples
 

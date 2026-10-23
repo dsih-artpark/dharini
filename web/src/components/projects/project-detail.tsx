@@ -177,7 +177,7 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          {/* Project admins */}
+          {/* Team admins */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-grey-60">
               <svg
@@ -192,7 +192,7 @@ export default function ProjectDetail() {
                   fill="#889096"
                 />
               </svg>
-              Project Admin
+              Team Admin
             </div>
 
             <div className="flex flex-col gap-1">

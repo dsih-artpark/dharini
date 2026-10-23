@@ -16,7 +16,7 @@ Dharini is a full-stack application that connects field operations, laboratory w
 - **Sample Tracking**: Complete traceability from collection through laboratory testing to final reporting
 - **Laboratory Management**: Streamlined workflows for sample intake, quality control, testing, and reporting
 - **Geospatial Integration**: Built-in GPS tracking and PostGIS integration for location-based analytics
-- **Real-Time Monitoring**: Live dashboards for project administrators to oversee operations
+- **Real-Time Monitoring**: Live dashboards for team administrators to oversee operations
 - **Quality Assurance**: Enforced mandatory fields, duplicate prevention, and audit trails
 - **GeoLens**: Map view that overlays surveillance sites on environmental and risk layers (water bodies, wetlands, poultry farms, livestock markets) with bird-observation and weather lookups
 - **Genomic Sequencing**: Upload sequence files or import NCBI accessions, run them through an external analysis pipeline, and review variants and results
@@ -63,7 +63,7 @@ Use the web dashboard to:
 
 [Learn more about Lab Technician workflows →](/user-guide/lab-technician)
 
-### Project Administrators
+### Team Administrators
 
 Use the management portal to:
 
@@ -73,7 +73,7 @@ Use the management portal to:
 - Manage users and roles
 - Generate reports and analytics
 
-[Learn more about Project Admin workflows →](/user-guide/project-admin)
+[Learn more about Team Admin workflows →](/user-guide/team-admin)
 
 ## Key Benefits
 
@@ -163,13 +163,14 @@ Dharini is designed for:
 
 ### For Users
 
-If you're a field collector, lab technician, or project administrator:
+If you're a field collector, lab technician, or team administrator:
 
 1. Review the [User Guide](/user-guide/) for an overview of the platform
 2. Read the guide specific to your role:
    - [Field Collector Guide](/user-guide/field-collector)
    - [Lab Technician Guide](/user-guide/lab-technician)
-   - [Project Admin Guide](/user-guide/project-admin)
+   - [Team Admin Guide](/user-guide/team-admin)
+   - [Dashboards & Analysis](/user-guide/dashboard), [GeoLens](/user-guide/geolens) and [SNP Analysis](/user-guide/snp-analysis) for monitoring and analysis
 3. Check the [Troubleshooting Guide](/user-guide/troubleshooting) if you encounter issues
 
 ### For Administrators
@@ -197,7 +198,7 @@ For questions, issues, or contributions:
 
 - Review the documentation in this site
 - Check the [GitHub repository](https://github.com/dsih-artpark/dharini)
-- Contact your project administrator or technical support team
+- Contact your team administrator or technical support team
 
 ---
 

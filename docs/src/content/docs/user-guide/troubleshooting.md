@@ -1,6 +1,8 @@
 ---
 title: Troubleshooting Guide
 description: Common issues and solutions for Dharini platform users
+sidebar:
+  order: 9
 ---
 
 This guide covers common issues users may encounter while using the Dharini platform and provides step-by-step solutions.
@@ -28,7 +30,7 @@ Dharini uses a one-time password (OTP) sent to your email address or phone numbe
    - SMS codes can be delayed by a few minutes where the network is weak
 
 4. **Resend the code**
-   - Tap or select **Resend OTP**. On the web, wait for the "Resend in …s" countdown to finish first.
+   - On the mobile app, tap **Resend OTP**. On the web, wait for the "Resend in …" countdown to finish, then select **Resend code**.
    - Use only the newest code. Older codes stop working.
 
 5. **Try the other method**
@@ -40,10 +42,10 @@ Dharini uses a one-time password (OTP) sent to your email address or phone numbe
 
 **Solutions:**
 
-1. A code is valid for **3 minutes**. Request a new one with **Resend OTP** and enter it quickly.
+1. A code is valid for **3 minutes**. Request a new one with **Resend OTP** (mobile) or **Resend code** (web) and enter it quickly.
 2. Use the code from the **latest** message.
 3. After several wrong codes in a row (5 within 15 minutes), Dharini stops accepting codes and shows "Too many incorrect OTP attempts. Please request a new code." Request a new code with **Resend OTP** and enter it carefully.
-4. If you typed the wrong email address or number, use **Change email**, **Change number** (mobile) or **Try different Email** or **Try different Phone Number** (web) to go back.
+4. If you typed the wrong email address or number, use **Change email** or **Change number** (mobile), or **Try different email** or **Try different phone number** (web), to go back.
 
 ### Issue: Logged Out Unexpectedly
 
@@ -490,9 +492,9 @@ Contact your administrator or technical support if:
 ## Additional Resources
 
 - [User Guide Overview](/user-guide/)
-- [Project Admin Guide](/user-guide/project-admin)
+- [Team Admin Guide](/user-guide/team-admin)
 - [Field Collector Guide](/user-guide/field-collector)
 - [Lab Technician Guide](/user-guide/lab-technician)
 - [Administrator Guide](/administrator-guide/) (for technical administrators)
 
-If your issue is not resolved using this guide, please contact your project administrator for assistance.
+If your issue is not resolved using this guide, please contact your team administrator for assistance.

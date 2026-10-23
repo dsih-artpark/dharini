@@ -6,6 +6,10 @@ import starlightOpenAPI, { openAPISidebarGroups } from 'starlight-openapi';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://dharini.artpark.ai',
+	redirects: {
+		// The Project Admin guide was renamed to Team Admin; keep old links working.
+		'/user-guide/project-admin': '/user-guide/team-admin',
+	},
 	integrations: [
 		starlight({
 			title: 'Dharini',
