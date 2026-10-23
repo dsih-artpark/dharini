@@ -345,7 +345,7 @@
             "in": "query",
             "description": "Exact 10-digit phone",
             "schema": {
-              "pattern": "/^\\d{10}$/",
+              "pattern": "^\\d{10}$",
               "example": "9876543210",
               "type": "string"
             }
@@ -1297,7 +1297,7 @@
           },
           {
             "name": "disease",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1305,7 +1305,7 @@
           },
           {
             "name": "startDate",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1313,7 +1313,7 @@
           },
           {
             "name": "endDate",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1384,7 +1384,7 @@
         "parameters": [
           {
             "name": "projectId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1392,7 +1392,7 @@
           },
           {
             "name": "workspaceId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -7144,7 +7144,7 @@
         "parameters": [
           {
             "name": "q",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -7267,7 +7267,7 @@
         "parameters": [
           {
             "name": "workspaceId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -7311,7 +7311,7 @@
           },
           {
             "name": "inline",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -7479,7 +7479,7 @@
         "parameters": [
           {
             "name": "workspaceId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -8480,12 +8480,6 @@
       "UserProfileResponseDataRole": {
         "type": "object",
         "properties": {
-          "permissions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Permission"
-            }
-          },
           "id": {
             "type": "string"
           },
@@ -8499,12 +8493,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -8513,17 +8507,23 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
           }
         },
         "required": [
-          "permissions",
           "id",
           "name",
           "scope",
           "type",
           "status",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "permissions"
         ]
       },
       "Workspace": {
@@ -8544,17 +8544,6 @@
       "UserProfileResponseDataUserRole": {
         "type": "object",
         "properties": {
-          "role": {
-            "$ref": "#/components/schemas/UserProfileResponseDataRole"
-          },
-          "workspace": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Workspace"
-              }
-            ]
-          },
           "id": {
             "type": "string"
           },
@@ -8567,11 +8556,23 @@
             "nullable": true
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
+            ],
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserProfileResponseDataRole"
+          },
+          "workspace": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Workspace"
+              }
             ]
           }
         },
@@ -8630,18 +8631,6 @@
             "nullable": true,
             "example": "John"
           },
-          "roles": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserProfileResponseDataUserRole"
-            }
-          },
-          "team": {
-            "$ref": "#/components/schemas/Team"
-          },
-          "project": {
-            "$ref": "#/components/schemas/Project"
-          },
           "id": {
             "type": "string"
           },
@@ -8668,12 +8657,24 @@
           "email": {
             "type": "string",
             "nullable": true
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserProfileResponseDataUserRole"
+            }
+          },
+          "team": {
+            "$ref": "#/components/schemas/Team"
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
           }
         },
         "required": [
-          "roles",
           "id",
-          "contactNumber"
+          "contactNumber",
+          "roles"
         ]
       },
       "UserProfileResponse": {
@@ -9025,13 +9026,13 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "nullable": true,
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -9051,14 +9052,14 @@
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -9091,21 +9092,18 @@
       "ProjectResponseRegion": {
         "type": "object",
         "properties": {
-          "parentRegion": {
-            "$ref": "#/components/schemas/ProjectResponseParentRegion"
-          },
           "id": {
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -9124,6 +9122,9 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "parentRegion": {
+            "$ref": "#/components/schemas/ProjectResponseParentRegion"
           }
         },
         "required": [
@@ -9149,6 +9150,7 @@
           },
           "workspace": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Workspace"
@@ -9253,6 +9255,7 @@
           },
           "workspace": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/Workspace"
@@ -9864,55 +9867,6 @@
               }
             ]
           },
-          "photos": {
-            "description": "file path",
-            "example": [
-              "https://<s3>/<bucket>/<filepath>"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "regionId": {
-            "type": "string",
-            "description": "ID of the region",
-            "example": "district_<code>"
-          },
-          "latitude": {
-            "type": "number",
-            "description": "latitude",
-            "example": "40.2331"
-          },
-          "longitude": {
-            "type": "number",
-            "description": "longitude",
-            "example": "-70.4453"
-          },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
-          },
-          "collectionConsent": {
-            "type": "string",
-            "nullable": true,
-            "pattern": "^(true|false)$",
-            "description": "Site owner's collection consent: 'true' or 'false'",
-            "example": "true"
-          },
-          "diseaseIds": {
-            "description": "IDs of diseases to associate with this site (subset of project diseases)",
-            "example": [
-              "uuid-1",
-              "uuid-2"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
           "name": {
             "type": "string"
           },
@@ -9967,15 +9921,64 @@
           "village": {
             "type": "string",
             "nullable": true
+          },
+          "photos": {
+            "description": "file path",
+            "example": [
+              "https://<s3>/<bucket>/<filepath>"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regionId": {
+            "type": "string",
+            "description": "ID of the region",
+            "example": "district_<code>"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "latitude",
+            "example": "40.2331"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "longitude",
+            "example": "-70.4453"
+          },
+          "collectionCollector": {
+            "type": "string",
+            "description": "collectionCollector id",
+            "example": "user-uuid"
+          },
+          "collectionConsent": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^(true|false)$",
+            "description": "Site owner's collection consent: 'true' or 'false'",
+            "example": "true"
+          },
+          "diseaseIds": {
+            "description": "IDs of diseases to associate with this site (subset of project diseases)",
+            "example": [
+              "uuid-1",
+              "uuid-2"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         },
         "required": [
+          "name",
           "photos",
           "regionId",
           "latitude",
           "longitude",
-          "collectionCollector",
-          "name"
+          "collectionCollector"
         ]
       },
       "UserWithTeamResponse": {
@@ -10047,14 +10050,14 @@
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -10087,21 +10090,18 @@
       "SiteResponseRegion": {
         "type": "object",
         "properties": {
-          "parentRegion": {
-            "$ref": "#/components/schemas/SiteResponseParentRegion"
-          },
           "id": {
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -10120,6 +10120,9 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "parentRegion": {
+            "$ref": "#/components/schemas/SiteResponseParentRegion"
           }
         },
         "required": [
@@ -10134,14 +10137,14 @@
       "Location": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "coordinates": {
             "$ref": "#/components/schemas/LocationCoordinates"
           },
           "region": {
             "$ref": "#/components/schemas/SiteResponseRegion"
-          },
-          "id": {
-            "type": "string"
           }
         },
         "required": [
@@ -10184,21 +10187,6 @@
                 "$ref": "#/components/schemas/SiteType"
               }
             ]
-          },
-          "diseases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Disease"
-            }
-          },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
-          },
-          "createdBy": {
-            "$ref": "#/components/schemas/UserWithTeamResponse"
-          },
-          "location": {
-            "$ref": "#/components/schemas/Location"
           },
           "id": {
             "type": "string"
@@ -10273,13 +10261,28 @@
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "diseases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Disease"
+            }
+          },
+          "collectionCollector": {
+            "$ref": "#/components/schemas/User"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserWithTeamResponse"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
           }
         },
         "required": [
-          "diseases",
           "id",
           "name",
-          "createdAt"
+          "createdAt",
+          "diseases"
         ]
       },
       "SiteResponse": {
@@ -10372,21 +10375,6 @@
               }
             ]
           },
-          "diseases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Disease"
-            }
-          },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
-          },
-          "createdBy": {
-            "$ref": "#/components/schemas/UserWithTeamResponse"
-          },
-          "location": {
-            "$ref": "#/components/schemas/Location"
-          },
           "id": {
             "type": "string"
           },
@@ -10461,15 +10449,30 @@
             "format": "date-time",
             "type": "string"
           },
+          "diseases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Disease"
+            }
+          },
+          "collectionCollector": {
+            "$ref": "#/components/schemas/User"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/UserWithTeamResponse"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
           "distance": {
             "type": "number"
           }
         },
         "required": [
-          "diseases",
           "id",
           "name",
           "createdAt",
+          "diseases",
           "distance"
         ]
       },
@@ -10526,43 +10529,6 @@
               }
             ]
           },
-          "photos": {
-            "description": "file path",
-            "example": [
-              "https://<s3>/<bucket>/<filepath>"
-            ],
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "regionId": {
-            "type": "string",
-            "description": "ID of the region",
-            "example": "district_<code>"
-          },
-          "latitude": {
-            "type": "number",
-            "description": "latitude",
-            "example": "40.2331"
-          },
-          "longitude": {
-            "type": "number",
-            "description": "longitude",
-            "example": "-70.4453"
-          },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
-          },
-          "collectionConsent": {
-            "type": "string",
-            "nullable": true,
-            "pattern": "^(true|false)$",
-            "description": "Site owner's collection consent: 'true' or 'false'",
-            "example": "true"
-          },
           "name": {
             "type": "string"
           },
@@ -10613,15 +10579,52 @@
           "village": {
             "type": "string",
             "nullable": true
+          },
+          "photos": {
+            "description": "file path",
+            "example": [
+              "https://<s3>/<bucket>/<filepath>"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "regionId": {
+            "type": "string",
+            "description": "ID of the region",
+            "example": "district_<code>"
+          },
+          "latitude": {
+            "type": "number",
+            "description": "latitude",
+            "example": "40.2331"
+          },
+          "longitude": {
+            "type": "number",
+            "description": "longitude",
+            "example": "-70.4453"
+          },
+          "collectionCollector": {
+            "type": "string",
+            "description": "collectionCollector id",
+            "example": "user-uuid"
+          },
+          "collectionConsent": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^(true|false)$",
+            "description": "Site owner's collection consent: 'true' or 'false'",
+            "example": "true"
           }
         },
         "required": [
+          "name",
           "photos",
           "regionId",
           "latitude",
           "longitude",
-          "collectionCollector",
-          "name"
+          "collectionCollector"
         ]
       },
       "VisitSummaryResponseData": {
@@ -10700,14 +10703,14 @@
       "VisitSiteLocationData": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "coordinates": {
             "$ref": "#/components/schemas/LocationCoordinates"
           },
           "region": {
             "$ref": "#/components/schemas/SiteResponseRegion"
-          },
-          "id": {
-            "type": "string"
           }
         },
         "required": [
@@ -10750,9 +10753,6 @@
                 "$ref": "#/components/schemas/SiteType"
               }
             ]
-          },
-          "location": {
-            "$ref": "#/components/schemas/VisitSiteLocationData"
           },
           "id": {
             "type": "string"
@@ -10827,6 +10827,9 @@
           "createdAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/VisitSiteLocationData"
           }
         },
         "required": [
@@ -10866,12 +10869,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -10911,9 +10914,6 @@
               "type": "string"
             }
           },
-          "surveillanceType": {
-            "$ref": "#/components/schemas/SurveillanceType"
-          },
           "id": {
             "type": "string"
           },
@@ -10921,12 +10921,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -10935,6 +10935,9 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "surveillanceType": {
+            "$ref": "#/components/schemas/SurveillanceType"
           }
         },
         "required": [
@@ -10965,16 +10968,6 @@
           },
           "barcode": {
             "type": "string"
-          },
-          "disease": {
-            "$ref": "#/components/schemas/Disease"
-          },
-          "sampleType": {
-            "$ref": "#/components/schemas/SampleType"
-          },
-          "originalSampleId": {
-            "type": "string",
-            "nullable": true
           },
           "id": {
             "type": "string"
@@ -11065,6 +11058,7 @@
           },
           "receivedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -11073,6 +11067,7 @@
           },
           "extractedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -11081,6 +11076,7 @@
           },
           "collectedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -11089,11 +11085,22 @@
           },
           "reportGeneratedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
               }
             ]
+          },
+          "disease": {
+            "$ref": "#/components/schemas/Disease"
+          },
+          "sampleType": {
+            "$ref": "#/components/schemas/SampleType"
+          },
+          "originalSampleId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -11120,31 +11127,6 @@
                 "$ref": "#/components/schemas/VisitStatus"
               }
             ]
-          },
-          "round": {
-            "type": "number",
-            "description": "Sequential round number of this visit for its site (Nth visit, ordered by schedule date)"
-          },
-          "suspectedPositives": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/suspectedPositivesData"
-            }
-          },
-          "site": {
-            "$ref": "#/components/schemas/VisitSiteData"
-          },
-          "samples": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/VisitSampleData"
-            }
-          },
-          "collector": {
-            "$ref": "#/components/schemas/User"
-          },
-          "visitedBy": {
-            "$ref": "#/components/schemas/User"
           },
           "id": {
             "type": "string"
@@ -11176,17 +11158,42 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "round": {
+            "type": "number",
+            "description": "Sequential round number of this visit for its site (Nth visit, ordered by schedule date)"
+          },
+          "suspectedPositives": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/suspectedPositivesData"
+            }
+          },
+          "site": {
+            "$ref": "#/components/schemas/VisitSiteData"
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VisitSampleData"
+            }
+          },
+          "collector": {
+            "$ref": "#/components/schemas/User"
+          },
+          "visitedBy": {
+            "$ref": "#/components/schemas/User"
           }
         },
         "required": [
           "visitStatus",
-          "site",
-          "samples",
           "id",
           "visitScheduledAt",
           "isCompleted",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "site",
+          "samples"
         ]
       },
       "VisitResponse": {
@@ -11211,6 +11218,9 @@
       "CreateVisitDto": {
         "type": "object",
         "properties": {
+          "comment": {
+            "type": "string"
+          },
           "siteId": {
             "type": "string",
             "description": "ID of the site",
@@ -11230,9 +11240,6 @@
             "type": "string",
             "description": "The date when the collector visited",
             "example": "2025-02-06T12:00:00Z"
-          },
-          "comment": {
-            "type": "string"
           }
         },
         "required": [
@@ -11295,6 +11302,14 @@
               }
             ]
           },
+          "visitedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "isCompleted": {
+            "type": "boolean"
+          },
           "siteId": {
             "type": "string",
             "description": "site id",
@@ -11336,6 +11351,7 @@
           },
           "diseaseQuestionnaireData": {
             "type": "object",
+            "additionalProperties": true,
             "description": "Disease questionnaire responses grouped by disease shortName",
             "example": {
               "AI": {
@@ -11354,6 +11370,7 @@
           },
           "environmentalQuestionnaireData": {
             "type": "object",
+            "additionalProperties": true,
             "description": "Environmental questionnaire responses",
             "example": {
               "Drinking Water": {
@@ -11370,14 +11387,6 @@
             "type": "number",
             "description": "Longitude of location where visit was completed",
             "example": 77.5946
-          },
-          "visitedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "isCompleted": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -11413,6 +11422,14 @@
                 "$ref": "#/components/schemas/VisitStatus"
               }
             ]
+          },
+          "visitedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "isCompleted": {
+            "type": "boolean"
           },
           "siteId": {
             "type": "string",
@@ -11465,6 +11482,7 @@
           },
           "diseaseQuestionnaireData": {
             "type": "object",
+            "additionalProperties": true,
             "description": "Disease questionnaire responses grouped by disease shortName",
             "example": {
               "AI": {
@@ -11490,14 +11508,6 @@
             "type": "number",
             "description": "Longitude of location where visit was completed",
             "example": 77.5946
-          },
-          "visitedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "isCompleted": {
-            "type": "boolean"
           }
         },
         "required": [
@@ -11968,12 +11978,6 @@
               }
             ]
           },
-          "visitedBy": {
-            "$ref": "#/components/schemas/User"
-          },
-          "collector": {
-            "$ref": "#/components/schemas/User"
-          },
           "id": {
             "type": "string"
           },
@@ -12004,6 +12008,12 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "visitedBy": {
+            "$ref": "#/components/schemas/User"
+          },
+          "collector": {
+            "$ref": "#/components/schemas/User"
           }
         },
         "required": [
@@ -12045,10 +12055,6 @@
           "barcode": {
             "type": "string"
           },
-          "originalSampleId": {
-            "type": "string",
-            "nullable": true
-          },
           "id": {
             "type": "string"
           },
@@ -12138,6 +12144,7 @@
           },
           "receivedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12146,6 +12153,7 @@
           },
           "extractedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12154,6 +12162,7 @@
           },
           "collectedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12162,11 +12171,16 @@
           },
           "reportGeneratedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
               }
             ]
+          },
+          "originalSampleId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -12188,18 +12202,6 @@
                 "$ref": "#/components/schemas/TestResultType"
               }
             ]
-          },
-          "project": {
-            "$ref": "#/components/schemas/Project"
-          },
-          "sample": {
-            "$ref": "#/components/schemas/Sample"
-          },
-          "disease": {
-            "$ref": "#/components/schemas/Disease"
-          },
-          "testedBy": {
-            "$ref": "#/components/schemas/User"
           },
           "id": {
             "type": "string"
@@ -12241,6 +12243,18 @@
             "format": "date-time",
             "type": "string",
             "nullable": true
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/Sample"
+          },
+          "disease": {
+            "$ref": "#/components/schemas/Disease"
+          },
+          "testedBy": {
+            "$ref": "#/components/schemas/User"
           }
         },
         "required": [
@@ -12267,40 +12281,6 @@
           },
           "barcode": {
             "type": "string"
-          },
-          "project": {
-            "$ref": "#/components/schemas/Project"
-          },
-          "site": {
-            "$ref": "#/components/schemas/SiteResponseData"
-          },
-          "diseases": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Disease"
-            }
-          },
-          "team": {
-            "$ref": "#/components/schemas/Team"
-          },
-          "location": {
-            "$ref": "#/components/schemas/Location"
-          },
-          "visit": {
-            "$ref": "#/components/schemas/Visit"
-          },
-          "labTests": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LabTestResponseData"
-            }
-          },
-          "hasAI": {
-            "type": "boolean"
-          },
-          "originalSampleId": {
-            "type": "string",
-            "nullable": true
           },
           "id": {
             "type": "string"
@@ -12391,6 +12371,7 @@
           },
           "receivedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12399,6 +12380,7 @@
           },
           "extractedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12407,6 +12389,7 @@
           },
           "collectedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
@@ -12415,11 +12398,46 @@
           },
           "reportGeneratedBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/User"
               }
             ]
+          },
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "site": {
+            "$ref": "#/components/schemas/SiteResponseData"
+          },
+          "diseases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Disease"
+            }
+          },
+          "team": {
+            "$ref": "#/components/schemas/Team"
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "visit": {
+            "$ref": "#/components/schemas/Visit"
+          },
+          "labTests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LabTestResponseData"
+            }
+          },
+          "hasAI": {
+            "type": "boolean"
+          },
+          "originalSampleId": {
+            "type": "string",
+            "nullable": true
           }
         },
         "required": [
@@ -13199,14 +13217,6 @@
       "UserRole": {
         "type": "object",
         "properties": {
-          "workspace": {
-            "nullable": true,
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Workspace"
-              }
-            ]
-          },
           "id": {
             "type": "string"
           },
@@ -13219,11 +13229,20 @@
             "nullable": true
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
+            ],
+            "type": "string"
+          },
+          "workspace": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Workspace"
+              }
             ]
           }
         },
@@ -13546,12 +13565,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -14663,12 +14682,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -14732,6 +14751,12 @@
       "UpdateAccessDto": {
         "type": "object",
         "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string"
+          },
           "roles": {
             "type": "array",
             "items": {
@@ -14741,12 +14766,6 @@
           "workspaceId": {
             "type": "string",
             "format": "uuid"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "roleId": {
-            "type": "string"
           }
         }
       },
@@ -14874,14 +14893,14 @@
       "LocationResponseData": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "coordinates": {
             "$ref": "#/components/schemas/LocationCoordinates"
           },
           "region": {
             "$ref": "#/components/schemas/SiteResponseRegion"
-          },
-          "id": {
-            "type": "string"
           }
         },
         "required": [
@@ -15189,9 +15208,6 @@
               "type": "string"
             }
           },
-          "surveillanceType": {
-            "$ref": "#/components/schemas/SurveillanceType"
-          },
           "id": {
             "type": "string"
           },
@@ -15213,6 +15229,9 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "surveillanceType": {
+            "$ref": "#/components/schemas/SurveillanceType"
           }
         },
         "required": [
@@ -15344,6 +15363,7 @@
           },
           "species": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/AnimalMetadataSpecies"
@@ -15553,14 +15573,14 @@
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -15593,27 +15613,18 @@
       "RegionResponseData": {
         "type": "object",
         "properties": {
-          "subRegions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Region"
-            }
-          },
-          "parentRegion": {
-            "$ref": "#/components/schemas/Region"
-          },
           "id": {
             "type": "string"
           },
           "regionType": {
-            "type": "string",
             "enum": [
               "country",
               "state",
               "district",
               "subdistrict",
               "city"
-            ]
+            ],
+            "type": "string"
           },
           "lgdCode": {
             "type": "string",
@@ -15632,6 +15643,15 @@
           "updatedAt": {
             "format": "date-time",
             "type": "string"
+          },
+          "subRegions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "parentRegion": {
+            "$ref": "#/components/schemas/Region"
           }
         },
         "required": [
@@ -15868,6 +15888,14 @@
               }
             ]
           },
+          "id": {
+            "type": "string"
+          },
+          "testedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
           "sample": {
             "$ref": "#/components/schemas/SampleExposesDto"
           },
@@ -15876,14 +15904,6 @@
           },
           "disease": {
             "$ref": "#/components/schemas/DiseaseResponseDto"
-          },
-          "id": {
-            "type": "string"
-          },
-          "testedAt": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
           }
         },
         "required": [
@@ -16053,6 +16073,12 @@
       "ProjectDiseaseStatsResponseData": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
           "visitedSites": {
             "type": "number"
           },
@@ -16067,18 +16093,12 @@
           },
           "totalSiteCount": {
             "type": "number"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
           }
         },
         "required": [
-          "diseaseStatistics",
           "id",
-          "name"
+          "name",
+          "diseaseStatistics"
         ]
       },
       "PaginatedProjectDiseaseStatsResponse": {
@@ -16275,12 +16295,12 @@
             "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "active",
               "inactive",
               "deleted"
-            ]
+            ],
+            "type": "string"
           },
           "createdAt": {
             "format": "date-time",
@@ -16377,20 +16397,20 @@
       "SiteSearchResponseData": {
         "type": "object",
         "properties": {
-          "projectId": {
-            "type": "string"
-          },
           "id": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "projectId": {
+            "type": "string"
           }
         },
         "required": [
-          "projectId",
           "id",
-          "name"
+          "name",
+          "projectId"
         ]
       },
       "DiseaseSearchResponseData": {
@@ -16531,10 +16551,14 @@
             "type": "string"
           },
           "extraInputKeys": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           },
           "params": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": true
           }
         },
         "required": [
