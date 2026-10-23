@@ -8,7 +8,7 @@ The published documentation is available at **[https://dharini.artpark.ai](https
 
 | Section                     | Location                                   | Audience and content                                                                              |
 | --------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
-| **User Guide**              | `src/content/docs/user-guide/`             | Field collectors, lab technicians, and project admins: day-to-day workflows and troubleshooting   |
+| **User Guide**              | `src/content/docs/user-guide/`             | Field collectors, lab technicians, and team admins: day-to-day workflows and troubleshooting   |
 | **Administrator Guide**     | `src/content/docs/administrator-guide/`    | Deployers and operators: production setup, environment variables, database, nginx, troubleshooting |
 | **Architecture**            | `src/content/docs/reference/architecture.mdx` | Developers and reviewers: system components and end-to-end data flow                           |
 | **Requirements**            | `src/content/docs/reference/requirements.md`  | Software requirements, dependencies, and technical specifications                              |

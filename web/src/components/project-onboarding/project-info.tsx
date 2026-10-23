@@ -26,7 +26,7 @@ export default function ProjectInfo() {
           </h1>
           <p className="text-white text-xl leading-[30px]">
             You’ve been invited as{" "}
-            <span className="font-semibold">Project Admin</span>
+            <span className="font-semibold">Team Admin</span>
           </p>
         </div>
         <div className="flex-col justify-center items-start gap-2 flex">

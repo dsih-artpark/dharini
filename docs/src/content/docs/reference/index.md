@@ -27,7 +27,7 @@ Every backend REST endpoint with its parameters, request bodies, responses and a
 
 ## Additional Resources
 
-- [User Guide](/user-guide/) — Workflows for field collectors, lab technicians, and project admins
+- [User Guide](/user-guide/) — Workflows for field collectors, lab technicians, and team admins
 - [Administrator Guide](/administrator-guide/) — Deployment, configuration, and troubleshooting for DevOps teams
 - [Introduction](/introduction/) — Platform overview and getting started
 

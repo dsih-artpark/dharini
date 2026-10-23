@@ -1,66 +1,21 @@
 ---
-title: Project Admin Guide
-description: Complete workflow guide for workspace and project administrators using the Dharini web portal
+title: Team Admin Guide
+description: Complete workflow guide for workspace owners and team admins using the Dharini web portal
+sidebar:
+  order: 3
 ---
 
-Admins use the Dharini web portal to set up projects, manage people, schedule and monitor visits, track results, and export data. This guide covers the admin workflows.
+Admins use the Dharini web portal to set up projects, manage people, schedule and monitor visits, track results, and import and export data. This guide covers the admin workflows.
 
 Which buttons you see depends on your role:
 
-- **Workspace Admins** can do everything inside their workspace, including creating projects and inviting people to the workspace.
-- **Team Admins** manage their team's members, sites, visits and samples.
-- **Project Admins** see a project's dashboards, sites, visits and samples. Some buttons that change data (such as **Create Site**) only appear if your role allows them.
+- **The person who created the workspace** can do everything inside it, including creating projects and inviting people to the workspace.
+- **Team Admins** oversee a project and its teams: sites, visits, samples, results and team progress.
+- **Collector Admins and Lab Admins** manage the members of their own teams.
 
-If a button in this guide is missing for you, your role does not include it. Ask a workspace admin.
+Some buttons that change data (such as **Create Site**) only appear if your role allows them. If a button in this guide is missing for you, your role does not include it. Ask the workspace owner. See [Roles](/user-guide/getting-started#roles) for what each role does.
 
-## Getting Started
-
-### Logging In
-
-1. Go to the web portal: [https://in.dharini.artpark.ai/](https://in.dharini.artpark.ai/)
-2. Choose **Email** or **Phone** and enter the address or number registered for you.
-3. Select **Send OTP**, enter the 6-digit code, and select **Verify & Login**.
-4. If you belong to more than one workspace, choose one from the **Select a workspace** list. If you belong to only one, you go straight to **Home**.
-
-There are no passwords in Dharini. A code is valid for 3 minutes. If it does not arrive, wait for the countdown and select **Resend OTP**.
-
-### Creating a New Workspace (First-Time Set-Up)
-
-If your organization is new to Dharini, one person can create the workspace:
-
-1. On the login page, select **Signup**.
-2. Enter your **First name** and **Last name**, your **Organisation name** and a **Workspace name**.
-3. Choose **Email** or **Phone**, enter it, and select **Send OTP**.
-4. Enter the code to finish. You become the Workspace Admin of the new workspace.
-
-### Accepting an Invitation
-
-When someone invites you, you receive a link.
-
-- **Workspace invitation:** The link opens a **Welcome to your new workspace** screen. Enter your **First name** and **Last name** and select **Continue**.
-- **Project invitation:** The link accepts the invite and opens a project set-up checklist. See [Setting Up a Project After an Invitation](#setting-up-a-project-after-an-invitation).
-
-If the link says **Invalid Token**, it has expired or was already used. Ask the person who invited you to send a new one.
-
-### Finding Your Way Around
-
-The left-hand menu has two groups, **Monitor** and **Manage**, with these items:
-
-| Menu item | What it is |
-| --- | --- |
-| **Home** | A summary of your projects, diseases and sites |
-| **Dashboard** | The Disease Surveillance Dashboard with filters and trends |
-| **Geolens** | A map of sites, wetlands, farms and bird data |
-| **Comparison** | Charts for comparing projects, sites and sample types |
-| **Lab Processing** | The lab flow (only if your role includes it) |
-| **SNP Analysis** | Sequencing uploads and results |
-| **Projects** | Create and manage projects, sites, teams and visits |
-| **Team & User Management** | Add users and change roles |
-| **Settings** | Workspace or system settings (see below) |
-
-At the top of the menu, the workspace name shows where you are working. Select it to switch workspace. Workspace Admins can also create a new workspace from this list by choosing **New Workspace** and entering a **Workspace name**.
-
-Select your name or picture, then **View Profile** to see your details, your roles and your assigned projects, and to edit your name, phone number and photo. **Log Out** is in the same menu.
+If you have not created an account or workspace yet, start with [Getting Started](/user-guide/getting-started). It also covers logging in, invitations and the left-hand menu.
 
 ## Projects
 
@@ -70,7 +25,7 @@ Select **Projects** in the menu. The **Projects** page lists the projects in you
 
 Select a project to open its page. A project page shows:
 
-- Project details, the project admin, and its locations
+- Project details, the project's admin, and its locations
 - **Samples** totals: **Total**, **Collected & Shipped**, **Pending Diagnosis**, **Tested Positive** and **Tested Negative**
 - **Sites** – A short list with a **View All Sites** link
 - **Team Allocation & Progress** – With a **View All Team Members** link
@@ -80,7 +35,7 @@ At the top of the project page, the buttons are **Edit Project Details**, **Mana
 
 ### Creating a Project
 
-Workspace Admins create projects. Make sure the right workspace is selected first.
+The person who created the workspace creates projects. Make sure the right workspace is selected first.
 
 1. On the **Projects** page, select **Create a Project**.
 2. Under **Create New Project**, fill in:
@@ -102,7 +57,12 @@ Workspace Admins create projects. Make sure the right workspace is selected firs
 
 ### Managing Sample Types and Species
 
-Workspace Admins and Super Admins also see **Manage Sample Types** and **Manage Species** on the **Projects** page. Use these to add or change the sample types and animal species that collectors can choose from.
+Workspace owners and Super Admins also see **Manage Sample Types** and **Manage Species** on the **Projects** page. Use these to add or change the sample types and animal species that collectors can choose from. They are defined once at the workspace level and used by every project, so set them up before you create projects.
+
+- A **sample type** has a name, an emoji icon, an abbreviation, a surveillance type (for example Environmental or Clinical) and the diseases it applies to.
+- A **species** has a name, an emoji icon, an abbreviation and the diseases it applies to.
+
+The abbreviations are used to build sample IDs. For example, a sample type abbreviated `CL` on species `CH` produces IDs like `CH/CL/26-07/100001`. An abbreviation containing a slash, such as `NA/EN`, replaces the species part too.
 
 ## Setting Up a Project After an Invitation
 
@@ -124,15 +84,19 @@ If you were invited as the admin of a new project, the invitation link opens a c
 3. For each team, the table lists members with their **Email**, **Name**, **Phone Number**, **Roles** and **Actions**. From there you can add a member, edit a member or delete a member. Confirm the **Delete A Team Member?** message to remove someone.
 4. To change a team's details, use the edit option on the team and select **Update Team**.
 
+A member's name and phone number are part of their own profile, so editing them for one project changes them everywhere that person appears.
+
 **Available team roles:**
 
-- **Team Admin** – Manages the team
+- **Team Admin** – Oversees the project and its teams
 - **Collector Admin** – A lead collector. Also sees the **Team** tab in the mobile app
 - **Collector** – Field data collection
 - **Lab Admin** – Manages lab people and processes samples
 - **Lab Member** – Processes samples in the lab
-- **Team Member** – General team member
-- **Project Admin** – Views the project
+
+### Configure Access Groups
+
+**Configure Access Groups** (on the **Manage Access** page) lets you define, per organisation, the primary roles and which of these accesses they have: **Collection**, **Metadata Entry**, **Testing**, **Sequencing** and **Monitoring**.
 
 ### Adding Members from the Team Progress Page
 
@@ -149,7 +113,7 @@ Select **Team & User Management** in the menu.
 - To add a person, select **Add User**. Choose the **Role** and the **Project**, and enter their email, phone number and name.
 - To change a person's role, select **Edit Role**, pick the new role, and save.
 
-### Inviting People to the Workspace (Workspace Admins)
+### Inviting People to the Workspace (Workspace Owners)
 
 1. Select **Settings**, then the **Members** tab.
 2. Select **Invite Member**.
@@ -168,7 +132,7 @@ You can rename the workspace under **Settings**, then **Settings**, using **Rena
 4. Select **Proceed**.
 5. Set the **Collection Plan**:
    - Under **Assigning Collectors**, choose the collectors for this site
-   - Under **Collection Plan**, choose how often the site is visited: **Once**, **Daily**, **Weekly**, **Fortnightly**, **Monthly** or **Quarterly**, plus the days, time and duration
+   - Under **Collection Plan**, set the **Collection Start Date** and choose how often the site is visited: **Once**, **Daily**, **Weekly**, **Fortnightly**, **Monthly** or **Quarterly**, plus the **preferred collection days** and the **duration** in months
 6. Select **Save**.
 
 Collectors see the site and its scheduled visits in the mobile app under **Upcoming Visits**.
@@ -177,8 +141,10 @@ Collectors see the site and its scheduled visits in the mobile app under **Upcom
 
 1. Open the project and select **View All Sites**. The list shows each site's district, last scheduled visit, farm type, sub-type, collector, test result and status.
 2. Select a site to open its page. It shows the site details, address, photos and comments, the **Collection Plan**, and the **Assigned Collectors**.
-3. Use the edit icon to change the site details.
+3. Use the edit icon to change the site details or the map location, or to add photos and comments.
 4. Select **Update Collection Plan** (on the site list or the site page) to change the collectors, frequency or duration.
+
+The site page also shows statistics: total visits, samples collected, suspected positives (which need lab review) and the next scheduled visit.
 
 ### Scheduled Visits
 
@@ -205,58 +171,18 @@ The **Past Visits** list shows each visit with the **No. of Samples**, **Suspect
 
 ## Monitoring Results
 
-### Home
+Use the Monitor pages to follow progress and results. Each has its own guide:
 
-**Home** shows your projects with **Visited Sites**, **Positive Sites** and **Samples Tested**, a section for each disease, and a list of site details. Select **Open Dashboard** or **View Dashboard** to go deeper.
-
-### Dashboard
-
-The **Disease Surveillance Dashboard** gives weekly collection and result monitoring.
-
-1. Use the filters at the top to narrow down by project, state, district, disease, subtype, site, sample type or result. Select **Reset** to clear them.
-2. Read the headline numbers: **Total Samples Collected**, **Samples Processed**, **Positivity Rate** and **Inconclusive Results**.
-3. Switch the trend chart between **Aggregated**, **Site-wise** and **Sample-wise**.
-4. Use the map to see **Sites with Confirmed Positives** and **Sites with No Positive Detection**.
-
-### GeoLens
-
-**Geolens** is a map for exploring sites and their surroundings.
-
-1. Search for a place in **Search location...**.
-2. Turn map layers on or off in the side panel, such as **Wetlands**, **Poultry Farms** and **Heatmap (Bird Density)**.
-3. Select a location to see **Location Details**: current weather, bird counts and species, and nearby wetlands.
-4. To compare two sites, select a location and choose **Set as Site A** or **Set as Site B**. The **Site Comparison** panel shows both side by side.
-
-### Comparison
-
-**Comparison** has three tabs:
-
-- **Project Comparison** – Compare sample positivity across projects
-- **Sitewise Comparison** – Compare two sites within a project
-- **Sample Comparison** – Compare two sample types
-
-Pick the items to compare in the filters, then read the charts and tables.
-
-## Sequencing (SNP Analysis)
-
-The **SNP Analysis** menu item opens the **Sequencing** page, where you upload sequence files and see the results.
-
-1. Select **Upload sequence files**. The **New sequencing submission** window opens.
-2. Choose the **Project**.
-3. Choose the **Sample source**:
-   - **Lab sample** – Pick a sample already in the lab system
-   - **NCBI accession** – Enter a **GenBank accession** and Dharini fetches its details
-   - **New sample** – Enter a sample that is not in the lab system yet
-4. Select **Continue**, then choose a processing pipeline and select **Continue**.
-5. Upload the reads file (and any other files the pipeline asks for), fill in any settings, and start the run. "Run started" confirms it.
-
-The **Sequencing records** table lists your submissions and their status: **Completed**, **In progress**, **Queued**, **Failed** or **Cancelled**. Filter by status, select **Download CSV** to export, and select a record to see its pipeline stages, errors and, once finished, the **Analysis Results & Visualization**. If a run fails or is cancelled, re-submit the file.
+- [Dashboards & Analysis](/user-guide/dashboard): **Home**, the **Disease Surveillance Dashboard** and **Comparison**
+- [GeoLens](/user-guide/geolens): map layers, location details and site comparison
+- [SNP Analysis](/user-guide/snp-analysis): upload sequence files and explore the results
+- [Lab Technician Guide](/user-guide/lab-technician): how samples move through the lab
 
 ## Importing Existing Data
 
 You can bring in existing collection and lab records from Excel.
 
-1. Open the project and select **Upload Data**. (This is also step 6 of the project set-up checklist.)
+1. Select **Upload Data Files** in the menu (or **Upload Data** on a project page) and pick the **Project** the data should go into. (This is also step 6 of the project set-up checklist.)
 2. Choose the **Collection Data** tab or the **Lab Data** tab.
 3. Choose the **Disease** group: **FMD / LSD** or **Avian Influenza (AI)**.
 4. Select **Download template (.xlsx)** and fill in the template.
@@ -265,8 +191,10 @@ You can bring in existing collection and lab records from Excel.
 If the file has problems, Dharini lists each issue by row and column, and says "nothing was imported". Fix the file and upload it again. When the upload works, you see how many rows were imported.
 
 :::note
-**Lab Data** can only be imported for samples that already have collection data, either uploaded earlier or in the same session. Import **Collection Data** first.
+**Lab Data** can only be imported for samples that already have collection data, either uploaded earlier or in the same session. Import **Collection Data** first. Each sample can have one imported result per disease. To record another result later, use **Retest** on the Lab Processing page.
 :::
+
+The import is **all or nothing**: if any row has an error, nothing is imported, and you see every error so you can fix the file in one pass.
 
 ## Exporting Data
 
@@ -278,7 +206,7 @@ You can download CSV files from several places. Look for the **Download Data** b
 - The team progress page
 - The sequencing page (**Download CSV**)
 
-### Data Playground (Workspace Admins and Super Admins)
+### Data Playground (Workspace Owners and Super Admins)
 
 The **Data Playground** gives you the full project export and a ready-made command for pulling the same data from another tool.
 
@@ -292,7 +220,7 @@ The **Data Playground** gives you the full project export and a ready-made comma
 
 **Settings** is different for different roles.
 
-- **Workspace Admins** see **Workspace Settings** with tabs for **Settings** (rename the workspace), **Members**, **Data Purging (Danger Zone)**, **Data Playground** and **Delete User (Danger Zone)**. They can also use **Create New Project** from here.
+- **Workspace owners** see **Workspace Settings** with tabs for **Settings** (rename the workspace), **Members**, **Data Purging (Danger Zone)**, **Data Playground** and **Delete User (Danger Zone)**. They can also use **Create New Project** from here.
 - **Super Admins** see the tabs **Access Management**, **Data Purging (Danger Zone)**, **Data Playground** and **Delete User (Danger Zone)**. Under **Access Management** (**Manage Super Admins**), they can add or remove other super admins using **Add Super Admin**.
 
 ### Data Purging (Danger Zone)
@@ -330,6 +258,7 @@ Data Purging deletes a project, site, visit or sample, together with everything 
 
 - Check **Rejected** samples in the lab and talk to the collection team about why
 - Use the Dashboard filters to look for unusual results
+- Review **Suspected Positives** so the lab can prioritise them
 - Use **Purge** only when you are sure. Download your data first.
 
 ## Troubleshooting
@@ -338,7 +267,7 @@ For common issues and their solutions, see the [Troubleshooting Guide](/user-gui
 
 ## Next Steps
 
-- [Learn about Field Collector workflows](/user-guide/field-collector)
-- [Learn about Lab Technician workflows](/user-guide/lab-technician)
-- [View Troubleshooting Guide](/user-guide/troubleshooting)
+- [Field Collector Guide](/user-guide/field-collector)
+- [Lab Technician Guide](/user-guide/lab-technician)
+- [Troubleshooting Guide](/user-guide/troubleshooting)
 - [Return to User Guide Overview](/user-guide/)

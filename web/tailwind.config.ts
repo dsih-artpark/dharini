@@ -79,6 +79,27 @@ export default {
           30: "#B3A972",
         },
 
+        /* ---- Landing page palette (marketing site + auth dialog) ---- */
+        landing: {
+          ink: "#15143a",
+          "ink-2": "#2b2a4f",
+          muted: "#62607f",
+          "muted-2": "#8a88a3",
+          purple: {
+            DEFAULT: "#6c47ff",
+            100: "#e9e3ff",
+            600: "#5b36f2",
+          },
+          lav: "#f4f1ff",
+          page: "#faf9ff",
+          border: "#dfdbef",
+          navy: "#1b1940",
+          "navy-2": "#13122e",
+          yellow: "#f6c445",
+          mint: "#c9f3e1",
+          "mint-ink": "#0f7a55",
+        },
+
         /* ---- Design System: Semantic Colors ---- */
         primary: {
           50: "var(--color-primary-50)",
@@ -213,6 +234,30 @@ export default {
         popover: "var(--z-popover)",
         toast: "var(--z-toast)",
         tooltip: "var(--z-tooltip)",
+      },
+
+      /* ---- Landing page: grid backdrop and animations ---- */
+      backgroundImage: {
+        "landing-grid":
+          "linear-gradient(rgba(108,71,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(108,71,255,0.1) 1px, transparent 1px)",
+      },
+      keyframes: {
+        "landing-marquee": {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+        "landing-fade-in": {
+          from: { opacity: "0" },
+        },
+        "landing-pop-in": {
+          from: { opacity: "0", transform: "translateY(10px) scale(0.98)" },
+        },
+      },
+      animation: {
+        "landing-marquee": "landing-marquee 38s linear infinite",
+        "landing-fade-in": "landing-fade-in 0.18s ease",
+        "landing-pop-in":
+          "landing-pop-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1.1)",
       },
     },
   },

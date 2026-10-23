@@ -9,6 +9,7 @@ export const SESSION_EXPIRED_REASON = "session-expired";
 export const PUBLIC_ROUTES: RegExp[] = [
   /^\/project-invitation\/[A-Za-z0-9._!-]+$/,
   /^\/signup(?:\/.*)?$/,
+  /^\/privacy\/?$/,
   /^\/workspace-invitation\/[A-Za-z0-9._!-]+$/,
 ];
 

@@ -33,7 +33,7 @@ import { useUserLookup } from "@/src/hooks/use-user-lookup";
 import UserLookupStatusBanner from "@/src/components/ui/user-lookup-status";
 
 const roleLabels: Record<string, string> = {
-  "project-viewer": "Project Admin",
+  "project-viewer": "Team Admin",
   "team-admin": "Team Admin",
   "team-member": "Team Member",
   "lab-admin": "Lab Admin",
