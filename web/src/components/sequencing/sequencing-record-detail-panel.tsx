@@ -55,6 +55,10 @@ type Props = {
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-40 focus-visible:ring-offset-2";
 
+// The NextGen Visualizer button is hidden for now. Its modal and state are
+// left wired up below, so setting this to true brings it straight back.
+const SHOW_NEXTGEN_VISUALIZER_BUTTON = false;
+
 // Formats a raw second count the way the rest of the panel needs it: "45s",
 // "12m", "1h 5m". Never a fabricated percentage — see the "never fabricate
 // progress" rule in the brief.
@@ -82,17 +86,24 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
-// The visualization ships as `kind: "report"` with an HTML content type —
-// not `kind: "visualization"`. Matching on kind alone is one brittle
-// equality check away from silently finding nothing, so this also accepts
-// the content type and the well-known filename.
-function isVisualizationArtifact(artifact: SequencingArtifact): boolean {
+// Every HTML artifact opens in the in-page viewer; every other file stays a
+// download. The content type can carry a charset ("text/html; charset=utf-8"),
+// and the filename is the fallback when the content type is missing.
+function isHtmlArtifact(artifact: SequencingArtifact): boolean {
   return (
-    artifact.kind === "report" ||
-    artifact.kind === "visualization" ||
-    artifact.contentType === "text/html" ||
-    artifact.filename === "visualization.html"
+    artifact.contentType?.toLowerCase().startsWith("text/html") ||
+    /\.html?$/i.test(artifact.filename)
   );
+}
+
+// The button is named after the file itself (extension dropped, first letter
+// capitalised), so any new HTML the pipeline produces gets its own button
+// without a change here. The variant plot (visualization.html) is the one
+// exception, labelled "View Plot".
+function htmlArtifactName(artifact: SequencingArtifact): string {
+  const name = artifact.filename.replace(/\.html?$/i, "");
+  if (name.toLowerCase() === "visualization") return "View Plot";
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 // Static variant — used only when there's no job at all to retry (the
@@ -167,9 +178,9 @@ function FailedBanner({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-red-30">This run failed</p>
           {runId && (
-            <div className="flex items-center gap-1.5 rounded bg-red-20/40 px-2 py-0.5 text-xs text-red-30">
+            <div className="flex min-w-0 items-center gap-1.5 rounded bg-red-20/40 px-2 py-0.5 text-xs text-red-30">
               <span className="font-medium">Run ID:</span>
-              <span className="font-mono font-semibold">{runId}</span>
+              <span className="break-all font-mono font-semibold">{runId}</span>
               <CopyButton text={runId} label="Run ID" />
             </div>
           )}
@@ -324,9 +335,9 @@ function StageTracker({
             Pipeline stages
           </h3>
           {runId && (
-            <div className="flex items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
+            <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
               <span className="font-medium text-grey-60">Run ID:</span>
-              <span className="font-mono font-medium text-grey-90">
+              <span className="break-all font-mono font-medium text-grey-90">
                 {runId}
               </span>
               <CopyButton text={runId} label="Run ID" />
@@ -343,14 +354,14 @@ function StageTracker({
   return (
     <div className="rounded-xl border border-grey-20 bg-white p-5 sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <h3 className="text-sm font-semibold text-grey-90">
             Pipeline stages
           </h3>
           {runId && (
-            <div className="flex items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
+            <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-grey-20 bg-grey-10 px-2 py-0.5 text-xs text-grey-70">
               <span className="font-medium text-grey-60">Run ID:</span>
-              <span className="font-mono font-medium text-grey-90">
+              <span className="break-all font-mono font-medium text-grey-90">
                 {runId}
               </span>
               <CopyButton text={runId} label="Run ID" />
@@ -613,11 +624,45 @@ async function openArtifactInNewTab(
   } catch (error) {
     newTab?.close();
     onError(
-      error instanceof Error
-        ? error.message
-        : "Failed to open the interactive plot.",
+      error instanceof Error ? error.message : `Failed to open ${filename}.`,
     );
   }
+}
+
+// Opens one browser-viewable (HTML) artifact in the in-page viewer, which
+// has its own "Open in new tab".
+function ViewArtifactButton({
+  label,
+  title,
+  icon,
+  isLoading,
+  onView,
+}: {
+  label: string;
+  /** Full filename, shown on hover since a long label is truncated. */
+  title: string;
+  icon: React.ReactNode;
+  isLoading: boolean;
+  onView: () => void;
+}) {
+  return (
+    // max-w-full + min-w-0 let a long filename truncate instead of pushing
+    // the button past the edge of a narrow panel.
+    <button
+      type="button"
+      className={`inline-flex h-9 min-w-0 max-w-full items-center gap-2 rounded-lg border border-blue-40 bg-white px-3.5 text-xs font-semibold text-blue-40 shadow-sm hover:bg-grey-10 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
+      onClick={onView}
+      disabled={isLoading}
+      title={title}
+    >
+      {isLoading ? (
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin motion-reduce:animate-none" />
+      ) : (
+        icon
+      )}
+      <span className="max-w-[14rem] truncate">{label}</span>
+    </button>
+  );
 }
 
 // A discriminated union rather than a couple of loose booleans, since
@@ -625,13 +670,14 @@ async function openArtifactInNewTab(
 // minting the presigned URL, then the iframe actually pulling in a ~5MB
 // document. Keeping them as one state makes each step's own error/retry
 // unambiguous instead of juggling isUrlLoading/isFrameLoading/error flags
-// that could disagree with each other.
-type PlotState =
+// that could disagree with each other. Each open state carries the artifact
+// it's showing, since every HTML artifact uses this viewer.
+type ViewerState =
   | { status: "closed" }
-  | { status: "loading-url" }
-  | { status: "loading-frame"; url: string }
-  | { status: "ready"; url: string }
-  | { status: "error"; message: string };
+  | { status: "loading-url"; artifact: SequencingArtifact }
+  | { status: "loading-frame"; artifact: SequencingArtifact; url: string }
+  | { status: "ready"; artifact: SequencingArtifact; url: string }
+  | { status: "error"; artifact: SequencingArtifact; message: string };
 
 export default function SequencingRecordDetailPanel({
   record,
@@ -645,18 +691,22 @@ export default function SequencingRecordDetailPanel({
   const [isResultsLoading, setIsResultsLoading] = useState(false);
 
   const [isNativePlotOpen, setIsNativePlotOpen] = useState(false);
-  const [plotState, setPlotState] = useState<PlotState>({ status: "closed" });
-  const [isOpeningNewTab, setIsOpeningNewTab] = useState(false);
-  // Bumped on every new "view plot" attempt and on close, so a URL-minting
+  const [viewerState, setViewerState] = useState<ViewerState>({
+    status: "closed",
+  });
+  // Filename of the artifact a new tab is being opened for, so only that
+  // artifact's button spins.
+  const [openingNewTabFor, setOpeningNewTabFor] = useState<string | null>(null);
+  // Bumped on every new "view" attempt and on close, so a URL-minting
   // response that lands after the user already dismissed the modal (or
   // clicked the button again) can't reopen it out from under them.
-  const plotRequestRef = useRef(0);
+  const viewerRequestRef = useRef(0);
   // Row collapse unmounts this panel outright (see sequencing-records-table)
   // — bump on unmount too, so a still-in-flight mint doesn't call setState
   // on a component that's already gone.
   useEffect(
     () => () => {
-      plotRequestRef.current++;
+      viewerRequestRef.current++;
     },
     [],
   );
@@ -725,10 +775,9 @@ export default function SequencingRecordDetailPanel({
 
   const isSucceeded = progress.status === "SUCCEEDED";
   const heartbeatStale = (progress.heartbeatAgeS ?? 0) > 30;
-  const visualizationArtifact =
-    artifacts?.find(isVisualizationArtifact) ?? null;
+  const viewableArtifacts = (artifacts ?? []).filter(isHtmlArtifact);
   const downloadableArtifacts = (artifacts ?? []).filter(
-    (a) => !isVisualizationArtifact(a),
+    (a) => !isHtmlArtifact(a),
   );
   const hasNoArtifacts =
     isSucceeded && !isResultsLoading && (artifacts?.length ?? 0) === 0;
@@ -737,44 +786,43 @@ export default function SequencingRecordDetailPanel({
   // loaded only now that the user actually asked for it. A ~5MB report
   // auto-loading into every expanded row would be exactly the kind of
   // hidden cost the brief calls out, so this never runs on expand.
-  const handleViewPlot = async () => {
-    if (!visualizationArtifact) return;
-    const requestId = ++plotRequestRef.current;
-    setPlotState({ status: "loading-url" });
+  const handleView = async (artifact: SequencingArtifact) => {
+    const requestId = ++viewerRequestRef.current;
+    setViewerState({ status: "loading-url", artifact });
     try {
-      const response = await getArtifactUrlApi(
-        job.id,
-        visualizationArtifact.filename,
-        true,
-      );
-      if (plotRequestRef.current !== requestId) return; // closed or superseded while this was in flight
+      const response = await getArtifactUrlApi(job.id, artifact.filename, true);
+      if (viewerRequestRef.current !== requestId) return; // closed or superseded while this was in flight
       const url = response.data?.url;
       if (!url) throw new Error("No preview link came back for this file.");
-      setPlotState({ status: "loading-frame", url });
+      setViewerState({ status: "loading-frame", artifact, url });
     } catch (error) {
-      if (plotRequestRef.current !== requestId) return;
-      setPlotState({
+      if (viewerRequestRef.current !== requestId) return;
+      setViewerState({
         status: "error",
+        artifact,
         message:
           error instanceof Error
             ? error.message
-            : "Failed to load the interactive plot.",
+            : `Failed to load ${artifact.filename}.`,
       });
     }
   };
 
-  const handleClosePlot = () => {
-    plotRequestRef.current++;
-    setPlotState({ status: "closed" });
+  const handleCloseViewer = () => {
+    viewerRequestRef.current++;
+    setViewerState({ status: "closed" });
   };
 
-  const handleOpenInNewTab = () => {
-    if (!visualizationArtifact || isOpeningNewTab) return;
-    setIsOpeningNewTab(true);
-    openArtifactInNewTab(job.id, visualizationArtifact.filename, (message) =>
+  const handleOpenInNewTab = (artifact: SequencingArtifact) => {
+    if (openingNewTabFor) return;
+    setOpeningNewTabFor(artifact.filename);
+    openArtifactInNewTab(job.id, artifact.filename, (message) =>
       toast.error(message),
-    ).finally(() => setIsOpeningNewTab(false));
+    ).finally(() => setOpeningNewTabFor(null));
   };
+
+  const isViewerLoadingUrl = (artifact: SequencingArtifact) =>
+    viewerState.status === "loading-url" && viewerState.artifact === artifact;
 
   return (
     <>
@@ -828,7 +876,8 @@ export default function SequencingRecordDetailPanel({
                 </div>
               )}
 
-              {(visualizationArtifact || downloadableArtifacts.length > 0) && (
+              {(viewableArtifacts.length > 0 ||
+                downloadableArtifacts.length > 0) && (
                 <div className="rounded-xl border border-grey-20 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-grey-20 pb-4">
                     <div>
@@ -840,45 +889,26 @@ export default function SequencingRecordDetailPanel({
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        className={`inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700 transition ${FOCUS_RING}`}
-                        onClick={() => setIsNativePlotOpen(true)}
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        NextGen Visualizer
-                      </button>
-                      {visualizationArtifact && (
-                        <>
-                          <button
-                            type="button"
-                            className={`inline-flex h-9 items-center gap-2 rounded-lg bg-blue-40 px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-50 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
-                            onClick={handleViewPlot}
-                            disabled={plotState.status === "loading-url"}
-                          >
-                            {plotState.status === "loading-url" ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                            ) : (
-                              <Eye className="h-3.5 w-3.5" />
-                            )}
-                            View legacy plot
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleOpenInNewTab}
-                            disabled={isOpeningNewTab}
-                            title="Open plot in a new browser tab"
-                            className={`inline-flex h-9 items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 text-xs font-semibold text-grey-70 hover:bg-grey-10 hover:text-grey-90 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
-                          >
-                            {isOpeningNewTab ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                            ) : (
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            )}
-                            Open in new tab
-                          </button>
-                        </>
+                      {SHOW_NEXTGEN_VISUALIZER_BUTTON && (
+                        <button
+                          type="button"
+                          className={`inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 text-xs font-semibold text-white shadow-sm hover:from-blue-700 hover:to-indigo-700 transition ${FOCUS_RING}`}
+                          onClick={() => setIsNativePlotOpen(true)}
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          NextGen Visualizer
+                        </button>
                       )}
+                      {viewableArtifacts.map((artifact) => (
+                        <ViewArtifactButton
+                          key={`${artifact.kind}-${artifact.filename}`}
+                          label={htmlArtifactName(artifact)}
+                          title={artifact.filename}
+                          icon={<Eye className="h-3.5 w-3.5 shrink-0" />}
+                          isLoading={isViewerLoadingUrl(artifact)}
+                          onView={() => handleView(artifact)}
+                        />
+                      ))}
                     </div>
                   </div>
 
@@ -887,7 +917,7 @@ export default function SequencingRecordDetailPanel({
                       <h4 className="text-xs font-semibold uppercase tracking-wider text-grey-60">
                         Generated Artifacts ({downloadableArtifacts.length})
                       </h4>
-                      <div className="mt-2.5 grid gap-3 sm:grid-cols-2">
+                      <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         {downloadableArtifacts.map((artifact) => (
                           <ArtifactRow
                             key={`${artifact.kind}-${artifact.filename}`}
@@ -915,26 +945,26 @@ export default function SequencingRecordDetailPanel({
           ))}
       </div>
 
-      {plotState.status !== "closed" && visualizationArtifact && (
+      {viewerState.status !== "closed" && (
         <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4">
           <div className="flex h-[90vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between border-b border-grey-20 px-6 py-4">
-              <div>
-                <h2 className="text-lg font-semibold text-grey-90">
-                  Interactive variant plot
+            <div className="flex items-center justify-between gap-3 border-b border-grey-20 px-4 py-4 sm:px-6">
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-semibold text-grey-90">
+                  {viewerState.artifact.filename}
                 </h2>
-                <p className="text-sm text-grey-70">
+                <p className="truncate text-sm text-grey-70">
                   {job.seqId} — Sample: {job.sampleId}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleOpenInNewTab}
-                  disabled={isOpeningNewTab}
+                  onClick={() => handleOpenInNewTab(viewerState.artifact)}
+                  disabled={openingNewTabFor !== null}
                   className={`inline-flex h-9 items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-3 text-sm font-semibold text-grey-70 hover:bg-grey-10 disabled:cursor-wait disabled:opacity-70 ${FOCUS_RING}`}
                 >
-                  {isOpeningNewTab ? (
+                  {openingNewTabFor === viewerState.artifact.filename ? (
                     <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                   ) : (
                     <ExternalLink className="h-4 w-4" />
@@ -943,7 +973,7 @@ export default function SequencingRecordDetailPanel({
                 </button>
                 <button
                   type="button"
-                  onClick={handleClosePlot}
+                  onClick={handleCloseViewer}
                   className={`flex h-9 w-9 items-center justify-center rounded-lg border border-grey-20 bg-white text-grey-70 hover:bg-grey-10 ${FOCUS_RING}`}
                 >
                   <X className="h-5 w-5" />
@@ -951,22 +981,22 @@ export default function SequencingRecordDetailPanel({
               </div>
             </div>
             <div className="relative flex-1 overflow-hidden">
-              {plotState.status === "loading-url" && (
+              {viewerState.status === "loading-url" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-grey-70">
                   <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
-                  Getting a link to the plot…
+                  Getting a link to {viewerState.artifact.filename}…
                 </div>
               )}
 
-              {plotState.status === "error" && (
+              {viewerState.status === "error" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
                   <AlertTriangle className="h-6 w-6 text-red-30" />
                   <p className="max-w-sm text-sm text-grey-70">
-                    {plotState.message}
+                    {viewerState.message}
                   </p>
                   <button
                     type="button"
-                    onClick={handleViewPlot}
+                    onClick={() => handleView(viewerState.artifact)}
                     className={`inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-40 px-4 text-sm font-semibold text-white ${FOCUS_RING}`}
                   >
                     <RefreshCw className="h-4 w-4" />
@@ -975,14 +1005,14 @@ export default function SequencingRecordDetailPanel({
                 </div>
               )}
 
-              {(plotState.status === "loading-frame" ||
-                plotState.status === "ready") && (
+              {(viewerState.status === "loading-frame" ||
+                viewerState.status === "ready") && (
                 <>
-                  {plotState.status === "loading-frame" && (
+                  {viewerState.status === "loading-frame" && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-sm text-grey-70">
                       <Loader2 className="h-6 w-6 animate-spin motion-reduce:animate-none" />
-                      Loading the plot — this file is a few MB, so it can take a
-                      moment…
+                      Loading {viewerState.artifact.filename} — this file can be
+                      a few MB, so it can take a moment…
                     </div>
                   )}
                   {/* Fetched directly from S3 via a presigned, inline URL
@@ -992,15 +1022,19 @@ export default function SequencingRecordDetailPanel({
                       allow-scripts: together they'd let the report script
                       our origin instead of being sandboxed. */}
                   <iframe
-                    key={plotState.url}
-                    src={plotState.url}
-                    title={`Interactive variant plot - ${job.seqId}`}
+                    key={viewerState.url}
+                    src={viewerState.url}
+                    title={`${viewerState.artifact.filename} - ${job.seqId}`}
                     className="h-full w-full border-0"
                     sandbox="allow-scripts"
                     onLoad={() =>
-                      setPlotState((prev) =>
+                      setViewerState((prev) =>
                         prev.status === "loading-frame"
-                          ? { status: "ready", url: prev.url }
+                          ? {
+                              status: "ready",
+                              artifact: prev.artifact,
+                              url: prev.url,
+                            }
                           : prev,
                       )
                     }

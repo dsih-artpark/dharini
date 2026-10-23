@@ -64,6 +64,13 @@ apiClient.interceptors.response.use(
       // keep the plain logout.
       if (isPublicPath(window.location.pathname)) {
         logout();
+      } else if (!error.config?.headers?.Authorization) {
+        // Sent with no token at all, so the user signed out rather than the
+        // session expiring: typically a poll that fired during a manual
+        // logout, after the cookie was cleared but before the page left.
+        // Plain logout, without the "Session Expired" notice.
+        logout();
+        return new Promise(() => {});
       } else {
         handleSessionExpired();
         // Never settles, so the screen that made the request shows no error
