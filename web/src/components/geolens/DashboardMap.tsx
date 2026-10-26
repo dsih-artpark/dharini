@@ -9,6 +9,7 @@ import type {
   LeafletRefType,
   PoultryFarm,
   Site,
+  SurveillanceCounts,
   SurveillanceSite,
   ViewportBounds,
 } from "@/src/app/(dashboard)/geolens/types";
@@ -35,22 +36,36 @@ const escapeHtml = (text: string) =>
 
 // Same content and classes as the dot tooltip on the Monitor Geospatial
 // Distribution map (leaflet-map-renderer.tsx): Total always, the other
-// counts only when non-zero
-const surveillanceTooltipHtml = (site: SurveillanceSite) => {
-  const pos = site.totalPositiveSampleCount || 0;
-  const neg = site.totalNegativeSampleCount || 0;
-  const unclear = site.totalUnclearSampleCount || 0;
+// counts only when non-zero. A positive site has these per disease, each
+// under the disease's short name.
+const surveillanceCountsHtml = (counts: SurveillanceCounts) => {
+  const pos = counts.totalPositiveSampleCount || 0;
+  const neg = counts.totalNegativeSampleCount || 0;
+  const unclear = counts.totalUnclearSampleCount || 0;
   const row = (label: string, count: number, color: string) =>
     `<span class="${color}">${label}:</span><span class="font-semibold text-right ${color}">${count}</span>`;
 
-  return `<div class="flex flex-col gap-1 min-w-[150px]">
-    <div class="font-bold text-sm border-b pb-1">${escapeHtml(site.siteName)}</div>
-    <div class="grid grid-cols-2 gap-x-2 text-xs">
-      <span class="text-gray-600">Total:</span><span class="font-semibold text-right">${site.totalSampleCount || 0}</span>
+  return `<div class="grid grid-cols-2 gap-x-2 text-xs">
+      <span class="text-gray-600">Total:</span><span class="font-semibold text-right">${counts.totalSampleCount || 0}</span>
       ${pos > 0 ? row("Positive", pos, "text-red-600") : ""}
       ${neg > 0 ? row("Negative", neg, "text-yellow-500") : ""}
       ${unclear > 0 ? row("Unclear", unclear, "text-gray-500") : ""}
-    </div>
+    </div>`;
+};
+
+const surveillanceTooltipHtml = (site: SurveillanceSite) => {
+  const body = site.diseases?.length
+    ? site.diseases
+        .map(
+          (d) =>
+            `<div class="text-xs font-semibold text-gray-700">${escapeHtml(d.shortName)}</div>${surveillanceCountsHtml(d)}`,
+        )
+        .join("")
+    : surveillanceCountsHtml(site);
+
+  return `<div class="flex flex-col gap-1 min-w-[150px]">
+    <div class="font-bold text-sm border-b pb-1">${escapeHtml(site.siteName)}</div>
+    ${body}
   </div>`;
 };
 

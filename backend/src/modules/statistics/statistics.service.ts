@@ -833,6 +833,26 @@ export class StatisticsService {
     return qb;
   }
 
+  // The disease filter in applyDashboardFilters only matches the diseases a
+  // sample is tagged for; it does not touch the `labtest` join. Without this,
+  // a sample tagged LSD + FMD that is FMD-positive would count as positive
+  // (and untested-for-LSD samples as "total") under an LSD filter.
+  // Restricting the lab-test rows to the selected disease(s) keeps the
+  // comparison pages' positive/total counts disease-scoped.
+  private scopeLabTestsToDiseases(qb, query: any) {
+    const scopedDiseaseIds = query.diseaseId
+      ? Array.isArray(query.diseaseId)
+        ? query.diseaseId
+        : [query.diseaseId]
+      : [];
+    if (scopedDiseaseIds.length) {
+      qb.andWhere('labtest."diseaseId" IN (:...scopedDiseaseIds)', {
+        scopedDiseaseIds,
+      });
+    }
+    return qb;
+  }
+
   async getMonitorDashboardStats(query: any, user: User): Promise<any> {
     const userData = user;
     const tenant = await this.tenantScopeService.forUser(userData);
@@ -1168,31 +1188,15 @@ export class StatisticsService {
       .leftJoin('sample.sampleType', 'sampletype')
       .leftJoin('sample.labTests', 'labtest');
 
-    // The disease filter in applyDashboardFilters only matches the diseases a
-    // sample is tagged for; it does not touch the `labtest` join. Without the
-    // extra predicate below, a sample tagged LSD + FMD that is FMD-positive
-    // would count as positive (and untested-for-LSD samples as "total") under
-    // an LSD filter. Restricting the lab-test rows to the selected disease(s)
-    // keeps every positive/total count on this page disease-scoped.
-    const scopedDiseaseIds = query.diseaseId
-      ? Array.isArray(query.diseaseId)
-        ? query.diseaseId
-        : [query.diseaseId]
-      : [];
-
-    const scoped = (q) => {
-      const qb = this.applyProjectFilter(
-        this.applyDashboardFilters(baseQuery.clone(), q, userData, tenant),
+    const scoped = (q) =>
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(baseQuery.clone(), q, userData, tenant),
+          q,
+          tenant,
+        ),
         q,
-        tenant,
       );
-      if (scopedDiseaseIds.length) {
-        qb.andWhere('labtest."diseaseId" IN (:...scopedDiseaseIds)', {
-          scopedDiseaseIds,
-        });
-      }
-      return qb;
-    };
 
     // 1. Summary
     const summaryRaw = await scoped(query)
@@ -1423,15 +1427,18 @@ export class StatisticsService {
 
     // Scope to the two chosen sites (+ project + user scope + date range).
     const scoped = () =>
-      this.applyProjectFilter(
-        this.applyDashboardFilters(
-          baseQuery.clone(),
-          { ...query, siteId: siteIds },
-          userData,
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(
+            baseQuery.clone(),
+            { ...query, siteId: siteIds },
+            userData,
+            tenant,
+          ),
+          query,
           tenant,
         ),
         query,
-        tenant,
       );
 
     // 1. Per-site summary
@@ -1546,15 +1553,18 @@ export class StatisticsService {
 
     // Scope to the two chosen sample types (+ project + user scope + state + date).
     const scoped = () =>
-      this.applyProjectFilter(
-        this.applyDashboardFilters(
-          baseQuery.clone(),
-          { ...query, sampleTypeId: typeIds },
-          userData,
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(
+            baseQuery.clone(),
+            { ...query, sampleTypeId: typeIds },
+            userData,
+            tenant,
+          ),
+          query,
           tenant,
         ),
         query,
-        tenant,
       );
 
     // 1. Per-type summary

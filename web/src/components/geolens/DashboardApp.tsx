@@ -56,6 +56,7 @@ import type {
   CattleMarket,
   PoultryFarm,
   Site,
+  SurveillanceCounts,
   SurveillanceSite,
   ViewportBounds,
   Wetland,
@@ -263,7 +264,12 @@ export default function App() {
     wetlands: Wetland[];
     poultry: PoultryFarm[];
   }>({ wetlands: [], poultry: [] });
-  const allPoultryCacheRef = useRef<PoultryFarm[] | null>(null);
+  // Every farm, loaded the first time the Poultry farms layer is turned on.
+  // Kept apart from allCsvData, which the per-state fetch replaces whenever
+  // the state or a site changes.
+  const [nationalPoultry, setNationalPoultry] = useState<PoultryFarm[] | null>(
+    null,
+  );
   const [allCattleMarkets, setAllCattleMarkets] = useState<CattleMarket[]>([]);
   const allCattleMarketsCacheRef = useRef<CattleMarket[] | null>(null);
   const [globalWetlandsCache, setGlobalWetlandsCache] = useState<Wetland[]>([]);
@@ -603,28 +609,48 @@ export default function App() {
 
         if (!mounted) return;
 
-        const sites: SurveillanceSite[] = [];
-
+        // One dot per site: a site is listed under every disease it's
+        // positive for, with that disease's counts
+        const positiveSites = new Map<string, SurveillanceSite>();
         (data.siteData || [])
           .filter((s) => s.diseaseId)
           .forEach((s) => {
             (s.positiveSitesCoordinates || []).forEach((c) => {
               const lat = c.coordinates?.coordinates?.[1];
               const lng = c.coordinates?.coordinates?.[0];
-              if (typeof lat === "number" && typeof lng === "number") {
-                sites.push({
+              if (typeof lat !== "number" || typeof lng !== "number") return;
+              const counts: SurveillanceCounts = {
+                totalSampleCount: c.totalSampleCount,
+                totalPositiveSampleCount: c.totalPositiveSampleCount,
+                totalNegativeSampleCount: c.totalNegativeSampleCount,
+                totalUnclearSampleCount: c.totalUnclearSampleCount,
+              };
+              const disease = { shortName: s.shortName, ...counts };
+              const key = c.siteId ?? `${lat}_${lng}`;
+              const site = positiveSites.get(key);
+              if (!site) {
+                positiveSites.set(key, {
                   lat,
                   lng,
                   siteName: c.siteName,
-                  totalSampleCount: c.totalSampleCount,
-                  totalPositiveSampleCount: c.totalPositiveSampleCount,
-                  totalNegativeSampleCount: c.totalNegativeSampleCount,
-                  totalUnclearSampleCount: c.totalUnclearSampleCount,
                   farmType: c.farmType,
+                  ...counts,
+                  diseases: [disease],
                 });
+                return;
               }
+              site.diseases?.push(disease);
+              // A sample tested for two diseases counts under both, so the
+              // dot is drawn from the largest counts, not their sum
+              (Object.keys(counts) as (keyof SurveillanceCounts)[]).forEach(
+                (k) => {
+                  site[k] = Math.max(site[k] || 0, counts[k] || 0);
+                },
+              );
             });
           });
+
+        const sites = Array.from(positiveSites.values());
 
         (data.diseaseFreeSitesCoordinates || []).forEach((c) => {
           const lat = c.coordinates?.coordinates?.[1];
@@ -761,25 +787,14 @@ export default function App() {
 
   // When showPoultryLayer (National) is toggled ON, fetch ALL poultry farms from the backend
   useEffect(() => {
-    if (!showPoultryLayer) return;
+    if (!showPoultryLayer || nationalPoultry) return;
 
     let mounted = true;
     const fetchAll = async () => {
       setIsPoultryLoading(true);
       try {
-        const allFarms =
-          allPoultryCacheRef.current ?? (await getAllPoultryFarms());
-        allPoultryCacheRef.current = allFarms;
-        if (!mounted) return;
-        setAllCsvData((prev) => {
-          // Merge national farms with any state-specific data already loaded
-          const merged = new Map<string, PoultryFarm>();
-          prev.poultry.forEach((p) =>
-            merged.set(p.id || `${p.lat}_${p.lng}`, p),
-          );
-          allFarms.forEach((p) => merged.set(p.id || `${p.lat}_${p.lng}`, p));
-          return { ...prev, poultry: Array.from(merged.values()) };
-        });
+        const allFarms = await getAllPoultryFarms();
+        if (mounted) setNationalPoultry(allFarms);
       } catch (err) {
         console.warn("Error loading all poultry farms:", err);
       } finally {
@@ -789,8 +804,22 @@ export default function App() {
     fetchAll();
     return () => {
       mounted = false;
+      // Turned off before the farms arrived: the fetch won't clear it
+      setIsPoultryLoading(false);
     };
-  }, [showPoultryLayer]);
+  }, [showPoultryLayer, nationalPoultry]);
+
+  // The farms in the states in view, plus every farm while the Poultry farms
+  // layer is on
+  const poultryFarms = useMemo(() => {
+    if (!showPoultryLayer || !nationalPoultry) return allCsvData.poultry;
+    const merged = new Map<string, PoultryFarm>();
+    allCsvData.poultry.forEach((p) =>
+      merged.set(p.id || `${p.lat}_${p.lng}`, p),
+    );
+    nationalPoultry.forEach((p) => merged.set(p.id || `${p.lat}_${p.lng}`, p));
+    return Array.from(merged.values());
+  }, [showPoultryLayer, nationalPoultry, allCsvData.poultry]);
 
   // When the Cattle markets layer is toggled ON, fetch every market once and
   // cache it - the dataset is small (~800 rows) and has no state filter in the
@@ -816,6 +845,8 @@ export default function App() {
     fetchAll();
     return () => {
       mounted = false;
+      // Turned off before the markets arrived: the fetch won't clear it
+      setIsCattleMarketLoading(false);
     };
   }, [showCattleMarketLayer]);
 
@@ -849,6 +880,8 @@ export default function App() {
     fetchAll();
     return () => {
       mounted = false;
+      // Turned off before the wetlands arrived: the fetch won't clear it
+      setIsWetlandLoading(false);
     };
   }, [showWetlandLayer]);
 
@@ -1071,25 +1104,25 @@ export default function App() {
 
   const farmsA = useMemo(() => {
     if (!siteA) return [];
-    return allCsvData.poultry.filter(
+    return poultryFarms.filter(
       (p) => haversineKm(p.lat, p.lng, siteA.end[0], siteA.end[1]) <= radius,
     );
-  }, [siteA, allCsvData.poultry, radius]);
+  }, [siteA, poultryFarms, radius]);
 
   const farmsB = useMemo(() => {
     if (!siteB) return [];
-    return allCsvData.poultry.filter(
+    return poultryFarms.filter(
       (p) => haversineKm(p.lat, p.lng, siteB.end[0], siteB.end[1]) <= radius,
     );
-  }, [siteB, allCsvData.poultry, radius]);
+  }, [siteB, poultryFarms, radius]);
 
   const searchFarms = useMemo(() => {
     if (!searchPin) return [];
-    return allCsvData.poultry.filter(
+    return poultryFarms.filter(
       (p) =>
         haversineKm(p.lat, p.lng, searchPin.end[0], searchPin.end[1]) <= radius,
     );
-  }, [searchPin, allCsvData.poultry, radius]);
+  }, [searchPin, poultryFarms, radius]);
 
   const nearestSearch = useMemo(() => {
     return searchPin
@@ -1410,9 +1443,14 @@ export default function App() {
     workspaceId,
   ]);
 
+  // Narrowed only by the matches for the current filters. Until they arrive,
+  // or if the request failed, every site is offered (a pick that doesn't
+  // match is cleared once they arrive, below).
   const compareSites = useMemo(
     () =>
-      compareNarrowKey && compareMatch
+      compareMatch &&
+      compareMatch.key === compareNarrowKey &&
+      !compareMatch.failed
         ? pickableSites.filter((site) => compareMatch.siteIds.has(site.id))
         : pickableSites,
     [compareNarrowKey, compareMatch, pickableSites],
@@ -1501,13 +1539,13 @@ export default function App() {
         birds.reduce((sum, b) => sum + (b.howMany || 1), 0);
 
       const pCountA = siteA
-        ? allCsvData.poultry.filter(
+        ? poultryFarms.filter(
             (p) =>
               haversineKm(p.lat, p.lng, siteA.end[0], siteA.end[1]) <= radius,
           ).length
         : 0;
       const pCountB = siteB
-        ? allCsvData.poultry.filter(
+        ? poultryFarms.filter(
             (p) =>
               haversineKm(p.lat, p.lng, siteB.end[0], siteB.end[1]) <= radius,
           ).length
@@ -1648,13 +1686,13 @@ export default function App() {
 
       const farmsHead = [["Site A Poultry Farms", "Site B Poultry Farms"]];
       const activeFarmsA = siteA
-        ? allCsvData.poultry.filter(
+        ? poultryFarms.filter(
             (p) =>
               haversineKm(p.lat, p.lng, siteA.end[0], siteA.end[1]) <= radius,
           )
         : [];
       const activeFarmsB = siteB
-        ? allCsvData.poultry.filter(
+        ? poultryFarms.filter(
             (p) =>
               haversineKm(p.lat, p.lng, siteB.end[0], siteB.end[1]) <= radius,
           )
@@ -1845,7 +1883,7 @@ export default function App() {
         surveillanceSiteCount={surveillanceSites.length}
         showPoultryLayer={showPoultryLayer}
         setShowPoultryLayer={setShowPoultryLayer}
-        poultryCount={allPoultryCacheRef.current?.length}
+        poultryCount={nationalPoultry?.length}
         isPoultryLoading={isPoultryLoading}
         showCattleMarketLayer={showCattleMarketLayer}
         setShowCattleMarketLayer={setShowCattleMarketLayer}
@@ -1972,7 +2010,7 @@ export default function App() {
                   flyTarget={flyTarget}
                   handleSiteSelection={handleFeatureSelect}
                   onMapClick={handleMapClick}
-                  allPoultry={allCsvData.poultry}
+                  allPoultry={poultryFarms}
                   allCattleMarkets={allCattleMarkets}
                   birdsA={birdsA}
                   birdsB={birdsB}

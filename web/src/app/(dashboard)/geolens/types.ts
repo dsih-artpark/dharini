@@ -47,15 +47,19 @@ export interface Disease {
   id: string;
   name: string;
 }
-export interface SurveillanceSite {
-  lat: number;
-  lng: number;
-  siteName: string;
+export interface SurveillanceCounts {
   totalSampleCount?: number;
   totalPositiveSampleCount?: number;
   totalNegativeSampleCount?: number;
   totalUnclearSampleCount?: number;
+}
+export interface SurveillanceSite extends SurveillanceCounts {
+  lat: number;
+  lng: number;
+  siteName: string;
   farmType?: string;
+  /** A positive site's counts for each disease it's positive for (none on a disease-free site). */
+  diseases?: (SurveillanceCounts & { shortName: string })[];
 }
 /** Element in the app header (components/nav/header.tsx) that GeoLens renders its bar into. */
 export const GEOLENS_HEADER_SLOT_ID = "geolens-header-slot";

@@ -103,6 +103,18 @@ const isRetryable = (err: unknown) =>
   err.response.status === 429 ||
   err.response.status >= 500;
 
+// Refused for the request as a whole (ML turned off, the date rejected), so
+// every other batch would be refused too. A 422 that names the locations is
+// about this batch's cells only, e.g. a centre out at sea.
+const refusesEveryBatch = (err: unknown) => {
+  if (!isAxiosError(err) || err.response?.status !== 422) return true;
+  const detail = err.response.data?.detail;
+  return !(
+    Array.isArray(detail) &&
+    detail.some((d) => Array.isArray(d?.loc) && d.loc.includes("locations"))
+  );
+};
+
 function wait(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -497,8 +509,9 @@ export function useRiskPrediction({
       batches.push(todo.slice(i, i + BATCH_SIZE));
     }
     let next = 0;
-    // The API refused a request outright (e.g. a future date): the rest
-    // would be refused too, so they aren't sent
+    // The API refused the request outright (e.g. a future date): the rest
+    // would be refused too, so they aren't sent. A batch refused for its own
+    // cells fails alone.
     let refused: string | undefined;
     const worker = async () => {
       while (next < batches.length && !refused) {
@@ -530,7 +543,9 @@ export function useRiskPrediction({
         } catch (err) {
           if (controller.signal.aborted) return;
           markFailed(batch);
-          if (!isRetryable(err)) refused = riskErrorMessage(err);
+          if (!isRetryable(err) && refusesEveryBatch(err)) {
+            refused = riskErrorMessage(err);
+          }
         }
         update((run) => ({ ...run, done: run.done + batch.length }));
       }
