@@ -95,9 +95,10 @@ const SLIDER_DEBOUNCE_MS = 400;
 // its data has finished loading
 const PLAY_STEP_MS = 1500;
 
-// Centre of step i on a range input with a 16px thumb, so the month labels
-// and the track fill line up with the thumb positions
-const stepPosition = (i: number) => `calc(8px + (100% - 16px) * ${i / 11})`;
+// Centre of step i on a range input with a `thumbPx` thumb, so the month
+// labels and the track fill line up with the thumb positions
+const stepPosition = (i: number, thumbPx: number) =>
+  `calc(${thumbPx / 2}px + (100% - ${thumbPx}px) * ${i / 11})`;
 
 export default function MapPeriodFilter({
   value,
@@ -106,6 +107,7 @@ export default function MapPeriodFilter({
   onChange,
   loading = false,
   error = false,
+  compact = false,
   className = "",
 }: {
   value: PeriodSelection;
@@ -119,9 +121,13 @@ export default function MapPeriodFilter({
   loading?: boolean;
   // Data for the current selection failed to load; playback stops on it
   error?: boolean;
+  // A single row sized to its content, with smaller controls and one-letter
+  // months, for maps where the bar should cover little of the map (GeoLens)
+  compact?: boolean;
   className?: string;
 }) {
   const { year, month } = value;
+  const thumbPx = compact ? 14 : 16;
   // Thumb position while dragging; committed to `onChange` after the debounce
   const [draftMonth, setDraftMonth] = useState<number | null>(month);
   const [playing, setPlaying] = useState(false);
@@ -179,13 +185,14 @@ export default function MapPeriodFilter({
   // Track fill edges, in `stepPosition` terms. With every month offered the
   // fill starts at the track's edge and, for "all months", runs to the other
   // edge, as before.
-  const fillStart = months.first === 1 ? "0px" : stepPosition(months.first - 1);
+  const fillStart =
+    months.first === 1 ? "0px" : stepPosition(months.first - 1, thumbPx);
   const fillEnd =
     draftMonth !== null
-      ? stepPosition(draftMonth - 1)
+      ? stepPosition(draftMonth - 1, thumbPx)
       : months.last === 12
         ? "100%"
-        : stepPosition(months.last - 1);
+        : stepPosition(months.last - 1, thumbPx);
 
   // Follow the committed value (a year switch resets to all months)
   useEffect(() => {
@@ -218,20 +225,37 @@ export default function MapPeriodFilter({
   // Below xl: years + actions on one line, slider underneath.
   // xl and up: years | slider | actions in a single row (`xl:contents`
   // lifts the first line's children into the outer row so `order` applies).
+  // Compact: always that single row, at any width.
   return (
     <div
-      className={`w-full rounded-xl border border-border bg-surface shadow-lg px-3 py-2.5 flex flex-col gap-2 xl:flex-row xl:items-center xl:gap-4 ${className}`}
+      className={`${
+        compact
+          ? "max-w-full rounded-xl shadow-lg px-3 py-1.5 flex flex-row items-center gap-3"
+          : "w-full rounded-xl shadow-lg px-3 py-2.5 flex flex-col gap-2 xl:flex-row xl:items-center xl:gap-4"
+      } border border-border bg-surface ${className}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-2 sm:gap-x-3 gap-y-2 xl:contents">
+      <div
+        className={
+          compact
+            ? "contents"
+            : "flex flex-wrap items-center justify-between gap-x-2 sm:gap-x-3 gap-y-2 xl:contents"
+        }
+      >
         {/* Year segments — clicking the active year again goes back to overall */}
-        <div className="inline-flex shrink-0 rounded-lg border border-border-strong overflow-hidden divide-x divide-border-strong xl:order-1">
+        <div
+          className={`inline-flex shrink-0 rounded-lg border border-border-strong overflow-hidden divide-x divide-border-strong ${
+            compact ? "order-1" : "xl:order-1"
+          }`}
+        >
           {years.map((y) => (
             <button
               key={y}
               type="button"
               aria-pressed={y === year}
               onClick={() => selectYear(y)}
-              className={`h-8 px-2 sm:px-3 text-sm font-medium transition-colors ${
+              className={`font-medium transition-colors ${
+                compact ? "h-7 px-2.5 text-xs" : "h-8 px-2 sm:px-3 text-sm"
+              } ${
                 y === year
                   ? "bg-primary-50 text-primary-500"
                   : "bg-surface text-text-secondary hover:bg-surface-subtle"
@@ -242,9 +266,17 @@ export default function MapPeriodFilter({
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 xl:order-3">
+        <div
+          className={`flex items-center gap-1.5 shrink-0 ${
+            compact ? "order-3" : "xl:order-3"
+          }`}
+        >
           {year === null ? (
-            <p className="text-xs text-text-muted">
+            <p
+              className={`text-xs text-text-muted ${
+                compact ? "whitespace-nowrap" : ""
+              }`}
+            >
               Select a year for month-wise view
             </p>
           ) : (
@@ -255,10 +287,18 @@ export default function MapPeriodFilter({
                 type="button"
                 onClick={() => selectMonth(null)}
                 aria-label="Show all months"
-                className="h-7 px-2 rounded-md border border-border-strong text-xs text-text-primary hover:border-primary-500"
+                className={`rounded-md border border-border-strong text-text-primary hover:border-primary-500 ${
+                  compact ? "h-7 px-2.5 text-xs" : "h-7 px-2 text-xs"
+                }`}
               >
-                <span className="sm:hidden">All</span>
-                <span className="hidden sm:inline">All months</span>
+                {compact ? (
+                  "All"
+                ) : (
+                  <>
+                    <span className="sm:hidden">All</span>
+                    <span className="hidden sm:inline">All months</span>
+                  </>
+                )}
               </button>
             )
           )}
@@ -267,7 +307,11 @@ export default function MapPeriodFilter({
 
       {/* Play button + month slider — only once a year is picked */}
       {year !== null && (
-        <div className="flex items-center gap-3 min-w-0 xl:flex-1 xl:order-2">
+        <div
+          className={`flex items-center min-w-0 ${
+            compact ? "gap-2.5 order-2" : "gap-3 xl:flex-1 xl:order-2"
+          }`}
+        >
           <button
             type="button"
             onClick={togglePlay}
@@ -275,35 +319,58 @@ export default function MapPeriodFilter({
               playing ? "Pause month playback" : "Play through months"
             }
             title={playing ? "Pause" : "Play through months"}
-            className="h-8 w-8 shrink-0 rounded-full bg-primary-500 text-text-inverse hover:bg-primary-700 inline-flex items-center justify-center"
+            className={`shrink-0 rounded-full bg-primary-500 text-text-inverse hover:bg-primary-700 inline-flex items-center justify-center ${
+              compact ? "h-7 w-7" : "h-8 w-8"
+            }`}
           >
             {playing ? (
-              <Pause size={14} fill="currentColor" />
+              <Pause size={compact ? 12 : 14} fill="currentColor" />
             ) : (
-              <Play size={14} fill="currentColor" className="ml-0.5" />
+              <Play
+                size={compact ? 12 : 14}
+                fill="currentColor"
+                className="ml-0.5"
+              />
             )}
           </button>
-          <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-            <div className="relative h-4">
+          {/* Compact: a fixed width that still shrinks on a narrow map */}
+          <div
+            className={`flex flex-col min-w-0 ${
+              compact ? "gap-1 w-52" : "gap-1.5 flex-1"
+            }`}
+          >
+            <div className={`relative ${compact ? "h-3.5" : "h-4"}`}>
               {MONTHS.map((name, i) => (
                 <button
                   key={name}
                   type="button"
                   onClick={() => selectMonth(i + 1)}
                   disabled={i + 1 < months.first || i + 1 > months.last}
-                  style={{ left: stepPosition(i) }}
-                  className={`absolute -translate-x-1/2 text-xs leading-4 ${
+                  aria-label={name}
+                  title={compact ? name : undefined}
+                  style={{ left: stepPosition(i, thumbPx) }}
+                  className={`absolute -translate-x-1/2 ${
+                    compact ? "text-[11px] leading-[14px]" : "text-xs leading-4"
+                  } ${
                     draftMonth === i + 1
                       ? "text-text-primary font-semibold"
                       : "font-medium text-text-secondary enabled:hover:text-text-primary disabled:font-normal disabled:text-text-disabled disabled:cursor-not-allowed"
                   }`}
                 >
-                  <span className="sm:hidden">{name[0]}</span>
-                  <span className="hidden sm:inline">{name.slice(0, 3)}</span>
+                  {compact ? (
+                    name[0]
+                  ) : (
+                    <>
+                      <span className="sm:hidden">{name[0]}</span>
+                      <span className="hidden sm:inline">
+                        {name.slice(0, 3)}
+                      </span>
+                    </>
+                  )}
                 </button>
               ))}
             </div>
-            <div className="relative h-4">
+            <div className={`relative ${compact ? "h-3.5" : "h-4"}`}>
               <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-1.5 rounded-full bg-primary-100" />
               {/* Fill runs from the first offered month up to the thumb, or
                 across every offered month for "all months" */}
@@ -338,13 +405,17 @@ export default function MapPeriodFilter({
                     ? "All months"
                     : `${MONTHS[draftMonth - 1]} ${year}`
                 }
-                className={`absolute inset-0 w-full h-4 appearance-none bg-transparent cursor-pointer
-                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:!h-4 [&::-webkit-slider-thumb]:!w-4
+                className={`absolute inset-0 w-full appearance-none bg-transparent cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none
                 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:!bg-primary-500 [&::-webkit-slider-thumb]:!border-0
                 [&::-webkit-slider-thumb]:!shadow-none [&::-webkit-slider-thumb]:!mt-0
-                [&::-moz-range-thumb]:!h-4 [&::-moz-range-thumb]:!w-4 [&::-moz-range-thumb]:rounded-full
+                [&::-moz-range-thumb]:rounded-full
                 [&::-moz-range-thumb]:!bg-primary-500 [&::-moz-range-thumb]:!border-0 [&::-moz-range-thumb]:!shadow-none
                 [&::-moz-range-track]:bg-transparent ${
+                  compact
+                    ? "h-3.5 [&::-webkit-slider-thumb]:!h-3.5 [&::-webkit-slider-thumb]:!w-3.5 [&::-moz-range-thumb]:!h-3.5 [&::-moz-range-thumb]:!w-3.5"
+                    : "h-4 [&::-webkit-slider-thumb]:!h-4 [&::-webkit-slider-thumb]:!w-4 [&::-moz-range-thumb]:!h-4 [&::-moz-range-thumb]:!w-4"
+                } ${
                   draftMonth === null
                     ? "[&::-webkit-slider-thumb]:opacity-0 [&::-moz-range-thumb]:opacity-0"
                     : ""

@@ -1660,6 +1660,9 @@ export class SitesService {
           if (site.positiveSite > 0) {
             positiveSites++;
             positiveSitesCoordinates.push({
+              // Lets a client tell sites apart (GeoLens Compare narrows its
+              // Site A/B list to the sites listed here)
+              siteId: site.siteId,
               coordinates: site.location_coordinates,
               totalPositiveSampleCount: Number(site.totalPositiveSamples) || 0,
               totalNegativeSampleCount: Number(site.totalNegativeSamples) || 0,
@@ -1744,6 +1747,7 @@ export class SitesService {
         diseaseFreeSiteCount: diseaseFreeSites.length,
         diseaseFreeSitesCoordinates: diseaseFreeSites.map((site) => {
           return {
+            siteId: site.siteId,
             coordinates: site.location_coordinates,
             totalPositiveSampleCount: Number(site.totalPositiveSamples) || 0,
             totalNegativeSampleCount: Number(site.totalNegativeSamples) || 0,

@@ -30,6 +30,7 @@ import { userAtom } from "@/src/store/userAtom";
 import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
 import UserMenu from "@/src/components/nav/user-menu";
 import HeaderSearch from "@/src/components/nav/header-search";
+import { GEOLENS_HEADER_SLOT_ID } from "@/src/app/(dashboard)/geolens/types";
 import { fetchUserProfileApi } from "@/src/app/(root)/loader";
 import { getAllProjectsApi } from "@/src/app/(dashboard)/manage/loader";
 import { getMyWorkspaces } from "@/src/app/(root)/workspaces/loader";
@@ -58,6 +59,8 @@ type NavItem = {
 
 export default function Header() {
   const pathname = usePathname();
+  // GeoLens puts its own controls in the header instead of the breadcrumb and search.
+  const isGeoLens = pathname === "/geolens";
   const router = useRouter();
   const [user, setUser] = useAtom(userAtom);
   const [currentWorkspace, setCurrentWorkspace] = useAtom(currentWorkspaceAtom);
@@ -273,6 +276,12 @@ export default function Header() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // GeoLens needs the room for its map: the sidebar folds away on arriving
+  // there (the user can open it again, and it stays as they leave it)
+  useEffect(() => {
+    if (isGeoLens) setCollapsed(true);
+  }, [isGeoLens]);
 
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -627,30 +636,41 @@ export default function Header() {
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-grey-60">Dharini</span>
-            {breadcrumbs.map((crumb, index) => (
-              <span
-                className="flex items-center gap-2"
-                key={`${crumb}-${index}`}
-              >
-                <ChevronRight className="h-3.5 w-3.5 text-grey-50" />
+          {!isGeoLens && (
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-grey-60">Dharini</span>
+              {breadcrumbs.map((crumb, index) => (
                 <span
-                  className={
-                    index === breadcrumbs.length - 1
-                      ? "font-semibold text-grey-90"
-                      : "text-grey-60"
-                  }
+                  className="flex items-center gap-2"
+                  key={`${crumb}-${index}`}
                 >
-                  {crumb}
+                  <ChevronRight className="h-3.5 w-3.5 text-grey-50" />
+                  <span
+                    className={
+                      index === breadcrumbs.length - 1
+                        ? "font-semibold text-grey-90"
+                        : "text-grey-60"
+                    }
+                  >
+                    {crumb}
+                  </span>
                 </span>
-              </span>
-            ))}
+              ))}
+            </div>
+          )}
+        </div>
+        {isGeoLens ? (
+          // GeoLens renders its title, tabs, location search and filters here
+          // (see GeoLensTopBar) so the page has a single header row.
+          <div
+            id={GEOLENS_HEADER_SLOT_ID}
+            className="ml-3 flex min-w-0 flex-1 items-center"
+          />
+        ) : (
+          <div className="hidden w-full max-w-[360px] sm:block">
+            <HeaderSearch darkMode={false} />
           </div>
-        </div>
-        <div className="hidden w-full max-w-[360px] sm:block">
-          <HeaderSearch darkMode={false} />
-        </div>
+        )}
       </header>
     </>
   );

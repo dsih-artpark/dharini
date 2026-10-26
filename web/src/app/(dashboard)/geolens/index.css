@@ -1,51 +1,14 @@
-/* Scoped styles for the GeoLens */
+/* Scoped styles for GeoLens */
 
 /* Ensure Leaflet controls don't get hidden */
-.leaflet-container {
+.geolens-root .leaflet-container {
   height: 100%;
   width: 100%;
   z-index: 1;
 }
 
-/* Leaflet search bar styling */
-.geosearch {
-  z-index: 1000;
-}
-
-/* Radius slider thumb — large and visible */
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #2980b9;
-  border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+/* Sliders in the GeoLens panels */
+.geolens-root .geolens-range {
+  accent-color: #3a11b6;
   cursor: pointer;
-  margin-top: -5px;
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #2980b9;
-  border: 2px solid white;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  cursor: pointer;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
 }

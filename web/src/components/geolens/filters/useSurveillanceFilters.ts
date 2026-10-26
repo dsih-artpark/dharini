@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "jotai";
 
 import { userAtom } from "@/src/store/userAtom";
+import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
 import { getAllProjectsApi } from "@/src/app/(dashboard)/manage/loader";
 import {
   fetchProjectRegions,
@@ -11,11 +12,32 @@ import { getProjectSitesApi } from "@/src/app/(dashboard)/projects/[id]/sites/lo
 import { getProjectSampleTypesApi } from "@/src/app/(dashboard)/monitor/loader";
 import type { Disease, Region } from "@/src/types/global";
 import type { SampleType } from "@/src/types/sample";
+import type { Site } from "@/src/types/site";
 import type { FilterType } from "@/src/types/statistics";
 
 export interface SelectOption {
   label: string;
   value: string | number;
+}
+
+export const RESULT_OPTIONS: SelectOption[] = [
+  { label: "Positive", value: "positive" },
+  { label: "Negative", value: "negative" },
+  { label: "Inconclusive", value: "unclear" },
+];
+
+export type FilterGroupKey =
+  | "stateId"
+  | "districtId"
+  | "diseaseId"
+  | "siteId"
+  | "sampleTypeId"
+  | "testResult";
+
+export interface FilterChip {
+  key: FilterGroupKey | "projectId";
+  name: string;
+  value: string;
 }
 
 interface ProjectLite {
@@ -30,10 +52,34 @@ interface SiteLite {
   name: string;
   stateId?: string;
   districtId?: string;
+  lat?: number;
+  lng?: number;
 }
+
+/** A site the user can access that has a location, for the "Pick site" dropdowns. */
+export interface PickableSite {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
+// Sites store a GeoJSON point ([lng, lat]); older rows only have latitude/longitude.
+const siteCoords = (site: Site): { lat?: number; lng?: number } => {
+  const point = site.location?.coordinates?.coordinates;
+  if (point && Number.isFinite(point[0]) && Number.isFinite(point[1])) {
+    return { lat: point[1], lng: point[0] };
+  }
+  if (Number.isFinite(site.latitude) && Number.isFinite(site.longitude)) {
+    return { lat: site.latitude, lng: site.longitude };
+  }
+  return {};
+};
 
 export function useSurveillanceFilters() {
   const user = useAtomValue(userAtom);
+  // The workspace picked in the app header; projects and sites are scoped to it.
+  const workspaceId = useAtomValue(currentWorkspaceAtom)?.id;
 
   const [allProjects, setAllProjects] = useState<ProjectLite[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
@@ -60,18 +106,22 @@ export function useSurveillanceFilters() {
     endDate: "",
   });
 
-  // Load projects, regions (states) and sample types on mount.
-  // Backend scopes projects to the user automatically.
+  // Load projects, regions (states) and sample types on mount, and the
+  // projects again when the workspace changes. Backend scopes projects to the
+  // user automatically and narrows them to the workspace when one is given.
   useEffect(() => {
     if (!user) return;
+    let active = true;
 
     const fetchFilters = async () => {
       const [regionsResponse, sampleTypeResponse, projectsResponse] =
         await Promise.all([
           fetchProjectRegions(),
           getProjectSampleTypesApi(),
-          getAllProjectsApi({ limit: 1000 }),
+          getAllProjectsApi({ limit: 1000, workspaceId }),
         ]);
+      // A newer workspace's request is on its way
+      if (!active) return;
 
       if (regionsResponse.success) setStates(regionsResponse.data || []);
       if (sampleTypeResponse.success)
@@ -103,15 +153,48 @@ export function useSurveillanceFilters() {
     fetchFilters().catch((error) =>
       console.error("Error fetching filters", error),
     );
-  }, [user]);
+    return () => {
+      active = false;
+    };
+  }, [user, workspaceId]);
 
-  // Load sites for the selected project (or the user's own project).
+  // Another workspace has other projects, regions, diseases and sites, so the
+  // filters picked in the previous one no longer apply. Sample type and
+  // result aren't tied to a workspace and stay.
+  const lastWorkspaceRef = useRef(workspaceId);
   useEffect(() => {
-    const isSuperAdmin = user?.roles?.[0]?.role?.scope === "system";
-    const projectId = selectedProjectId || user?.project?.id || "";
+    if (lastWorkspaceRef.current === workspaceId) return;
+    lastWorkspaceRef.current = workspaceId;
+    setSelectedProjectId("");
+    setFilters((prev) => ({
+      ...prev,
+      projectId: undefined,
+      stateId: [],
+      districtId: [],
+      diseaseId: [],
+      siteId: [],
+    }));
+    // The selects are uncontrolled; remount them so they show the cleared value.
+    setResetKey((k) => k + 1);
+  }, [workspaceId]);
 
-    if (!projectId && !isSuperAdmin) return;
+  // Load sites: the project picked in Filters; else every site the user can
+  // reach in the selected workspace (GET /sites?workspaceId - the server still
+  // applies the user's own access scope, so this covers workspace admins
+  // without widening anyone's access). With no workspace selected: the
+  // user's own project, or every site for a super-admin.
+  useEffect(() => {
+    if (!user) return;
+    const isSuperAdmin = user.roles?.[0]?.role?.scope === "system";
+    const projectId =
+      selectedProjectId || (workspaceId ? "" : user.project?.id || "");
 
+    if (!projectId && !workspaceId && !isSuperAdmin) {
+      setAllSites([]);
+      return;
+    }
+
+    let active = true;
     getProjectSitesApi(projectId, {
       disease: "",
       siteType: "",
@@ -119,8 +202,11 @@ export function useSurveillanceFilters() {
       endDate: "",
       search: "",
       testResult: "",
+      // Used by GET /sites; GET /projects/:id/sites ignores it
+      workspaceId,
     })
       .then((response) => {
+        if (!active) return;
         if (response.success) {
           setAllSites(
             (response.data || [])
@@ -130,12 +216,16 @@ export function useSurveillanceFilters() {
                 name: site.name as string,
                 stateId: site.location?.region?.parentRegion?.id || undefined,
                 districtId: site.location?.region?.id || undefined,
+                ...siteCoords(site),
               })),
           );
         }
       })
       .catch((error) => console.error("Error fetching sites", error));
-  }, [user, selectedProjectId]);
+    return () => {
+      active = false;
+    };
+  }, [user, selectedProjectId, workspaceId]);
 
   // Load districts for the selected state — only those that actually have sites.
   useEffect(() => {
@@ -228,6 +318,28 @@ export function useSurveillanceFilters() {
     );
   }, [allSites, filters.stateId]);
 
+  // Sites for the "Pick site" dropdowns: follow the Project/State filters (via
+  // filteredSites) and the District filter, and need a location to fly to.
+  const pickableSites = useMemo<PickableSite[]>(() => {
+    const districtIds = Array.isArray(filters.districtId)
+      ? filters.districtId
+      : filters.districtId
+        ? [filters.districtId]
+        : [];
+    return filteredSites
+      .filter(
+        (site) =>
+          districtIds.length === 0 ||
+          (site.districtId && districtIds.includes(site.districtId)),
+      )
+      .filter(
+        (site): site is SiteLite & { lat: number; lng: number } =>
+          Number.isFinite(site.lat) && Number.isFinite(site.lng),
+      )
+      .map(({ id, name, lat, lng }) => ({ id, name, lat, lng }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [filteredSites, filters.districtId]);
+
   const handleFilterChange = (name: string, value: string | string[]) => {
     setFilters((prev) => {
       const next = { ...prev, [name]: value };
@@ -296,6 +408,66 @@ export function useSurveillanceFilters() {
     return groups.filter((g) => (Array.isArray(g) ? g.length > 0 : !!g)).length;
   }, [filters]);
 
+  // One removable chip per active filter group, shown on the map.
+  const activeFilterChips = useMemo<FilterChip[]>(() => {
+    const labelOf = (options: SelectOption[], value: string) =>
+      options.find((o) => String(o.value) === String(value))?.label ?? value;
+    const chips: FilterChip[] = [];
+    if (filters.projectId) {
+      chips.push({
+        key: "projectId",
+        name: "Project",
+        value: labelOf(projectOptions, filters.projectId),
+      });
+    }
+    const groups: [FilterGroupKey, string, SelectOption[]][] = [
+      ["stateId", "State", stateOptions],
+      ["districtId", "District", districtOptions],
+      ["diseaseId", "Disease", diseaseOptions],
+      ["siteId", "Site", siteOptions],
+      ["sampleTypeId", "Sample type", sampleTypeOptions],
+      ["testResult", "Result", RESULT_OPTIONS],
+    ];
+    groups.forEach(([key, name, options]) => {
+      const raw = filters[key];
+      const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+      if (values.length === 0) return;
+      const first = labelOf(options, values[0]);
+      chips.push({
+        key,
+        name,
+        value: values.length > 1 ? `${first} +${values.length - 1}` : first,
+      });
+    });
+    return chips;
+  }, [
+    filters,
+    projectOptions,
+    stateOptions,
+    districtOptions,
+    diseaseOptions,
+    siteOptions,
+    sampleTypeOptions,
+  ]);
+
+  const clearFilterGroup = (key: FilterGroupKey | "projectId") => {
+    if (key === "projectId") {
+      // The project effect resets the downstream filters.
+      setSelectedProjectId("");
+    } else {
+      setFilters((prev) => {
+        const next = { ...prev, [key]: [] };
+        if (key === "stateId") {
+          next.districtId = [];
+          next.siteId = [];
+        }
+        return next;
+      });
+    }
+    // The selects are uncontrolled; remount them so they show the cleared value.
+    setResetKey((k) => k + 1);
+  };
+
   // The selected state's Region (single-select bridge to geolens's state-name flow).
   const selectedStateRegion = useMemo(() => {
     const stateId = Array.isArray(filters.stateId)
@@ -319,7 +491,10 @@ export function useSurveillanceFilters() {
     diseaseOptions,
     siteOptions,
     sampleTypeOptions,
+    pickableSites,
     activeFilterCount,
+    activeFilterChips,
+    clearFilterGroup,
     selectedStateRegion,
   };
 }

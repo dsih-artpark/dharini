@@ -8,6 +8,8 @@ describe('toMlPath', () => {
       '/ml/birds/point/species?lat=12.97&lon=77.59&week=3',
       '/api/v1/birds/point/species?lat=12.97&lon=77.59&week=3',
     ],
+    ['/ml/birds/place/summary', '/api/v1/birds/place/summary'],
+    ['/ml/birds/place/all-species', '/api/v1/birds/place/all-species'],
     ['/ml/diseases', '/api/v1/diseases'],
     ['/ml/diseases/lsd/predict', '/api/v1/diseases/lsd/predict'],
   ])('maps %s to %s', (originalUrl, expected) => {

@@ -43,6 +43,18 @@ export class MlController {
     return this.mlService.forward(req, res, toMlPath(req));
   }
 
+  // POST because a place is a body (boundary polygon, or centre + radius),
+  // not a query string: /ml/birds/place/summary, /ml/birds/place/all-species,
+  // /ml/birds/place/species/{key}.
+  @Post('birds/place/*path')
+  @ApiOperation({
+    summary: 'Bird forecasts for a place (boundary or centre + radius)',
+    description: ML_DOCS,
+  })
+  birdsPlace(@Req() req: Request, @Res() res: Response) {
+    return this.mlService.forward(req, res, toMlPath(req));
+  }
+
   @Get('diseases')
   @ApiOperation({
     summary: 'Livestock disease models available (LSD today)',

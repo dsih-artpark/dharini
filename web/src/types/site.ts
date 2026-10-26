@@ -68,6 +68,7 @@ export type ExploreSite = {
     positiveSites: number;
     negativeSites: number;
     positiveSitesCoordinates: {
+      siteId?: string;
       coordinates: Coordinate;
       totalPositiveSampleCount?: number;
       totalNegativeSampleCount?: number;
@@ -80,6 +81,7 @@ export type ExploreSite = {
   }[];
   diseaseFreeSiteCount: number;
   diseaseFreeSitesCoordinates: {
+    siteId?: string;
     coordinates: Coordinate;
     siteName: string;
     totalPositiveSampleCount: number;

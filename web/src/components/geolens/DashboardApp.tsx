@@ -5,8 +5,9 @@ import React, {
   useMemo,
   useRef,
 } from "react";
-import { Menu } from "lucide-react";
 import type * as Leaflet from "leaflet";
+import { useAtomValue } from "jotai";
+import { Loader2 } from "lucide-react";
 
 import {
   haversineKm,
@@ -14,11 +15,24 @@ import {
   isFeatureWithinRadius,
   clipFeatureToCircle,
 } from "@/src/app/(dashboard)/geolens/utils/geo";
-import { DashboardHeader } from "./DashboardHeader";
-import { DashboardSidebar } from "./DashboardSidebar";
 import { DashboardMap } from "./DashboardMap";
-import { SiteComparisonPanel } from "./SiteComparisonPanel";
-import { TemporaryLocationPanel } from "./TemporaryLocationPanel";
+import { LocationDetailsCard } from "./LocationDetailsCard";
+import { GeoLensTopBar } from "./layout/GeoLensTopBar";
+import { GeoLensSidePanel, ResetMapButton } from "./layout/GeoLensSidePanel";
+import { LayersTab } from "./tabs/LayersTab";
+import { CompareTab, SITE_COLORS } from "./tabs/CompareTab";
+import { RiskMapTab } from "./tabs/RiskMapTab";
+import { MapFilterBar } from "./map/MapFilterBar";
+import { MapLegend } from "./map/MapLegend";
+import {
+  ComparisonResults,
+  type CompareTabKey,
+} from "./results/ComparisonResults";
+// Compare's bird forecast (real /ml/birds place models on the shared map)
+import type { PickedLocation } from "./compare/CompareSites";
+import type { PlaceSuggestion } from "./compare/PlaceSearch";
+import { useCompareForecast } from "./compare/useCompareForecast";
+import { useRiskPrediction } from "./risk/useRiskPrediction";
 import {
   getAllCattleMarkets,
   getAllPoultryFarms,
@@ -32,10 +46,12 @@ import {
 } from "@/src/app/(dashboard)/geolens/loader";
 import type { WeatherData } from "@/src/app/(dashboard)/geolens/loader";
 import type {
+  BaseMapKey,
   BirdObservation,
   CustomGeoJson,
   CustomGeoJsonFeature,
   FlyTarget,
+  GeoLensTab,
   LeafletRefType,
   CattleMarket,
   PoultryFarm,
@@ -45,10 +61,25 @@ import type {
   Wetland,
 } from "@/src/app/(dashboard)/geolens/types";
 
-import { getSiteStatByTestResultAndDiseaseApi } from "@/src/app/(dashboard)/monitor/loader";
-import { DISEASE_COLOR_CODE } from "@/src/utils/constant";
+import {
+  type ExploreSitesPeriod,
+  getSiteStatByTestResultAndDiseaseApi,
+} from "@/src/app/(dashboard)/monitor/loader";
+import MapPeriodFilter, {
+  type PeriodSelection,
+  getMapMonthBounds,
+  getMapYearOptions,
+} from "@/src/components/monitor/diseases/map-period-filter";
+import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
 import { useSurveillanceFilters } from "./filters/useSurveillanceFilters";
 import { SurveillanceFilters } from "./filters/SurveillanceFilters";
+
+// Year/month bar for the surveillance layer. GeoLens has no Start/End dates,
+// so it offers what the Monitor map offers without them: the latest years,
+// every month.
+const OVERALL_PERIOD: PeriodSelection = { year: null, month: null };
+const SURVEILLANCE_YEARS = getMapYearOptions(null);
+const SURVEILLANCE_MONTHS = getMapMonthBounds(null, null);
 
 // --- ICONS ---
 const makeIcon = (L: typeof Leaflet, color: string, label: string) =>
@@ -120,23 +151,87 @@ const detectStateFromLabel = (label: string, statesList: string[]) => {
   return null;
 };
 
+const PANEL_COPY: Record<GeoLensTab, { title: string; subtitle: string }> = {
+  layers: {
+    title: "Map layers",
+    subtitle:
+      "Choose what the map shows. Use Filters to narrow the surveillance sites.",
+  },
+  compare: {
+    title: "Compare sites",
+    subtitle: "What's recorded now and what's forecast, at two sites.",
+  },
+  risk: {
+    title: "Disease risk",
+    subtitle:
+      "Whether a region, site or place is a risk zone on a date, from the weather before it.",
+  },
+};
+
+const isGeoLensTab = (value: string | null): value is GeoLensTab =>
+  value !== null && value in PANEL_COPY;
+
+// GeoLens opens on Layers; ?tab=compare etc. opens that tab instead.
+const readTabFromUrl = (): GeoLensTab => {
+  if (typeof window === "undefined") return "layers";
+  const tab = new URLSearchParams(window.location.search).get("tab");
+  return isGeoLensTab(tab) ? tab : "layers";
+};
+
+// A single- or multi-select filter value as a list
+const toList = (value?: string | string[]) =>
+  Array.isArray(value) ? value : value ? [value] : [];
+
+const toTitleCase = (s: string) =>
+  s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+
 // --- MAIN APP ---
 export default function App() {
   const [leafletReady, setLeafletReady] = useState(false);
   const leafletRef = useRef<LeafletRefType | null>(null);
 
   // Layout State
+  // A tab is always picked, with its panel showing until it's collapsed.
+  const [geoTab, setGeoTab] = useState<GeoLensTab>(readTabFromUrl);
+  const [panelOpen, setPanelOpen] = useState(true);
   const [activeSlot, setActiveSlot] = useState<"A" | "B">("A");
-  const [activeTab, setActiveTab] = useState<"overview" | "birds" | "farms">(
-    "overview",
-  );
+  const [compareTab, setCompareTab] = useState<CompareTabKey>("overview");
   const [headerSearch, setHeaderSearch] = useState("");
   const [isSearching, setIsSearching] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [sidebarClosing, setSidebarClosing] = useState(false);
-  const [showComparison, setShowComparison] = useState(false);
+  const showComparison = geoTab === "compare";
   const filtersPanelRef = useRef<HTMLDivElement>(null);
   const filtersButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Full screen covers the whole map frame, so the legend, filter chips and
+  // the forecast bar come along. Not offered where the browser can't do it
+  // (iPhone Safari).
+  const mapFrameRef = useRef<HTMLDivElement>(null);
+  const [canFullscreen, setCanFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    setCanFullscreen(document.fullscreenEnabled);
+    const syncFullscreen = () =>
+      setIsFullscreen(
+        mapFrameRef.current !== null &&
+          document.fullscreenElement === mapFrameRef.current,
+      );
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    return () =>
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+  }, []);
+  const toggleFullscreen = useCallback(() => {
+    const request = document.fullscreenElement
+      ? document.exitFullscreen()
+      : mapFrameRef.current?.requestFullscreen();
+    request?.catch((error) => console.error("Full screen failed:", error));
+  }, []);
+  const mapFullscreen = useMemo(
+    () =>
+      canFullscreen
+        ? { active: isFullscreen, onToggle: toggleFullscreen }
+        : null,
+    [canFullscreen, isFullscreen, toggleFullscreen],
+  );
 
   // Layer Visibility State
   const showWetlandLayer = false;
@@ -145,11 +240,13 @@ export default function App() {
   const [showCattleMarketLayer, setShowCattleMarketLayer] = useState(false);
   const [showBufferPoultry, setShowBufferPoultry] = useState(false);
   const showBirdsLayer = true;
-  const [activeBaseMap, setActiveBaseMap] = useState("osm");
+  const [activeBaseMap, setActiveBaseMap] = useState<BaseMapKey>("osm");
 
   // Analysis Visibility State
-  const [showHeatmap, setShowHeatmap] = useState(false);
-  const [showBuffer, setShowBuffer] = useState(false);
+  // The buffer and its reference layers belong to the Compare tab.
+  const showBuffer = geoTab === "compare";
+  const bufferWetlandsOn = showBuffer && showBufferWetlands;
+  const bufferPoultryOn = showBuffer && showBufferPoultry;
 
   // Data State
   const [radius, setRadius] = useState(15);
@@ -162,8 +259,6 @@ export default function App() {
   const [searchPin, setSearchPin] = useState<Site | null>(null);
   const [searchBirds, setSearchBirds] = useState<BirdObservation[]>([]);
   const [searchWeather, setSearchWeather] = useState<WeatherData | null>(null);
-  const [panelSearchA, setPanelSearchA] = useState("");
-  const [panelSearchB, setPanelSearchB] = useState("");
   const [allCsvData, setAllCsvData] = useState<{
     wetlands: Wetland[];
     poultry: PoultryFarm[];
@@ -176,6 +271,15 @@ export default function App() {
   const [selectedState, setSelectedState] = useState("");
   const [selectedWetland, setSelectedWetland] = useState("");
   const [indiaGeoJson, setIndiaGeoJson] = useState<CustomGeoJson | null>(null);
+
+  // Compare's bird forecast (nothing loads until the tab is opened with a site)
+  const forecast = useCompareForecast(showComparison, siteA, siteB, radius);
+  const forecastOnMap =
+    showComparison &&
+    forecast.mapShows === "forecast" &&
+    forecast.ml.status === "ready";
+  // Present: the eBird sightings as bird density
+  const heatmapOn = showBuffer && forecast.mapShows === "present";
 
   // Dynamic Viewport and Water Boundary State
   const [viewportBounds, setViewportBounds] = useState<ViewportBounds | null>(
@@ -250,6 +354,18 @@ export default function App() {
   const [surveillanceSites, setSurveillanceSites] = useState<
     SurveillanceSite[]
   >([]);
+  // Year/month the surveillance layer shows; Overall until a year is picked
+  const [surveillancePeriod, setSurveillancePeriod] =
+    useState<PeriodSelection>(OVERALL_PERIOD);
+  // The year/month bar's playback waits on loads and stops on a failed one
+  const [isSurveillanceLoading, setIsSurveillanceLoading] = useState(false);
+  const [surveillanceLoadError, setSurveillanceLoadError] = useState(false);
+
+  // Turning the layer off drops its year/month, so it comes back on Overall
+  const toggleSurveillanceSites = (value: boolean) => {
+    setShowSurveillanceSites(value);
+    if (!value) setSurveillancePeriod(OVERALL_PERIOD);
+  };
 
   const {
     resetKey,
@@ -265,9 +381,14 @@ export default function App() {
     diseaseOptions,
     siteOptions,
     sampleTypeOptions,
+    pickableSites,
     activeFilterCount,
+    activeFilterChips,
+    clearFilterGroup,
     selectedStateRegion,
   } = useSurveillanceFilters();
+  // The workspace picked in the app header
+  const workspaceId = useAtomValue(currentWorkspaceAtom)?.id;
 
   // Memoized Icons
   const iconA = useMemo(
@@ -308,10 +429,6 @@ export default function App() {
         const L = (await import("leaflet")).default;
         // @ts-expect-error - leaflet css does not have TS definitions
         await import("leaflet/dist/leaflet.css");
-        try {
-          // @ts-expect-error - leaflet-geosearch css does not have TS definitions
-          await import("leaflet-geosearch/dist/geosearch.css");
-        } catch {}
         interface CustomWindow extends Window {
           L?: typeof Leaflet;
         }
@@ -335,7 +452,6 @@ export default function App() {
           import("./MapComponents").catch(() => ({
             MapClickHandler: () => null,
             FlyToLocation: () => null,
-            SearchBar: () => null,
             HeatmapLayer: () => null,
             LayerTracker: () => null,
           })),
@@ -363,7 +479,6 @@ export default function App() {
             useMapEvents: rl.useMapEvents,
             MapClickHandler: mcObj.MapClickHandler || (() => null),
             FlyToLocation: mcObj.FlyToLocation || (() => null),
-            SearchBar: mcObj.SearchBar || (() => null),
             HeatmapLayer: mcObj.HeatmapLayer || (() => null),
             LayerTracker: mcObj.LayerTracker || (() => null),
             MarkerClusterGroup: rlc.default || rlc,
@@ -418,11 +533,22 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStateRegion]);
 
-  // Fetch filtered surveillance sites and flatten into map markers.
+  // Fetch filtered surveillance sites and flatten into map markers, within the
+  // selected workspace, the project picked in Filters (if any) and the
+  // year/month picked on the map.
+  const { year: surveillanceYear, month: surveillanceMonth } =
+    surveillancePeriod;
   useEffect(() => {
     let mounted = true;
     const fetchSurveillance = async () => {
+      setIsSurveillanceLoading(true);
       try {
+        const period: ExploreSitesPeriod =
+          surveillanceYear === null
+            ? "overall"
+            : surveillanceMonth === null
+              ? "year"
+              : "month";
         const diseaseIds = Array.isArray(filters.diseaseId)
           ? filters.diseaseId
           : filters.diseaseId
@@ -465,6 +591,14 @@ export default function App() {
           siteId: siteIds,
           sampleTypeId: sampleTypeIds,
           testResult: testResults,
+          // undefined params are dropped by axios
+          projectId: filters.projectId || undefined,
+          workspaceId,
+          period,
+          year:
+            surveillanceYear !== null ? String(surveillanceYear) : undefined,
+          month:
+            surveillanceMonth !== null ? String(surveillanceMonth) : undefined,
         });
 
         if (!mounted) return;
@@ -473,9 +607,7 @@ export default function App() {
 
         (data.siteData || [])
           .filter((s) => s.diseaseId)
-          .forEach((s, i) => {
-            const color =
-              DISEASE_COLOR_CODE.COLOR_HEX[(s.diseaseIndex ?? i) % 6];
+          .forEach((s) => {
             (s.positiveSitesCoordinates || []).forEach((c) => {
               const lat = c.coordinates?.coordinates?.[1];
               const lng = c.coordinates?.coordinates?.[0];
@@ -483,13 +615,11 @@ export default function App() {
                 sites.push({
                   lat,
                   lng,
-                  color,
                   siteName: c.siteName,
                   totalSampleCount: c.totalSampleCount,
                   totalPositiveSampleCount: c.totalPositiveSampleCount,
                   totalNegativeSampleCount: c.totalNegativeSampleCount,
                   totalUnclearSampleCount: c.totalUnclearSampleCount,
-                  diseaseShortName: s.shortName,
                   farmType: c.farmType,
                 });
               }
@@ -503,7 +633,6 @@ export default function App() {
             sites.push({
               lat,
               lng,
-              color: "#B7BDC2",
               siteName: c.siteName,
               totalSampleCount: c.totalSampleCount,
               totalPositiveSampleCount: c.totalPositiveSampleCount,
@@ -515,16 +644,22 @@ export default function App() {
         });
 
         setSurveillanceSites(sites);
+        setSurveillanceLoadError(false);
       } catch (error) {
         console.error("Error fetching surveillance sites", error);
-        if (mounted) setSurveillanceSites([]);
+        if (mounted) {
+          setSurveillanceSites([]);
+          setSurveillanceLoadError(true);
+        }
+      } finally {
+        if (mounted) setIsSurveillanceLoading(false);
       }
     };
     fetchSurveillance();
     return () => {
       mounted = false;
     };
-  }, [filters]);
+  }, [filters, workspaceId, surveillanceYear, surveillanceMonth]);
 
   // Fetch wetlands and poultry farms filtered by state when selectedState, siteA, siteB, or searchPin changes
   useEffect(() => {
@@ -723,8 +858,7 @@ export default function App() {
 
     // Check if we need to fetch
     const shouldFetchViewport = showWetlandLayer && viewportBounds;
-    const shouldFetchBuffer =
-      showBufferWetlands && (siteA || siteB || searchPin);
+    const shouldFetchBuffer = bufferWetlandsOn && (siteA || siteB || searchPin);
 
     if (!shouldFetchViewport && !shouldFetchBuffer) {
       setWaterBoundariesData(null);
@@ -812,7 +946,7 @@ export default function App() {
     };
   }, [
     showWetlandLayer,
-    showBufferWetlands,
+    bufferWetlandsOn,
     siteA,
     siteB,
     searchPin,
@@ -830,7 +964,7 @@ export default function App() {
 
     if (hasActiveLocation) {
       // Only filter if reference layers or national layer is enabled
-      if (!showWetlandLayer && !showBufferWetlands) return null;
+      if (!showWetlandLayer && !bufferWetlandsOn) return null;
 
       const clippedFeatures: CustomGeoJsonFeature[] = [];
       (waterBoundariesData.features || []).forEach(
@@ -883,7 +1017,7 @@ export default function App() {
   }, [
     waterBoundariesData,
     showWetlandLayer,
-    showBufferWetlands,
+    bufferWetlandsOn,
     siteA,
     siteB,
     searchPin,
@@ -1045,6 +1179,11 @@ export default function App() {
     (lat: number, lng: number, name: string) => {
       const res: Site = { end: [lat, lng], name };
 
+      if (geoTab === "risk") {
+        setFlyTarget({ lat, lng, zoom: 9 });
+        return;
+      }
+
       if (showComparison) {
         if (activeSlot === "A") setSiteA(res);
         else setSiteB(res);
@@ -1058,7 +1197,6 @@ export default function App() {
         }
       } else {
         setSearchPin(res);
-        setShowComparison(false);
         setFlyTarget({ lat, lng, zoom: 13 });
 
         if (indiaGeoJson) {
@@ -1069,14 +1207,13 @@ export default function App() {
         }
       }
     },
-    [showComparison, activeSlot, indiaGeoJson],
+    [geoTab, showComparison, activeSlot, indiaGeoJson],
   );
 
   const handleSurveillanceSiteClick = useCallback(
     (site: SurveillanceSite) => {
       const res: Site = { end: [site.lat, site.lng], name: site.siteName };
       setSearchPin(res);
-      setShowComparison(false);
       setFlyTarget({ lat: site.lat, lng: site.lng, zoom: 13 });
       if (indiaGeoJson) {
         const stateName = detectStateFromCoords(
@@ -1152,13 +1289,6 @@ export default function App() {
     }
   }, [searchPin, fetchBirds, fetchWeatherInfo]);
 
-  useEffect(() => {
-    if (!siteA && !siteB) {
-      fetchBirds([20.5937, 78.9629], setBirdsA);
-      fetchWeatherInfo([20.5937, 78.9629], setWeatherA);
-    }
-  }, [siteA, siteB, fetchBirds, fetchWeatherInfo]);
-
   const resetSiteA = () => {
     setSiteA(null);
     setBirdsA([]);
@@ -1172,32 +1302,153 @@ export default function App() {
   const resetAll = () => {
     resetSiteA();
     resetSiteB();
-    setPanelSearchA("");
-    setPanelSearchB("");
     setShowPoultryLayer(false);
     setShowCattleMarketLayer(false);
-    setShowSurveillanceSites(false);
-    setShowBuffer(false);
+    toggleSurveillanceSites(false);
     setShowBufferWetlands(false);
     setShowBufferPoultry(false);
-    setShowHeatmap(false);
     setRadius(15);
   };
-  const closeSidebar = useCallback(() => {
-    setSidebarClosing(true);
-    setTimeout(() => {
-      setShowSidebar(false);
-      setSidebarClosing(false);
-    }, 300);
-  }, []);
-  const openSidebar = useCallback(() => {
-    setSidebarClosing(true);
-    setShowSidebar(true);
-    requestAnimationFrame(() => {
-      setSidebarClosing(false);
-    });
-  }, []);
+  // A cleared chip becomes the one the map and the place search set next.
+  const clearSite = (slot: "A" | "B") => {
+    if (slot === "A") resetSiteA();
+    else resetSiteB();
+    setActiveSlot(slot);
+  };
 
+  // Sites A and B belong to the workspace they were picked in, so switching
+  // workspace drops them (the Filters hook drops its filters the same way).
+  const lastWorkspaceRef = useRef(workspaceId);
+  useEffect(() => {
+    if (lastWorkspaceRef.current === workspaceId) return;
+    lastWorkspaceRef.current = workspaceId;
+    setSiteA(null);
+    setBirdsA([]);
+    setWeatherA(null);
+    setSiteB(null);
+    setBirdsB([]);
+    setWeatherB(null);
+  }, [workspaceId]);
+
+  // Compare: Disease, Sample type and Result narrow the Site A/B options to
+  // the sites the surveillance layer shows for them (within the same
+  // Project, State and District, which narrow pickableSites already). The
+  // Site filter doesn't apply here - Site A/B are picked explicitly - so
+  // Compare asks on its own, without it, and only on the Compare tab while
+  // one of the three is set.
+  const compareNarrowKey = [
+    filters.diseaseId,
+    filters.sampleTypeId,
+    filters.testResult,
+  ].some((value) => toList(value).length > 0)
+    ? [filters.diseaseId, filters.sampleTypeId, filters.testResult]
+        .map((value) => toList(value).join(","))
+        .join("|")
+    : "";
+  const [compareMatch, setCompareMatch] = useState<{
+    key: string;
+    siteIds: Set<string>;
+    failed: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!showComparison || !compareNarrowKey) {
+      setCompareMatch(null);
+      return;
+    }
+    let active = true;
+    const districtIds = toList(filters.districtId);
+    getSiteStatByTestResultAndDiseaseApi({
+      disease: toList(filters.diseaseId),
+      // Same regions as the surveillance layer asks for
+      regionId: districtIds.length > 0 ? districtIds : toList(filters.stateId),
+      startDate: "",
+      endDate: "",
+      surveillanceType: "",
+      sampleTypeId: toList(filters.sampleTypeId),
+      testResult: toList(filters.testResult),
+      // undefined params are dropped by axios
+      projectId: filters.projectId || undefined,
+      workspaceId,
+    })
+      .then(({ data }) => {
+        if (!active) return;
+        const siteIds = new Set<string>();
+        (data.siteData || [])
+          .filter((s) => s.diseaseId)
+          .forEach((s) =>
+            (s.positiveSitesCoordinates || []).forEach((c) => {
+              if (c.siteId) siteIds.add(c.siteId);
+            }),
+          );
+        (data.diseaseFreeSitesCoordinates || []).forEach((c) => {
+          if (c.siteId) siteIds.add(c.siteId);
+        });
+        setCompareMatch({ key: compareNarrowKey, siteIds, failed: false });
+      })
+      .catch((error) => {
+        console.error("Error fetching Compare site matches", error);
+        if (active) {
+          setCompareMatch({
+            key: compareNarrowKey,
+            siteIds: new Set(),
+            failed: true,
+          });
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    showComparison,
+    compareNarrowKey,
+    filters.diseaseId,
+    filters.sampleTypeId,
+    filters.testResult,
+    filters.projectId,
+    filters.stateId,
+    filters.districtId,
+    workspaceId,
+  ]);
+
+  const compareSites = useMemo(
+    () =>
+      compareNarrowKey && compareMatch
+        ? pickableSites.filter((site) => compareMatch.siteIds.has(site.id))
+        : pickableSites,
+    [compareNarrowKey, compareMatch, pickableSites],
+  );
+
+  // When Disease, Sample type or Result changes, a Site A/B picked from the
+  // list is cleared only if it no longer matches; matching picks stay, and
+  // so do places set by a map click or search (they aren't listed sites).
+  // Decided once the matches for the new filters arrive, and not on a
+  // failed request.
+  const checkedNarrowKeyRef = useRef("");
+  useEffect(() => {
+    if (!compareNarrowKey) {
+      checkedNarrowKeyRef.current = "";
+      return;
+    }
+    if (
+      !compareMatch ||
+      compareMatch.key !== compareNarrowKey ||
+      compareMatch.failed ||
+      checkedNarrowKeyRef.current === compareNarrowKey
+    ) {
+      return;
+    }
+    checkedNarrowKeyRef.current = compareNarrowKey;
+    if (siteA?.id && !compareMatch.siteIds.has(siteA.id)) {
+      setSiteA(null);
+      setBirdsA([]);
+      setWeatherA(null);
+    }
+    if (siteB?.id && !compareMatch.siteIds.has(siteB.id)) {
+      setSiteB(null);
+      setBirdsB([]);
+      setWeatherB(null);
+    }
+  }, [compareNarrowKey, compareMatch, siteA, siteB]);
   const handleHeaderSearch = async (
     e: React.KeyboardEvent | React.MouseEvent,
   ) => {
@@ -1215,42 +1466,6 @@ export default function App() {
         const stateFromLabel = detectStateFromLabel(r.label, availableStates);
         if (stateFromLabel) {
           setSelectedState(stateFromLabel);
-        }
-      }
-    } catch (err) {
-      console.error("Search error:", err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handlePanelSearch = async (
-    e: React.KeyboardEvent,
-    slot: "A" | "B",
-    query: string,
-    setQuery: (val: string) => void,
-  ) => {
-    if (e.key !== "Enter") return;
-    if (!query.trim()) return;
-    setIsSearching(true);
-    try {
-      const { OpenStreetMapProvider } = await import("leaflet-geosearch");
-      const provider = new OpenStreetMapProvider();
-      const results = await provider.search({ query });
-      if (results && results.length > 0) {
-        const r = results[0];
-        const res: Site = { end: [r.y, r.x], name: r.label };
-        if (slot === "A") setSiteA(res);
-        else setSiteB(res);
-        setFlyTarget({ lat: r.y, lng: r.x, zoom: 13 });
-        setQuery("");
-
-        if (indiaGeoJson) {
-          const stateName = detectStateFromCoords(r.y, r.x, indiaGeoJson);
-          if (stateName) setSelectedState(stateName);
-        } else {
-          const stateFromLabel = detectStateFromLabel(r.label, availableStates);
-          if (stateFromLabel) setSelectedState(stateFromLabel);
         }
       }
     } catch (err) {
@@ -1488,192 +1703,481 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [showFilters, setShowFilters]);
 
+  // --- Tabs ---
+  const openTab = useCallback((tab: GeoLensTab) => {
+    setGeoTab(tab);
+    setPanelOpen(true);
+  }, []);
+
+  const handleTabClick = (tab: GeoLensTab) => {
+    // Clicking the open tab again closes its panel.
+    if (geoTab === tab && panelOpen) setPanelOpen(false);
+    else openTab(tab);
+  };
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", geoTab);
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [geoTab]);
+
+  // Map clicks and marker clicks mean different things per tab. They go through
+  // refs so the marker layers (tens of thousands of farms) aren't rebuilt each
+  // time the tab or slot changes.
+  const mapClickRef = useRef<(lat: number, lng: number) => void>(() => {});
+  const featureSelectRef = useRef<
+    (lat: number, lng: number, name: string) => void
+  >(() => {});
+  const surveillanceClickRef = useRef<(site: SurveillanceSite) => void>(
+    () => {},
+  );
+  useEffect(() => {
+    mapClickRef.current = (lat, lng) => {
+      if (geoTab === "risk") return;
+      handleSiteSelection(lat, lng, "Custom Location");
+    };
+    featureSelectRef.current = (lat, lng, name) => {
+      if (geoTab === "risk") return;
+      handleSiteSelection(lat, lng, name);
+    };
+    surveillanceClickRef.current = (site) => {
+      if (geoTab === "risk") return;
+      handleSurveillanceSiteClick(site);
+    };
+  });
+  const handleMapClick = useCallback(
+    (lat: number, lng: number) => mapClickRef.current(lat, lng),
+    [],
+  );
+  const handleFeatureSelect = useCallback(
+    (lat: number, lng: number, name: string) =>
+      featureSelectRef.current(lat, lng, name),
+    [],
+  );
+  const handleSurveillanceMarkerClick = useCallback(
+    (site: SurveillanceSite) => surveillanceClickRef.current(site),
+    [],
+  );
+
+  // --- Compare "Pick site" ---
+  const assignSiteToSlot = useCallback(
+    (slot: "A" | "B", siteId: string) => {
+      const site = pickableSites.find((s) => s.id === siteId);
+      if (!site) return;
+      const res: Site = {
+        id: site.id,
+        name: site.name,
+        end: [site.lat, site.lng],
+      };
+      if (slot === "A") setSiteA(res);
+      else setSiteB(res);
+      setActiveSlot(slot);
+      setFlyTarget({ lat: site.lat, lng: site.lng, zoom: 11 });
+      const stateName = detectStateFromCoords(site.lat, site.lng, indiaGeoJson);
+      if (stateName) setSelectedState(stateName);
+    },
+    [pickableSites, indiaGeoJson],
+  );
+
+  // --- Compare "Search a place" (Photon suggestions) ---
+  const assignPlaceToSlot = useCallback(
+    (slot: "A" | "B", place: PlaceSuggestion) => {
+      const res: Site = {
+        end: [place.lat, place.lng],
+        name: place.area ? `${place.name}, ${place.area}` : place.name,
+      };
+      if (slot === "A") setSiteA(res);
+      else setSiteB(res);
+      setActiveSlot(slot);
+      setFlyTarget({ lat: place.lat, lng: place.lng, zoom: 11 });
+      const stateName = detectStateFromCoords(
+        place.lat,
+        place.lng,
+        indiaGeoJson,
+      );
+      if (stateName) setSelectedState(stateName);
+    },
+    [indiaGeoJson],
+  );
+
+  const locationOf = useCallback(
+    (site: Site | null): PickedLocation | null => {
+      if (!site) return null;
+      const [lat, lng] = site.end;
+      const state = detectStateFromCoords(lat, lng, indiaGeoJson);
+      return {
+        name: site.name.split(",").slice(0, 2).join(","),
+        region: state ? toTitleCase(state) : undefined,
+        lat,
+        lng,
+      };
+    },
+    [indiaGeoJson],
+  );
+  const locationA = useMemo(() => locationOf(siteA), [locationOf, siteA]);
+  const locationB = useMemo(() => locationOf(siteB), [locationOf, siteB]);
+
+  // --- Risk Map (LSD risk from the ML service) ---
+  const risk = useRiskPrediction({
+    active: geoTab === "risk",
+    pickableSites,
+    onLocate: (lat, lng, zoom) => setFlyTarget({ lat, lng, zoom }),
+  });
+
   const mapReady = !!(
     leafletReady &&
     leafletRef.current &&
     leafletRef.current.MapContainer
   );
 
+  const mapMode = geoTab === "risk" ? "risk" : "default";
+  const panelCopy = PANEL_COPY[geoTab];
+  const showSiteFooter = geoTab === "layers" || geoTab === "compare";
+
+  let panelBody: React.ReactNode = null;
+  if (geoTab === "layers") {
+    panelBody = (
+      <LayersTab
+        baseMap={activeBaseMap}
+        onBaseMapChange={setActiveBaseMap}
+        showSurveillanceSites={showSurveillanceSites}
+        setShowSurveillanceSites={toggleSurveillanceSites}
+        surveillanceSiteCount={surveillanceSites.length}
+        showPoultryLayer={showPoultryLayer}
+        setShowPoultryLayer={setShowPoultryLayer}
+        poultryCount={allPoultryCacheRef.current?.length}
+        isPoultryLoading={isPoultryLoading}
+        showCattleMarketLayer={showCattleMarketLayer}
+        setShowCattleMarketLayer={setShowCattleMarketLayer}
+        cattleMarketCount={
+          allCattleMarkets.length > 0 ? allCattleMarkets.length : undefined
+        }
+        isCattleMarketLoading={isCattleMarketLoading}
+      />
+    );
+  } else if (geoTab === "compare") {
+    panelBody = (
+      <CompareTab
+        sites={{
+          activeSlot,
+          setActiveSlot,
+          siteA,
+          siteB,
+          locationA,
+          locationB,
+          pickableSites: compareSites,
+          onPickSite: assignSiteToSlot,
+          onClearSite: clearSite,
+          onPickPlace: assignPlaceToSlot,
+        }}
+        radius={radius}
+        setRadius={setRadius}
+        showBufferWetlands={showBufferWetlands}
+        setShowBufferWetlands={setShowBufferWetlands}
+        showBufferPoultry={showBufferPoultry}
+        setShowBufferPoultry={setShowBufferPoultry}
+        forecast={forecast}
+      />
+    );
+  } else if (geoTab === "risk") {
+    panelBody = <RiskMapTab risk={risk} />;
+  }
+
   return (
-    <div className="dashboard-layout">
-      <DashboardHeader
+    <div className="geolens-root flex flex-col gap-3 p-3 lg:h-[calc(100vh-76px)] lg:min-h-[560px]">
+      <GeoLensTopBar
+        activeTab={geoTab}
+        onTabClick={handleTabClick}
         headerSearch={headerSearch}
         setHeaderSearch={setHeaderSearch}
         isSearching={isSearching}
         handleHeaderSearch={handleHeaderSearch}
-        showComparison={showComparison}
-        setShowComparison={setShowComparison}
         showFilters={showFilters}
         setShowFilters={setShowFilters}
         activeFilterCount={activeFilterCount}
         filtersButtonRef={filtersButtonRef}
       />
 
-      <div ref={filtersPanelRef}>
-        <SurveillanceFilters
-          resetKey={resetKey}
-          show={showFilters}
-          filters={filters}
-          handleFilterChange={handleFilterChange}
-          resetFilters={resetFilters}
-          selectedProjectId={selectedProjectId}
-          setSelectedProjectId={setSelectedProjectId}
-          showProjectSelector={showProjectSelector}
-          projectOptions={projectOptions}
-          stateOptions={stateOptions}
-          districtOptions={districtOptions}
-          diseaseOptions={diseaseOptions}
-          siteOptions={siteOptions}
-          sampleTypeOptions={sampleTypeOptions}
-          selectedWetland={selectedWetland}
-          setSelectedWetland={setSelectedWetland}
-          wetlandOptions={memoizedWetlandOptions}
-          wetlands={allCsvData.wetlands}
-          handleSiteSelection={handleHeaderLocationSelection}
-        />
-      </div>
-
-      <main className="dashboard-main">
-        {(showSidebar || sidebarClosing) && (
-          <DashboardSidebar
-            activeBaseMap={activeBaseMap}
-            setActiveBaseMap={setActiveBaseMap}
-            showPoultryLayer={showPoultryLayer}
-            setShowPoultryLayer={setShowPoultryLayer}
-            showCattleMarketLayer={showCattleMarketLayer}
-            setShowCattleMarketLayer={setShowCattleMarketLayer}
-            isPoultryLoading={isPoultryLoading}
-            isCattleMarketLoading={isCattleMarketLoading}
-            showBuffer={showBuffer}
-            setShowBuffer={setShowBuffer}
-            radius={radius}
-            setRadius={setRadius}
-            showBufferWetlands={showBufferWetlands}
-            setShowBufferWetlands={setShowBufferWetlands}
-            showBufferPoultry={showBufferPoultry}
-            setShowBufferPoultry={setShowBufferPoultry}
-            showHeatmap={showHeatmap}
-            setShowHeatmap={setShowHeatmap}
-            resetAll={resetAll}
-            setShowSidebar={closeSidebar}
-            showSurveillanceSites={showSurveillanceSites}
-            setShowSurveillanceSites={setShowSurveillanceSites}
-            closed={sidebarClosing}
-          />
-        )}
-
-        {!showSidebar && !sidebarClosing && (
-          <button
-            type="button"
-            aria-label="Open sidebar"
-            onClick={openSidebar}
-            className="absolute left-4 top-4 z-[1000] flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-md transition-colors hover:border-blue-300 hover:text-blue-600"
+      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+        {panelOpen && (
+          <GeoLensSidePanel
+            title={panelCopy.title}
+            subtitle={panelCopy.subtitle}
+            onCollapse={() => setPanelOpen(false)}
+            narrow={geoTab === "compare"}
+            footer={
+              showSiteFooter ? <ResetMapButton onClick={resetAll} /> : undefined
+            }
           >
-            <Menu size={19} />
-          </button>
+            {panelBody}
+          </GeoLensSidePanel>
         )}
 
-        <DashboardMap
-          mapReady={mapReady}
-          leafletRef={leafletRef}
-          activeBaseMap={activeBaseMap}
-          showBirdsLayer={showBirdsLayer}
-          showWetlandLayer={showWetlandLayer}
-          showBufferWetlands={showBufferWetlands}
-          showPoultryLayer={showPoultryLayer}
-          showBufferPoultry={showBufferPoultry}
-          showCattleMarketLayer={showCattleMarketLayer}
-          showHeatmap={showHeatmap}
-          showBuffer={showBuffer}
-          viewportZoom={viewportZoom}
-          setViewportZoom={updateViewportZoom}
-          setViewportBounds={updateViewportBounds}
-          isWaterLoading={isWaterLoading}
-          loadingLayerLabels={[
-            ...(isWetlandLoading ? ["wetlands"] : []),
-            ...(isPoultryLoading ? ["poultry farms"] : []),
-            ...(isCattleMarketLoading ? ["cattle markets"] : []),
-          ]}
-          indiaGeoJson={indiaGeoJson}
-          waterBoundariesData={displayWaterBoundariesData}
-          flyTarget={flyTarget}
-          handleSiteSelection={handleSiteSelection}
-          allPoultry={allCsvData.poultry}
-          allCattleMarkets={allCattleMarkets}
-          birdsA={birdsA}
-          birdsB={birdsB}
-          siteA={siteA}
-          siteB={siteB}
-          searchPin={searchPin}
-          radius={radius}
-          selectedState={selectedState}
-          iconA={iconA}
-          iconB={iconB}
-          searchIcon={searchIcon}
-          searchBirds={searchBirds}
-          showSurveillanceSites={showSurveillanceSites}
-          surveillanceSites={surveillanceSites}
-          onSurveillanceSiteClick={handleSurveillanceSiteClick}
-        />
-
-        {showComparison && (
-          <SiteComparisonPanel
-            activeSlot={activeSlot}
-            setActiveSlot={setActiveSlot}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            siteA={siteA}
-            siteB={siteB}
-            birdsA={birdsA}
-            birdsB={birdsB}
-            weatherA={weatherA}
-            weatherB={weatherB}
-            panelSearchA={panelSearchA}
-            panelSearchB={panelSearchB}
-            setPanelSearchA={setPanelSearchA}
-            setPanelSearchB={setPanelSearchB}
-            handlePanelSearch={handlePanelSearch}
-            resetAll={resetAll}
-            setShowComparison={setShowComparison}
-            nearestA={nearestA}
-            nearestB={nearestB}
-            wetlandAreaA={wetlandAreaA}
-            wetlandAreaB={wetlandAreaB}
-            poultryDensityA={poultryDensityA}
-            poultryDensityB={poultryDensityB}
-            totalBirdsA={totalBirdsA}
-            totalBirdsB={totalBirdsB}
-            speciesListA={speciesListA}
-            speciesListB={speciesListB}
-            farmsA={farmsA}
-            farmsB={farmsB}
-            radius={radius}
-            downloadComparisonReport={downloadComparisonReport}
-          />
-        )}
-
-        {searchPin && (
-          <TemporaryLocationPanel
-            searchPin={searchPin}
-            searchWeather={searchWeather}
-            searchBirds={searchBirds}
-            searchFarms={searchFarms}
-            nearestWetland={nearestSearch}
-            searchWetlandArea={searchWetlandArea}
-            radius={radius}
-            onClose={() => setSearchPin(null)}
-            onAssignToSite={(slot) => {
-              if (slot === "A") {
-                setSiteA(searchPin);
-              } else {
-                setSiteB(searchPin);
+        {/* Compare: the map with the comparison beside it once this column
+            is wide enough (a container query on the column), else below it.
+            The wrappers are there on every tab so the map never remounts
+            when the tab changes. */}
+        <div
+          className={
+            showComparison
+              ? "flex min-w-0 flex-1 flex-col gap-3 [container-type:inline-size] lg:min-h-0 lg:overflow-y-auto"
+              : "flex min-h-0 min-w-0 flex-1 flex-col"
+          }
+        >
+          <div
+            className={
+              showComparison
+                ? "flex flex-col gap-3 lg:[@container(min-width:800px)]:min-h-0 lg:[@container(min-width:800px)]:flex-1 lg:[@container(min-width:800px)]:flex-row"
+                : "flex min-h-0 flex-1 flex-col"
+            }
+          >
+            <div
+              className={
+                showComparison
+                  ? "flex min-w-0 flex-col gap-3 lg:[@container(min-width:800px)]:min-h-0 lg:[@container(min-width:800px)]:flex-1"
+                  : "flex min-h-0 min-w-0 flex-1 flex-col"
               }
-              setSearchPin(null);
-              setShowComparison(true);
-            }}
-          />
-        )}
-      </main>
+            >
+              <div
+                ref={mapFrameRef}
+                className={`relative isolate h-[65vh] min-h-[420px] overflow-hidden rounded-xl border border-grey-20 bg-white shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0 ${
+                  showComparison
+                    ? "lg:h-[calc((100vh-150px)*0.8)] lg:[@container(min-width:800px)]:h-auto lg:[@container(min-width:800px)]:min-h-0 lg:[@container(min-width:800px)]:flex-1"
+                    : "lg:h-auto lg:min-h-0 lg:flex-1"
+                }`}
+              >
+                <DashboardMap
+                  mapReady={mapReady}
+                  leafletRef={leafletRef}
+                  activeBaseMap={activeBaseMap}
+                  showBirdsLayer={showBirdsLayer && !forecastOnMap}
+                  showWetlandLayer={showWetlandLayer}
+                  showBufferWetlands={bufferWetlandsOn}
+                  showPoultryLayer={showPoultryLayer}
+                  showBufferPoultry={bufferPoultryOn}
+                  showCattleMarketLayer={showCattleMarketLayer}
+                  showHeatmap={heatmapOn}
+                  showBuffer={showBuffer}
+                  viewportZoom={viewportZoom}
+                  setViewportZoom={updateViewportZoom}
+                  setViewportBounds={updateViewportBounds}
+                  isWaterLoading={isWaterLoading}
+                  loadingLayerLabels={[
+                    ...(isWetlandLoading ? ["wetlands"] : []),
+                    ...(isPoultryLoading ? ["poultry farms"] : []),
+                    ...(isCattleMarketLoading ? ["cattle markets"] : []),
+                  ]}
+                  indiaGeoJson={indiaGeoJson}
+                  waterBoundariesData={displayWaterBoundariesData}
+                  flyTarget={flyTarget}
+                  handleSiteSelection={handleFeatureSelect}
+                  onMapClick={handleMapClick}
+                  allPoultry={allCsvData.poultry}
+                  allCattleMarkets={allCattleMarkets}
+                  birdsA={birdsA}
+                  birdsB={birdsB}
+                  siteA={siteA}
+                  siteB={siteB}
+                  searchPin={searchPin}
+                  radius={radius}
+                  selectedState={selectedState}
+                  iconA={iconA}
+                  iconB={iconB}
+                  searchIcon={searchIcon}
+                  searchBirds={searchBirds}
+                  showSurveillanceSites={showSurveillanceSites}
+                  surveillanceSites={surveillanceSites}
+                  onSurveillanceSiteClick={handleSurveillanceMarkerClick}
+                  mode={mapMode}
+                  forecastGrid={forecastOnMap ? forecast.grid.layer : null}
+                  riskPoint={risk.mapPoint}
+                  riskOutline={risk.outline}
+                  riskGrid={risk.mapGrid}
+                  fullscreen={mapFullscreen}
+                />
+
+                {/* The side panel is outside the full-screen frame */}
+                <MapFilterBar
+                  showOpenPanel={!panelOpen && !isFullscreen}
+                  onOpenPanel={() => openTab(geoTab)}
+                  chips={activeFilterChips}
+                  onRemoveChip={clearFilterGroup}
+                />
+
+                <div ref={filtersPanelRef}>
+                  <SurveillanceFilters
+                    resetKey={resetKey}
+                    show={showFilters}
+                    onClose={() => setShowFilters(false)}
+                    filters={filters}
+                    handleFilterChange={handleFilterChange}
+                    resetFilters={resetFilters}
+                    selectedProjectId={selectedProjectId}
+                    setSelectedProjectId={setSelectedProjectId}
+                    showProjectSelector={showProjectSelector}
+                    projectOptions={projectOptions}
+                    stateOptions={stateOptions}
+                    districtOptions={districtOptions}
+                    diseaseOptions={diseaseOptions}
+                    siteOptions={siteOptions}
+                    sampleTypeOptions={sampleTypeOptions}
+                    selectedWetland={selectedWetland}
+                    setSelectedWetland={setSelectedWetland}
+                    wetlandOptions={memoizedWetlandOptions}
+                    wetlands={allCsvData.wetlands}
+                    handleSiteSelection={handleHeaderLocationSelection}
+                  />
+                </div>
+
+                {searchPin && mapMode === "default" && (
+                  <LocationDetailsCard
+                    searchPin={searchPin}
+                    searchWeather={searchWeather}
+                    searchBirds={searchBirds}
+                    searchFarms={searchFarms}
+                    nearestWetland={nearestSearch}
+                    searchWetlandArea={searchWetlandArea}
+                    radius={radius}
+                    onClose={() => setSearchPin(null)}
+                    onAssignToSite={(slot) => {
+                      if (slot === "A") {
+                        setSiteA(searchPin);
+                      } else {
+                        setSiteB(searchPin);
+                      }
+                      setActiveSlot(slot);
+                      setSearchPin(null);
+                      openTab("compare");
+                    }}
+                  />
+                )}
+
+                {/* Bottom of the map: the legend and status pills, with the
+                    surveillance year/month bar under them while that layer
+                    is on (on every tab). One column, so the bar lifts the
+                    rest clear of it whether it takes one row or two. The
+                    wrapper ignores pointer events so the map can still be
+                    dragged between them. */}
+                <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[1000] flex flex-col gap-2">
+                  <div className="flex items-end justify-between gap-2">
+                    <MapLegend
+                      mode={mapMode}
+                      showSurveillance={showSurveillanceSites}
+                      showPoultry={showPoultryLayer || bufferPoultryOn}
+                      showCattle={showCattleMarketLayer}
+                      showBufferWetlands={showBufferWetlands}
+                      showHeatmap={heatmapOn}
+                      bufferActive={
+                        showBuffer && !!(siteA || siteB || searchPin)
+                      }
+                      hasSiteA={!!siteA}
+                      hasSiteB={!!siteB}
+                      hasSearchPin={!!searchPin}
+                      forecastGrid={
+                        forecastOnMap && forecast.grid.layer
+                          ? {
+                              minChance: forecast.minChance,
+                              species:
+                                forecast.grid.layer.species?.name ?? null,
+                              guild: forecast.grid.layer.guild,
+                            }
+                          : null
+                      }
+                      riskStatuses={risk.legendStatuses}
+                    />
+
+                    {/* Without the bar, mb-3 keeps the pills clear of the
+                        map attribution in the corner */}
+                    <div
+                      className={`flex flex-col items-end gap-1.5 ${
+                        showSurveillanceSites ? "" : "mb-3"
+                      }`}
+                    >
+                      {/* The forecast grid loads per week, so say when it's on its way */}
+                      <div role="status">
+                        {forecastOnMap &&
+                          (forecast.grid.loading || forecast.grid.error) && (
+                            <div
+                              title={forecast.grid.error ?? undefined}
+                              className="flex items-center gap-1.5 rounded-full border border-grey-20 bg-white px-3 py-1.5 text-xs font-semibold text-grey-80 shadow-md"
+                            >
+                              {forecast.grid.loading ? (
+                                <>
+                                  <Loader2
+                                    size={12}
+                                    aria-hidden="true"
+                                    className="animate-spin text-blue-40"
+                                  />
+                                  Loading forecast · Week {forecast.weekIdx + 1}
+                                </>
+                              ) : (
+                                "Couldn't load the forecast map"
+                              )}
+                            </div>
+                          )}
+                      </div>
+                      {mapMode === "default" ? (
+                        <div className="flex items-center gap-1.5 rounded-full border border-grey-20 bg-white px-3 py-1.5 text-xs font-semibold text-grey-80 shadow-md">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{ background: SITE_COLORS[activeSlot] }}
+                          />
+                          Map click places Site {activeSlot}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {showSurveillanceSites && (
+                    // mb-3 keeps the bar clear of the map attribution
+                    <div className="mb-3 flex justify-center">
+                      <MapPeriodFilter
+                        compact
+                        value={surveillancePeriod}
+                        years={SURVEILLANCE_YEARS}
+                        months={SURVEILLANCE_MONTHS}
+                        onChange={setSurveillancePeriod}
+                        loading={isSurveillanceLoading}
+                        error={surveillanceLoadError}
+                        className="pointer-events-auto"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {showComparison && (
+              <ComparisonResults
+                className="lg:[@container(min-width:800px)]:min-h-0 lg:[@container(min-width:800px)]:w-[clamp(360px,30cqi,420px)] lg:[@container(min-width:800px)]:flex-shrink-0"
+                compareTab={compareTab}
+                setCompareTab={setCompareTab}
+                forecast={forecast}
+                siteA={siteA}
+                siteB={siteB}
+                birdsA={birdsA}
+                birdsB={birdsB}
+                weatherA={weatherA}
+                weatherB={weatherB}
+                nearestA={nearestA}
+                nearestB={nearestB}
+                wetlandAreaA={wetlandAreaA}
+                wetlandAreaB={wetlandAreaB}
+                poultryDensityA={poultryDensityA}
+                poultryDensityB={poultryDensityB}
+                totalBirdsA={totalBirdsA}
+                totalBirdsB={totalBirdsB}
+                speciesListA={speciesListA}
+                speciesListB={speciesListB}
+                farmsA={farmsA}
+                farmsB={farmsB}
+                radius={radius}
+                downloadComparisonReport={downloadComparisonReport}
+              />
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
