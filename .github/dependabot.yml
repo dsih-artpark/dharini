@@ -1,0 +1,162 @@
+# Dependabot configuration for Dharini project
+# Documentation: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Keeps the number of pull requests (and the CI runs they start) small:
+#   - monthly, one pull request per folder for minor and patch updates
+#   - no automatic rebase when staging moves; comment "@dependabot rebase" on a
+#     pull request when you want one
+#   - major versions are left out; update those by hand
+# Security updates are not affected by the schedule: they open as soon as an
+# advisory is published.
+
+version: 2
+updates:
+  # ===================
+  # WEB (Next.js Frontend)
+  # ===================
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    reviewers:
+      - "dsih-artpark/dharini"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      web-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(web)"
+
+  # ===================
+  # BACKEND (NestJS)
+  # ===================
+  - package-ecosystem: "npm"
+    directory: "/backend"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    reviewers:
+      - "dsih-artpark/dharini"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      backend-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(backend)"
+
+  # ===================
+  # MOBILE (Flutter) - DISABLED FOR NOW
+  # ===================
+  # - package-ecosystem: "pub"
+  #   directory: "/mobile"
+  #   schedule:
+  #     interval: "weekly"
+  #     day: "monday"
+  #     time: "09:00"
+  #     timezone: "Asia/Kolkata"
+  #   target-branch: "staging"
+  #   reviewers:
+  #     - "dsih-artpark/dharini"
+  #   open-pull-requests-limit: 5
+  #   # Only allow patch and minor updates
+  #   ignore:
+  #     - dependency-name: "*"
+  #       update-types: ["version-update:semver-major"]
+  #   groups:
+  #     # Group Flutter/Dart SDK packages
+  #     flutter-sdk:
+  #       patterns:
+  #         - "flutter"
+  #         - "flutter_test"
+  #         - "flutter_localizations"
+  #     # Group state management
+  #     state-management:
+  #       patterns:
+  #         - "flutter_bloc"
+  #         - "bloc"
+  #         - "flutter_hooks"
+  #         - "provider"
+  #     # Group networking packages
+  #     networking:
+  #       patterns:
+  #         - "dio"
+  #         - "http"
+  #         - "connectivity*"
+  #     # Group UI packages
+  #     ui:
+  #       patterns:
+  #         - "google_fonts"
+  #         - "flutter_svg*"
+  #         - "cached_network_image"
+  #         - "flutter_animate"
+  #     # Group mapping/location packages
+  #     mapping:
+  #       patterns:
+  #         - "flutter_map*"
+  #         - "geolocator*"
+  #         - "latlong2"
+  #     # Group storage packages
+  #     storage:
+  #       patterns:
+  #         - "hive*"
+  #         - "flutter_secure_storage"
+  #     # Group code generation packages
+  #     codegen:
+  #       patterns:
+  #         - "freezed*"
+  #         - "json_serializable"
+  #         - "json_annotation"
+  #         - "build_runner"
+  #         - "built_value*"
+  #   commit-message:
+  #     prefix: "chore(mobile)"
+
+  # ===================
+
+  # ===================
+  # GitHub Actions (third-party actions are pinned to commit SHAs)
+  # ===================
+  # Minor and patch updates come as one pull request. A major version of an
+  # action gets its own pull request: these sit in the publish and deploy path,
+  # which the pull request checks do not run.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    target-branch: "staging"
+    reviewers:
+      - "dsih-artpark/dharini"
+    open-pull-requests-limit: 3
+    rebase-strategy: "disabled"
+    groups:
+      actions-minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore(ci)"

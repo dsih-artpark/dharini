@@ -1,0 +1,170 @@
+# Images for backend and frontend are published to Docker Hub by
+# .github/workflows/publish-images.yml. `docker compose pull` fetches them,
+# `docker compose up --build` builds them from this checkout instead.
+#   IMAGE_TAG        staging | production | sha-<commit>   (default: production)
+#   IMAGE_REGISTRY   where the images are pulled from      (default: dsihartpark)
+# The bundled PostgreSQL is in the `bundled-db` profile; deploy.sh adds it when
+# DB_HOST in .env is `postgres`. With an external database (for example AWS RDS)
+# it does not start. Add `--profile bundled-db` when you run docker compose
+# yourself with the bundled database.
+# Postgres, Redis and pgAdmin listen on 127.0.0.1 only. The backend (4000) and
+# frontend (3000) ports are open: put a reverse proxy or firewall in front of them.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: postgres16-postgis
+    restart: unless-stopped
+    profiles: ["development", "bundled-db"]
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_DATABASE}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    restart: unless-stopped
+    profiles: ["development", "staging", "production"]
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  pgadmin:
+    image: dpage/pgadmin4:9
+    container_name: pgadmin
+    restart: unless-stopped
+    profiles: ["development", "staging"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_LISTEN_PORT: 5050
+    ports:
+      - "127.0.0.1:5050:5050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  backend:
+    image: ${IMAGE_REGISTRY:-dsihartpark}/dharini-backend:${IMAGE_TAG:-production}
+    build:
+      context: ./backend
+    container_name: backend
+    restart: unless-stopped
+    profiles: ["development", "staging", "production"]
+    env_file:
+      - .env
+    environment:
+      # Optional data files that are not in the image (poultry farms, cattle
+      # markets) go in ./geolens-data on the host. See DATA_SOURCES.md.
+      GEOLENS_DATA_DIR: /app/geolens-data
+    volumes:
+      - ./geolens-data:/app/geolens-data:ro
+    ports:
+      - "4000:4000"
+    # The backend loads reference data and runs migrations before it listens,
+    # so the first start can take a few minutes.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:4000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)}).on('error', () => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 300s
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_started
+
+  frontend:
+    image: ${IMAGE_REGISTRY:-dsihartpark}/dharini-frontend:${IMAGE_TAG:-production}
+    build:
+      context: ./web
+      args:
+        NODE_VERSION: ${NODE_VERSION:-22}
+    container_name: frontend
+    hostname: frontend
+    restart: unless-stopped
+    profiles: ["development", "staging", "production"]
+    # NEXT_PUBLIC_* are read when the container starts, so they are not build args.
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXT_PUBLIC_APP_ENV=${NEXT_PUBLIC_APP_ENV}
+      - NEXT_PUBLIC_SUPER_ADMIN_LAB_FLOW=${NEXT_PUBLIC_SUPER_ADMIN_LAB_FLOW:-false}
+      - NEXT_PUBLIC_APK_DOWNLOAD_URL=${NEXT_PUBLIC_APK_DOWNLOAD_URL}
+      # Don't override NODE_ENV - let Dockerfile handle it
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+
+  # Serves the Flutter web build from ./mobile-web with nginx. The build has your
+  # API address compiled in, so it is made per deployment and not published:
+  # Mobile CI copies it here, or run `flutter build web --release` in mobile/
+  # and copy build/web/* into ./mobile-web. Start it with
+  # `docker compose --profile mobile-web up -d mobile-web`; new files are served
+  # at once, no restart needed.
+  mobile-web:
+    image: nginx:alpine
+    container_name: mobile-web
+    restart: unless-stopped
+    profiles: ["mobile-web"]
+    volumes:
+      - ./mobile-web:/usr/share/nginx/html:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        printf 'server {\n  listen 80;\n  root /usr/share/nginx/html;\n  location / { try_files $$uri $$uri/ /index.html; }\n}\n' > /etc/nginx/conf.d/default.conf
+        exec nginx -g 'daemon off;'
+    ports:
+      - "3002:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  garage:
+    image: dxflrs/garage:v2.2.0
+    container_name: garage
+    restart: unless-stopped
+    profiles: ["garage"]
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage_meta:/var/lib/garage/meta
+      - garage_data:/var/lib/garage/data
+    ports:
+      - "127.0.0.1:3900:3900"
+      - "127.0.0.1:3901:3901"
+      - "127.0.0.1:3902:3902"
+      - "127.0.0.1:3903:3903"
+
+volumes:
+  postgres_data:
+  redis_data:
+  garage_meta:
+  garage_data:

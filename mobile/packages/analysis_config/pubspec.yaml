@@ -1,0 +1,13 @@
+name: analysis_config
+description: Shared analysis configuration
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  custom_lint: ^0.5.7
+  flutter_lints: ^4.0.0
+  very_good_analysis: ^5.1.0
+  

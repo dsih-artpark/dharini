@@ -1,0 +1,4 @@
+# melos_managed_dependency_overrides: analysis_config
+dependency_overrides:
+  analysis_config:
+    path: ../analysis_config

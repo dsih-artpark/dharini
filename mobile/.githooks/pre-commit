@@ -1,0 +1,58 @@
+#!/bin/bash
+
+echo "Running pre-commit checks..."
+
+# Store the files that are about to be committed
+FILES=$(git diff --cached --name-only --diff-filter=ACMR "*.dart" | sed 's| |\\ |g')
+[ -z "$FILES" ] && exit 0
+
+# Function to check command status and filter output
+run_analyzer() {
+    # Run analyzer and store output
+    OUTPUT=$(dart run melos run analyze 2>&1)
+    EXIT_CODE=$?
+    
+    # Only show error level issues (filter out info and warning)
+    ERROR_COUNT=$(echo "$OUTPUT" | grep -c "• error •" || true)
+    
+    if [ $ERROR_COUNT -gt 0 ]; then
+        echo "❌ Found $ERROR_COUNT error(s):"
+        echo "$OUTPUT" | grep -A 1 "• error •"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Format Dart code
+echo "📝 Formatting Dart code..."
+dart run melos run format
+if [ $? -ne 0 ]; then
+    echo "❌ Formatting failed"
+    exit 1
+fi
+
+# Run analyzer with error-only filtering
+echo "🔎 Running Flutter analyzer (errors only)..."
+run_analyzer
+if [ $? -ne 0 ]; then
+    echo "❌ Found error-level issues. Please fix them before committing."
+    exit 1
+fi
+
+# Fix any auto-fixable issues
+echo "🔧 Applying auto-fixes..."
+dart fix --apply
+if [ $? -ne 0 ]; then
+    echo "❌ Auto-fix failed"
+    exit 1
+fi
+
+# If there are any changes after formatting/fixing, add them to staging
+if [ -n "$(git diff --name-only)" ]; then
+    echo "✨ Adding auto-fixed changes to staging..."
+    git add $(git diff --name-only)
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0

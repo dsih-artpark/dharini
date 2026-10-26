@@ -1,0 +1,4 @@
+market_name,operating_day,latitude,longitude,lgd_district,district,lgd_state,state
+Example Cattle Market A,Monday,12.9716,77.5946,525,Bengaluru Urban,29,Karnataka
+Example Cattle Market B,Thursday,12.2958,76.6394,545,Mysuru,29,Karnataka
+Example Cattle Market C,,19.9975,73.7898,487,Nashik,27,Maharashtra

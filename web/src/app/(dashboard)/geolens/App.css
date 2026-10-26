@@ -1,0 +1,511 @@
+/* App.css - Professional Dashboard Styles */
+:root {
+  --sidebar-bg: #f8f9fa;
+  --sidebar-hover: #f3f5fb;
+  --accent-blue: #3a11b6;
+  --accent-green: #107c10;
+  --text-light: #ffffff;
+  --text-dark: #11181c;
+  --border-color: #e6e8eb;
+  --glass-bg: rgba(255, 255, 255, 0.9);
+}
+
+.dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+.dashboard-header {
+  height: 60px;
+  background: white;
+  border-bottom: 1px solid #e6e8eb;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  justify-content: space-between;
+  z-index: 1000;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modern-select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #d7dbdf;
+  background: #fff;
+  font-size: 11px;
+  color: var(--text-dark);
+  outline: none;
+  cursor: pointer;
+  min-width: 90px;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.modern-select:hover {
+  border-color: var(--accent-blue);
+}
+
+.dashboard-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 292px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: #ffffff;
+  color: #11181c;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+  transform: translateX(0);
+  z-index: 1100;
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.06);
+  border-right: 1px solid #e6e8eb;
+}
+
+.sidebar--closed {
+  transform: translateX(-100%);
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e6e8eb;
+  flex-shrink: 0;
+}
+
+.sidebar-eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #11181c;
+}
+
+.sidebar-heading {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 800;
+  color: #11181c;
+}
+
+.sidebar-toggle-button {
+  display: flex;
+  height: 36px;
+  width: 36px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 8px;
+  border: 1px solid #d7dbdf;
+  background: #ffffff;
+  color: #687076;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.sidebar-toggle-button:hover {
+  border-color: #5d7fdd;
+  background: #f3f5fb;
+  color: #3a11b6;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 14px 18px;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #d7dbdf;
+  border-radius: 999px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-section {
+  padding: 14px;
+  margin-bottom: 12px;
+  border: 1px solid #e6e8eb;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #889096;
+  margin: 0 0 12px;
+  letter-spacing: 0.8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  margin-bottom: 6px;
+  color: #11181c;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.sidebar-item:hover {
+  background: #f3f5fb;
+  border-color: #cdd6ef;
+  color: #3a11b6;
+}
+
+.sidebar-item.active {
+  background: #f3f5fb;
+  color: #3a11b6;
+  border-color: #cdd6ef;
+}
+
+.sidebar-item-static {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  background: #ffffff;
+  color: #3a11b6;
+  border: 1px solid #e6e8eb;
+  cursor: default;
+}
+
+.sidebar-density-legend {
+  padding: 2px 0 4px 32px;
+  font-size: 11px;
+  color: #889096;
+}
+
+.sidebar-density-legend div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.sidebar-density-legend span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.sidebar-buffer-panel {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f8f9fa;
+  border: 1px solid #e6e8eb;
+}
+
+.sidebar-reference-panel {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: #ffffff;
+  border: 1px solid #e6e8eb;
+  border-radius: 8px;
+}
+
+.sidebar-reference-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #889096;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-reference-panel label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #687076;
+}
+
+.sidebar-reference-panel input {
+  accent-color: #3a11b6;
+  cursor: pointer;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 14px 18px 18px;
+  border-top: 1px solid #e6e8eb;
+  background: #ffffff;
+}
+
+.sidebar-reset-button {
+  width: 100%;
+  padding: 10px 12px;
+  background: #ffffff;
+  border: 1px solid #e1a8a5;
+  color: #a1221b;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.sidebar-reset-button:hover {
+  background: #fbe9e7;
+  border-color: #e1a8a5;
+}
+
+/* Map Area */
+.map-viewport {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: #f8f9fa;
+}
+
+.map-viewport .leaflet-top.leaflet-right {
+  top: 16px;
+  right: 16px;
+}
+
+.map-viewport .leaflet-control-zoom {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.map-viewport .leaflet-control-zoom a {
+  width: 38px;
+  height: 38px;
+  line-height: 36px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #11181c;
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+  font-size: 22px;
+  font-weight: 600;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.map-viewport .leaflet-control-zoom a:hover {
+  background: #f3f5fb;
+  color: #3a11b6;
+}
+
+.map-viewport .dashboard-recenter-control {
+  margin-top: 10px;
+}
+
+.map-viewport .dashboard-recenter-control button {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #11181c;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 36px;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.map-viewport .dashboard-recenter-control button:hover {
+  background: #f3f5fb;
+  color: #3a11b6;
+  transform: translateY(-1px);
+}
+
+/* Right Comparison Panel */
+.comparison-panel {
+  width: 400px;
+  background: white;
+  border-left: 1px solid #e6e8eb;
+  display: flex;
+  flex-direction: column;
+  z-index: 850;
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.04);
+}
+
+.panel-header {
+  padding: 20px;
+  border-bottom: 1px solid #e6e8eb;
+}
+
+.panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+/* Custom Selects & Inputs */
+.modern-select {
+  padding: 6px 10px;
+  border: 1px solid #d7dbdf;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.compare-btn {
+  background: white;
+  border: 2px solid var(--accent-blue);
+  color: var(--accent-blue);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+
+.compare-btn:hover {
+  background: var(--accent-blue);
+  color: white;
+}
+
+/* Table Styles */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+.comparison-table th {
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #889096;
+  padding: 8px;
+  border-bottom: 2px solid #e6e8eb;
+}
+
+.comparison-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #e6e8eb;
+  font-size: 13px;
+}
+
+.metric-label {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.status-badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-high {
+  background: #fbe9e7;
+  color: #a1221b;
+}
+.status-medium {
+  background: #fef3e1;
+  color: #9b6323;
+}
+.status-low {
+  background: #e9f4e8;
+  color: #107c10;
+}
+
+/* Radar Chart Area */
+.radar-container {
+  margin-top: 25px;
+  height: 250px;
+  width: 100%;
+}
+
+/* Emoji layer markers (see createEmojiIcon in DashboardMap). The class only
+   exists to replace Leaflet's default .leaflet-div-icon, which would draw a
+   white box behind each glyph; the glyph itself is styled inline. */
+.geolens-emoji-marker {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+/* Spinner shown on a sidebar layer toggle while that layer is fetching. */
+.sidebar-item-spinner {
+  margin-left: auto;
+  color: #6b7280;
+}

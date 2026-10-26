@@ -1,0 +1,17 @@
+# es_client.model.GetSiteOnDiseaseResponseData
+
+## Load the model package
+```dart
+import 'package:es_client/api.dart';
+```
+
+## Properties
+Name | Type | Description | Notes
+------------ | ------------- | ------------- | -------------
+**sites** | [**GetSiteOnDiseaseSiteStatData**](GetSiteOnDiseaseSiteStatData.md) |  | 
+**visits** | [**GetSiteOnDiseaseVisitStatData**](GetSiteOnDiseaseVisitStatData.md) |  | 
+**samples** | [**GetSiteOnSampleVisitStatData**](GetSiteOnSampleVisitStatData.md) |  | 
+
+[[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+

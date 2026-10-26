@@ -1,0 +1,185 @@
+name: Smoke Test - Build Verification
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - production
+  workflow_dispatch:
+
+concurrency:
+  group: smoke-test-${{ github.ref }}
+  cancel-in-progress: true
+
+# A pull request only runs the checks for the parts it changes. A job that is
+# skipped this way counts as passed for the required checks, so a web-only
+# change does not wait for the 15-minute Flutter build. Manual runs build all.
+jobs:
+  changes:
+    name: Detect changed parts
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      web: ${{ steps.filter.outputs.web }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work out which parts changed
+        id: filter
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            printf 'backend=true\nweb=true\nmobile=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}")
+          echo "$FILES"
+          has() { echo "$FILES" | grep -qE "$1" && echo true || echo false; }
+          # Changing this workflow re-runs the quick builds, not Flutter.
+          echo "backend=$(has '^(backend/|\.github/workflows/smoke-test\.yml$)')" >> "$GITHUB_OUTPUT"
+          echo "web=$(has '^(web/|\.github/workflows/smoke-test\.yml$)')" >> "$GITHUB_OUTPUT"
+          echo "mobile=$(has '^mobile/')" >> "$GITHUB_OUTPUT"
+
+  build-backend:
+    name: Build Backend
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+  build-web:
+    name: Build Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web
+        env:
+          # Placeholder values for build-time env vars (not secrets)
+          NEXT_PUBLIC_API_URL: "https://placeholder.example.com"
+          NEXT_PUBLIC_APP_ENV: "ci"
+        run: npm run build
+
+  # Code generation and `flutter analyze`: a few minutes. The full Android and web
+  # builds, signed, are made by the Mobile CI workflow before a release.
+  build-mobile:
+    name: Build Mobile (Flutter)
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Read Flutter version from .fvmrc
+        id: fvm
+        run: echo "version=$(jq -r '.flutter' .fvmrc)" >> $GITHUB_OUTPUT
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.version }}
+          cache: true
+
+      - name: Create FVM symlink for melos
+        run: |
+          mkdir -p .fvm
+          ln -s "$(dirname "$(dirname "$(which flutter)")")" .fvm/flutter_sdk
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            mobile/.dart_tool
+          key: pub-${{ runner.os }}-${{ hashFiles('mobile/pubspec.yaml', 'mobile/packages/**/pubspec.yaml') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('mobile/android/build.gradle', 'mobile/android/app/build.gradle') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Generate code (schema)
+        run: melos run schema:generate
+
+      - name: Generate code (barrel files)
+        run: melos run barrel:generate
+
+      - name: Format generated code
+        run: dart format .
+
+      - name: Create placeholder .env file
+        run: |
+          cat > .env << EOF
+          MAP_API_KEY=placeholder
+          API_BASE_URL=https://placeholder.example.com
+          SENTRY_DSN=https://placeholder@sentry.io/0
+          SENTRY_ENV=ci
+          EOF
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos .
+

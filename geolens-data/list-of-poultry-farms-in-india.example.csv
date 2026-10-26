@@ -1,0 +1,4 @@
+name,address,phone,email,lat,lng,url,rating_count,star_count,country,state,city,zip
+Example Poultry Farm A,"1 Example Road, Example Town",,,12.9716,77.5946,,0,0,India,Karnataka,Bengaluru,560001
+Example Poultry Farm B,2 Sample Lane,,,12.2958,76.6394,,0,0,India,Karnataka,Mysuru,570001
+Example Poultry Farm C,3 Test Street,,,18.5204,73.8567,,0,0,India,Maharashtra,Pune,411001

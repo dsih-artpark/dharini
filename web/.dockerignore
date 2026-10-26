@@ -1,0 +1,12 @@
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.next
+node_modules
+dist
+# Local-only data we may not republish. Anything in public/ is served to the
+# world, so never bake these in, even from a local checkout.
+public/data/poultry-farms.json
+public/maps/india_wetland_boundaries.geojson

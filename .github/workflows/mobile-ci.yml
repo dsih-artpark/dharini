@@ -1,0 +1,236 @@
+name: Mobile CI
+
+# Run manually on the staging or production branch. Builds the signed Android
+# APK and the Flutter web build, then publishes the APK as a GitHub Release:
+#   production  release v<version from mobile/pubspec.yaml>, marked latest
+#               https://github.com/<owner>/<repo>/releases/latest/download/dharini.apk
+#   staging     pre-release "staging-v<version>", one per version; running it
+#               again for the same version replaces that release's APK. A copy is
+#               also kept as pre-release "staging-latest" for a stable link:
+#               https://github.com/<owner>/<repo>/releases/download/staging-latest/dharini-staging.apk
+#
+# Bump `version:` in mobile/pubspec.yaml only when the next release cycle
+# starts (after the production release), so staging rebuilds reuse a version and
+# production versions have no gaps. Android's version code is set from the run
+# number, so a rebuild of the same version still installs as an update.
+# Optionally also copies the web build to a server (only when the HOST secret
+# is set), for the mobile-web container (served by nginx from ./mobile-web on the server). Forks only need the app and signing
+# secrets below.
+
+on:
+  workflow_dispatch:
+    inputs:
+      replace_existing:
+        description: "Production: replace the release if v<version> already exists (normally bump the version in mobile/pubspec.yaml instead)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: mobile-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Build & Release
+    if: github.ref_name == 'staging' || github.ref_name == 'production'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'production' && 'production' || 'staging' }}
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HAS_SERVER: ${{ secrets.HOST != '' }}
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Fails in seconds, before the long build, if the version was not bumped.
+      - name: Check the release version is new
+        if: github.ref_name == 'production' && !inputs.replace_existing
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//')
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::Release v$VERSION already exists. Bump 'version:' in mobile/pubspec.yaml, or run this workflow with replace_existing."
+            exit 1
+          fi
+
+      # The runner image ships several GB of toolchains this build never uses.
+      # Reclaiming them keeps the release build and the cache save from
+      # exhausting the disk. Android SDK, Java and Flutter are left untouched.
+      - name: Free up runner disk space
+        run: |
+          echo "--- disk before cleanup ---"
+          df -h /
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc /usr/local/.ghcup || true
+          sudo rm -rf /usr/local/share/powershell || true
+          sudo rm -rf /usr/share/swift || true
+          echo "--- disk after cleanup ---"
+          df -h /
+
+      - name: Read Flutter version from .fvmrc
+        id: fvm
+        run: echo "version=$(jq -r '.flutter' .fvmrc)" >> $GITHUB_OUTPUT
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ steps.fvm.outputs.version }}
+          cache: true
+
+      - name: Create FVM symlink for melos
+        run: |
+          mkdir -p .fvm
+          ln -s "$(dirname "$(dirname "$(which flutter)")")" .fvm/flutter_sdk
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2/files-2.1
+            ~/.gradle/caches/build-cache-1
+            ~/.gradle/wrapper
+            mobile/android/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('mobile/android/build.gradle', 'mobile/android/app/build.gradle', 'mobile/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Install Melos
+        run: dart pub global activate melos
+
+      - name: Bootstrap workspace
+        run: melos bootstrap
+
+      - name: Generate code (schema)
+        run: melos run schema:generate
+
+      - name: Generate code (barrel files)
+        run: melos run barrel:generate
+
+      - name: Create .env file (CI)
+        run: |
+          cat > .env << EOF
+          MAP_API_KEY=${{ secrets.MAP_API_KEY || secrets.STADIA_API_KEY }}
+          API_BASE_URL=${{ secrets.API_BASE_URL }}
+          SENTRY_DSN=${{ secrets.SENTRY_DSN }}
+          SENTRY_ENV=${{ secrets.SENTRY_ENV }}
+          EOF
+
+      - name: Decode release keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release-keystore.jks
+
+      - name: Build APK (release)
+        run: flutter build apk --release --build-number=${{ github.run_number }}
+        env:
+          KEYSTORE_FILE: release-keystore.jks
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Build Web (release)
+        run: flutter build web --release
+
+      # Runs even on failure so a future out-of-disk run tells us exactly
+      # what filled up, instead of leaving it to guesswork.
+      - name: Report disk usage
+        if: always()
+        run: |
+          df -h /
+          echo "--- mobile/build ---"
+          du -sh build 2>/dev/null || true
+          echo "--- gradle caches ---"
+          du -sh ~/.gradle/caches 2>/dev/null || true
+
+      - name: Get app version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //; s/+.*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Name the APK
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/${{ github.ref_name == 'production' && 'dharini.apk' || 'dharini-staging.apk' }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dharini-v${{ steps.version.outputs.version }}-${{ github.ref_name }}
+          path: mobile/build/app/outputs/flutter-apk/${{ github.ref_name == 'production' && 'dharini.apk' || 'dharini-staging.apk' }}
+          retention-days: 7
+
+      - name: Publish release (production)
+        if: github.ref_name == 'production'
+        run: |
+          TAG="v${{ steps.version.outputs.version }}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          fi
+          gh release create "$TAG" build/app/outputs/flutter-apk/dharini.apk \
+            --target "$GITHUB_SHA" \
+            --title "Dharini ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --latest
+          echo "Download: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/latest/download/dharini.apk" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish pre-release (staging)
+        if: github.ref_name == 'staging'
+        run: |
+          APK=build/app/outputs/flutter-apk/dharini-staging.apk
+          NOTES="Staging build of $GITHUB_SHA (run #${{ github.run_number }}). Running Mobile CI again for the same version replaces this APK."
+          for TAG in "staging-v${{ steps.version.outputs.version }}" staging-latest; do
+            if gh release view "$TAG" > /dev/null 2>&1; then
+              gh release delete "$TAG" --cleanup-tag --yes
+            fi
+            gh release create "$TAG" "$APK" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Staging ${{ steps.version.outputs.version }} (build ${{ github.run_number }}, ${GITHUB_SHA::7})" \
+              --notes "$NOTES"
+          done
+          echo "Download: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/staging-latest/dharini-staging.apk" >> "$GITHUB_STEP_SUMMARY"
+
+      # Only for a deployment that serves the Flutter web build from its own
+      # server (the mobile-web container). Skipped when no HOST secret is set.
+      - name: Copy web build to server
+        if: env.HAS_SERVER == 'true'
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.JUMP_HOST }}
+          proxy_username: ${{ secrets.JUMP_USER }}
+          proxy_key: ${{ secrets.JUMP_KEY }}
+          source: "mobile/build/web/*"
+          target: "deploy/dharini/mobile-web/"
+          strip_components: 3
+
+      # The nginx container serves ./mobile-web, so the new files are live as
+      # soon as they are copied. This only makes sure the container is running;
+      # it needs docker-compose.yml from a previous "Deploy to server" run.
+      - name: Make sure mobile-web is running
+        if: env.HAS_SERVER == 'true'
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262 # v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          proxy_host: ${{ secrets.JUMP_HOST }}
+          proxy_username: ${{ secrets.JUMP_USER }}
+          proxy_key: ${{ secrets.JUMP_KEY }}
+          script: |
+            cd deploy/dharini
+            docker compose --profile mobile-web up -d mobile-web

@@ -1,0 +1,88 @@
+name: Publish Docker images
+
+# Runs when a pull request is merged into staging or production. The images
+# are what the deploy workflow, and anyone self-hosting Dharini, pull.
+#   <DOCKERHUB_NAMESPACE>/dharini-backend | dharini-frontend (Docker Hub)
+# Tags: the branch name (staging or production) and sha-<short commit>.
+# Linux amd64 only.
+#
+# Needs the repository variable DOCKERHUB_NAMESPACE (the Docker Hub user or
+# organization to push to; the job is skipped while it is unset) and the secrets
+# DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (an access token with Read & Write).
+#
+# Optional continuous deployment: set the repository variable
+# AUTO_DEPLOY_STAGING and/or AUTO_DEPLOY_PRODUCTION to "true" and the images are
+# deployed with deploy.yml as soon as they are published.
+#
+# Labels are static on purpose: with no timestamp or commit in them, a build
+# whose files did not change gives the same image as before, so `deploy.sh`
+# leaves that container running.
+
+on:
+  push:
+    branches: [staging, production]
+  workflow_dispatch:
+
+concurrency:
+  group: publish-images-${{ github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.image }}
+    if: vars.DOCKERHUB_NAMESPACE != '' && (github.ref_name == 'staging' || github.ref_name == 'production')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: dharini-backend
+            context: backend
+          - image: dharini-frontend
+            context: web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Work out image tags
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ${{ vars.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=Apache-2.0
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  deploy:
+    name: Deploy
+    needs: publish
+    if: (github.ref_name == 'staging' && vars.AUTO_DEPLOY_STAGING == 'true') || (github.ref_name == 'production' && vars.AUTO_DEPLOY_PRODUCTION == 'true')
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
