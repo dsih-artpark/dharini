@@ -70,6 +70,7 @@ Give each server its own value for these, and never reuse secrets between them:
 | `DB_PASSWORD`, `JWT_SECRET`, `WEBHOOK_SECRET`, `S3_*` | Its own values | Its own values |
 | `PIPELINE_CALLBACK_URL` | Staging backend address | Production backend address |
 | `NEXT_PUBLIC_APK_DOWNLOAD_URL` | The `staging-latest` release link | The `releases/latest` link (see [Mobile App](/administrator-guide/mobile-app/)) |
+| `NEXT_PUBLIC_MOBILE_WEB_URL` | The staging mobile web address | The production mobile web address |
 | `NODE_ENV`, `ALLOW_FIXED_OTP` | `production`, or any other value with `ALLOW_FIXED_OTP=true` if testers should sign in with the fixed code `123456` | `production`, `ALLOW_FIXED_OTP` unset |
 | `IMAGE_REGISTRY` | Your Docker Hub namespace if it is not `dsihartpark` | The same |
 

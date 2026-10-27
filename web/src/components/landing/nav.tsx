@@ -5,7 +5,11 @@ import { Menu, X } from "lucide-react";
 import { useAuthDialog } from "./auth/auth-dialog-provider";
 import type { AuthMode } from "./auth/auth-dialog";
 import { buttonClass } from "./button-styles";
+import { mobileAppLinks } from "./mobile-app-links";
 import { SiteHeader } from "./ui";
+
+const NAV_LINK_CLASS =
+  "inline-flex items-center py-2.5 text-left text-base text-[#56546f] transition-colors hover:text-landing-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-landing-purple min-[900px]:py-0 min-[900px]:text-[14.5px]";
 
 export default function Nav() {
   const { openAuth } = useAuthDialog();
@@ -22,9 +26,21 @@ export default function Nav() {
         className={`${menuOpen ? "flex" : "hidden"} absolute inset-x-0 top-16 flex-col items-stretch gap-1 border-b border-[#e8e5f3] bg-white px-6 pb-5 pt-3 shadow-[0_20px_30px_-20px_#15143a40] min-[900px]:static min-[900px]:flex min-[900px]:flex-row min-[900px]:items-center min-[900px]:gap-7 min-[900px]:border-0 min-[900px]:bg-transparent min-[900px]:p-0 min-[900px]:shadow-none`}
         aria-label="Primary"
       >
+        {mobileAppLinks().map(({ href, label, Icon }) => (
+          <a
+            key={label}
+            className={`${NAV_LINK_CLASS} gap-[7px]`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setMenuOpen(false)}
+          >
+            <Icon size={15} strokeWidth={2} /> {label}
+          </a>
+        ))}
         <button
           type="button"
-          className="inline-flex items-center py-2.5 text-left text-base text-[#56546f] transition-colors hover:text-landing-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-landing-purple min-[900px]:py-0 min-[900px]:text-[14.5px]"
+          className={NAV_LINK_CLASS}
           onClick={() => open("login")}
         >
           Sign in

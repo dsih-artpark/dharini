@@ -203,7 +203,8 @@ docker compose --profile production up -d frontend
 | `NEXT_PUBLIC_API_URL` | Required | none | Public URL at which the browser reaches the backend. The backend itself has no `/api` prefix. Example: `http://localhost:4000` in development; `https://dharini.example.org/api` behind Nginx set up as in the [Nginx guide](/administrator-guide/nginx-configuration), which removes the `/api` prefix before passing requests on. |
 | `NEXT_PUBLIC_APP_ENV` | Optional | none (`.env.example`: `production`) | Environment label: `local`, `development`, `staging`, `production` or `demo`. `staging` and `demo` show a banner saying the environment holds test data; other values show none. |
 | `NEXT_PUBLIC_SUPER_ADMIN_LAB_FLOW` | Optional | `false` | Set to `true` to enable the lab flow for the super admin role. |
-| `NEXT_PUBLIC_APK_DOWNLOAD_URL` | Optional | none | Link the login page's Android download button points to, for example the GitHub Release link from [Mobile App](/administrator-guide/mobile-app/). If empty, the button is hidden. |
+| `NEXT_PUBLIC_APK_DOWNLOAD_URL` | Optional | none | Link the landing page's and login dialog's Android app buttons point to, for example the GitHub Release link from [Mobile App](/administrator-guide/mobile-app/). If empty, the buttons are hidden. |
+| `NEXT_PUBLIC_MOBILE_WEB_URL` | Optional | none | Public address of the mobile web app (see [Mobile web](/administrator-guide/mobile-app/#mobile-web)), linked from the landing page and login dialog. If empty, the links are hidden. |
 | `NODE_VERSION` | Optional | `22` | Node.js version when building the web image yourself (`--build`). Not used with the published image. |
 
 The web container itself sets `PORT=3000` and `HOSTNAME=0.0.0.0` (in `docker-compose.yml`).
@@ -343,7 +344,7 @@ DEFAULT_IMAGE_THUMBNAIL=default_thumbnail.png
 # Authentication, links, CORS
 JWT_SECRET=<generate with openssl rand -base64 48>
 FRONTEND_PLATFORM=https://dharini.example.org/
-CORS_ORIGINS=https://dharini.example.org
+CORS_ORIGINS=https://dharini.example.org,https://mobile.dharini.example.org
 
 # Email (SMTP)
 EMAIL_FROM=noreply@dharini.example.org
@@ -375,6 +376,7 @@ GEOLENS_DATA_DIR=
 NEXT_PUBLIC_APP_ENV=production
 NEXT_PUBLIC_API_URL=https://dharini.example.org/api
 NEXT_PUBLIC_APK_DOWNLOAD_URL=https://github.com/<owner>/<repo>/releases/latest/download/dharini.apk
+NEXT_PUBLIC_MOBILE_WEB_URL=https://mobile.dharini.example.org
 ```
 
 `PIPELINE_CALLBACK_URL` must be the public address of the backend's `POST /sequencing/pipeline/webhook` route, as the pipeline service reaches it (with the `/api` prefix when Nginx is set up as in the Nginx guide).

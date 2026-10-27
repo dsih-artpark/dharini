@@ -81,7 +81,7 @@ Keep the folder name `dharini`: Docker Compose uses it to name the database volu
 
 ## Android app
 
-The app has your API address built in, so each deployment builds its own. The **Mobile CI** workflow does this on GitHub and publishes the APK as a GitHub Release; link that release in `NEXT_PUBLIC_APK_DOWNLOAD_URL` and the web login page shows a download button. You can also build it yourself. See [Mobile App](https://dharini.artpark.ai/administrator-guide/mobile-app/) in the administrator guide.
+The app has your API address built in, so each deployment builds its own. The **Mobile CI** workflow does this on GitHub and publishes the APK as a GitHub Release; link that release in `NEXT_PUBLIC_APK_DOWNLOAD_URL` and the web landing page and login dialog show an Android app button. You can also build it yourself. If you also serve the mobile web build, set `NEXT_PUBLIC_MOBILE_WEB_URL` to its address to show a Mobile web button. See [Mobile App](https://dharini.artpark.ai/administrator-guide/mobile-app/) in the administrator guide.
 
 ---
 

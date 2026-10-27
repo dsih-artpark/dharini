@@ -35,7 +35,7 @@ export default function Hero() {
               rel="noopener noreferrer"
               className={buttonClass({ variant: "ghost", size: "lg" })}
             >
-              See how it works
+              See User Guide
             </a>
           </div>
         </div>

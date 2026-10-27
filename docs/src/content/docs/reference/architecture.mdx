@@ -233,8 +233,8 @@ The backend does not use Sentry.
 | Redis | Job queue and cache (container) |
 | File Storage | AWS S3, or Garage (optional `garage` Compose profile) |
 | pgAdmin | Database admin UI (container) |
-| Mobile web | Flutter web build served on port 3002 (built per deployment, not published) |
-| Android APK | GitHub Release built by the Mobile CI workflow; the web login page links to it with `NEXT_PUBLIC_APK_DOWNLOAD_URL` |
+| Mobile web | Flutter web build served on port 3002 (built per deployment, not published); the web landing page and login dialog link to it with `NEXT_PUBLIC_MOBILE_WEB_URL` |
+| Android APK | GitHub Release built by the Mobile CI workflow; the web landing page and login dialog link to it with `NEXT_PUBLIC_APK_DOWNLOAD_URL` |
 | Documentation | Astro Starlight site (`/docs`) |
 | CI/CD | GitHub Actions (see [GitHub Actions Workflows](#github-actions-workflows)) |
 
