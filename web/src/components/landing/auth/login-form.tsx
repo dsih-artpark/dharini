@@ -1,15 +1,16 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookOpen, Smartphone } from "lucide-react";
+import { BookOpen } from "lucide-react";
 
 import { sendOtp, verifyOtp } from "@/src/app/(root)/actions";
 import { deleteToken } from "@/src/utils/auth";
 import { safeRedirectPath } from "@/src/utils/redirect";
 import { SESSION_EXPIRED_REASON } from "@/src/utils/session";
-import { env } from "@/env";
 
 import { LINKS } from "../content";
+import { mobileAppLinks } from "../mobile-app-links";
+import type { LandingLink } from "../mobile-app-links";
 import {
   ContactField,
   ContactTypeToggle,
@@ -23,8 +24,16 @@ import type { AuthFormStatus } from "./auth-ui";
 import OtpStep from "./otp-step";
 import { useOtpFlow } from "./use-otp-flow";
 
+// Each link grows to share the row and wraps once it would be narrower than
+// its basis, so one to three links fit the dialog at any width.
 const SECONDARY_LINK_CLASS =
-  "inline-flex h-[38px] items-center justify-center gap-[7px] rounded-lg border border-landing-border text-[13px] font-medium text-landing-ink-2 transition hover:border-[#c9c3e6] hover:text-landing-purple";
+  "inline-flex h-[38px] flex-1 basis-[110px] items-center justify-center gap-[7px] whitespace-nowrap rounded-lg border border-landing-border text-[13px] font-medium text-landing-ink-2 transition hover:border-[#c9c3e6] hover:text-landing-purple";
+
+const USER_GUIDE_LINK: LandingLink = {
+  href: LINKS.userGuide,
+  label: "User guide",
+  Icon: BookOpen,
+};
 
 export default function LoginForm({
   titleId,
@@ -129,29 +138,18 @@ export default function LoginForm({
         onClick={onSwitchToSignup}
       />
 
-      <div
-        className={`mt-5 grid gap-2 border-t border-[#ece8f8] pt-[18px] ${
-          env.APK_DOWNLOAD_URL ? "grid-cols-2" : "grid-cols-1"
-        }`}
-      >
-        {env.APK_DOWNLOAD_URL && (
+      <div className="mt-5 flex flex-wrap gap-2 border-t border-[#ece8f8] pt-[18px]">
+        {[...mobileAppLinks(), USER_GUIDE_LINK].map(({ href, label, Icon }) => (
           <a
+            key={label}
             className={SECONDARY_LINK_CLASS}
-            href={env.APK_DOWNLOAD_URL}
+            href={href}
             target="_blank"
             rel="noopener noreferrer"
           >
-            <Smartphone size={15} strokeWidth={2} /> Mobile app
+            <Icon size={15} strokeWidth={2} /> {label}
           </a>
-        )}
-        <a
-          className={SECONDARY_LINK_CLASS}
-          href={LINKS.userGuide}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <BookOpen size={15} strokeWidth={2} /> User guide
-        </a>
+        ))}
       </div>
     </form>
   );

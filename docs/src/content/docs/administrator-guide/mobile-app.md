@@ -44,7 +44,7 @@ The release build reads the keystore from `KEYSTORE_FILE`, `KEYSTORE_PASSWORD`, 
 
 ## Publish it
 
-The login page of the web app shows an Android download button when `NEXT_PUBLIC_APK_DOWNLOAD_URL` is set (it is hidden when empty). Point it at wherever the APK is hosted. The easiest place is a GitHub Release made by the Mobile CI workflow (below). Any other host works too: a static file server, object storage or Nginx. After changing the value, restart the `frontend` container.
+The landing page and login dialog of the web app show an Android app button when `NEXT_PUBLIC_APK_DOWNLOAD_URL` is set (it is hidden when empty). Point it at wherever the APK is hosted. The easiest place is a GitHub Release made by the Mobile CI workflow (below). Any other host works too: a static file server, object storage or Nginx. After changing the value, recreate the `frontend` container with `docker compose --profile production up -d frontend` (`docker compose restart` does not re-read `.env`).
 
 On an Ubuntu server with the build tools installed (`./setup-mobile.sh` installs them), `./deploy-mobile.sh` builds the APK and the web build, names the APK `dharini-v<version>.apk` in `mobile/build/app/outputs/flutter-apk/`, and copies the web build into `./mobile-web`. It does not upload the APK anywhere.
 
@@ -57,7 +57,7 @@ mkdir -p mobile-web && cp -r mobile/build/web/. mobile-web/
 docker compose --profile mobile-web up -d mobile-web
 ```
 
-It listens on port 3002. Add its address to `CORS_ORIGINS` in `.env`. Later builds only need the files copied again: new files are served at once, with no restart. Once `mobile-web/index.html` exists, `./deploy.sh` keeps the container running as part of every deployment.
+It listens on port 3002. Add its address to `CORS_ORIGINS` in `.env`, and set `NEXT_PUBLIC_MOBILE_WEB_URL` to it so the landing page and login dialog link to it, then recreate the `frontend` container with `docker compose --profile production up -d frontend` (`docker compose restart` does not re-read `.env`). Later builds only need the files copied again: new files are served at once, with no restart. Once `mobile-web/index.html` exists, `./deploy.sh` keeps the container running as part of every deployment.
 
 ## GitHub Actions
 
@@ -101,7 +101,7 @@ The app needs your API address and signing key, so build your own APK.
 1. Fork the repository and enable Actions in the fork. Workflows in a fork are disabled until you do.
 2. Add the signing and app-setting secrets above. Leave the server secrets out.
 3. Run **Mobile CI** on the fork's `production` branch.
-4. Set `NEXT_PUBLIC_APK_DOWNLOAD_URL` on your web deployment to `https://github.com/<your-user>/<your-fork>/releases/latest/download/dharini.apk`, then restart the `frontend` container.
+4. Set `NEXT_PUBLIC_APK_DOWNLOAD_URL` on your web deployment to `https://github.com/<your-user>/<your-fork>/releases/latest/download/dharini.apk`, then recreate the `frontend` container (see [Publish it](#publish-it)).
 
 A GitHub release asset can be up to 2 GiB, and anyone can download it from a public repository without a GitHub account.
 

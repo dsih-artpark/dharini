@@ -1,10 +1,10 @@
 import React from "react";
 import Image from "next/image";
-import { ArrowRight, Monitor, RefreshCw, Smartphone } from "lucide-react";
+import { Monitor, RefreshCw, Smartphone } from "lucide-react";
 
-import { AuthButton } from "./auth/auth-dialog-provider";
 import { buttonClass } from "./button-styles";
-import { IMAGE_BASE, LINKS } from "./content";
+import { IMAGE_BASE } from "./content";
+import { mobileAppLinks } from "./mobile-app-links";
 import { Container, Eyebrow, H2_CLASS, SECTION_CLASS } from "./ui";
 
 const BODY_CLASS =
@@ -68,6 +68,8 @@ function DeviceStage() {
 }
 
 export default function Devices() {
+  const appLinks = mobileAppLinks();
+
   return (
     <section className={`bg-white ${SECTION_CLASS}`}>
       <Container className="grid items-center gap-9 min-[900px]:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] min-[900px]:gap-20">
@@ -105,19 +107,23 @@ export default function Devices() {
               Mobile
             </li>
           </ul>
-          <div className="flex flex-wrap gap-3">
-            <AuthButton mode="signup" className={buttonClass()}>
-              Get Started <ArrowRight size={15} strokeWidth={2.2} />
-            </AuthButton>
-            <a
-              href={LINKS.userGuide}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={buttonClass({ variant: "ghost" })}
-            >
-              See how it works
-            </a>
-          </div>
+          {appLinks.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {appLinks.map(({ href, label, Icon }, i) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClass({
+                    variant: i === 0 ? "primary" : "ghost",
+                  })}
+                >
+                  <Icon size={15} strokeWidth={2.2} /> {label}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </Container>
     </section>

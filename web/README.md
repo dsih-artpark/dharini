@@ -53,7 +53,8 @@ cp web/.env.example web/.env
 | ---------------------------------- | -------- | --------------------------------------------------------------------------------------------------- |
 | `NEXT_PUBLIC_API_URL`              | Yes      | Base URL of the backend API, e.g. `http://localhost:4000`. Falls back to `http://localhost:4000` if unset. |
 | `NEXT_PUBLIC_APP_ENV`              | Yes      | `local`, `development`, `staging`, `demo`, or `production`. `staging` and `demo` show a test-data warning banner. |
-| `NEXT_PUBLIC_APK_DOWNLOAD_URL`     | No       | Android app download link shown on the login page.                                                  |
+| `NEXT_PUBLIC_APK_DOWNLOAD_URL`     | No       | Android app download link shown on the landing page and login dialog.                               |
+| `NEXT_PUBLIC_MOBILE_WEB_URL`       | No       | Address of the mobile web app (Flutter web build), linked from the landing page and login dialog.   |
 | `NEXT_PUBLIC_SUPER_ADMIN_LAB_FLOW` | No       | `true` enables the super-admin lab view across projects. Default `false`.                          |
 
 All variables are prefixed `NEXT_PUBLIC_` and are visible in the browser. Never put secrets in them. They are read when the app starts, not when it is built, so one published image works for any deployment. Recreate the container after changing them. With Docker Compose, they are read from the root `.env`.

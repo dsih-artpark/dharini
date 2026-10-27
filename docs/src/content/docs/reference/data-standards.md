@@ -9,30 +9,13 @@ Dharini platform
 
 _A reference guideline for terminology, ontology, and unit standards applied across the sample-collection database schema_
 
-**Document Version 3.0**  
-Status: Pending for Approval
-
 # Document Control
 
 | Document Title                          | Data Standards & Ontology Reference                                                                                                                                                                                                                              |
 | :-------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Version**                             | 3.0                                                                                                                                                                                                                                                              |
-| **Status**                              | Pending for Approval                                                                                                                                                                                                                                             |
 | **Scope**                               | Terminology, ontology, and unit standards applied to the sample-collection database schema (columns table) supporting animal disease surveillance                                                                                                                |
 | **Primary Standards Bodies Referenced** | PHA4GE, WOAH, LGD (Government of India), ICAR (International Committee for Animal Recording) standards, ICAR-NBAGR, and supporting international ontologies (NCBITaxon, UBERON, ENVO, UO/UCUM, ISO 8601, WGS84, SNOMED CT, LOINC, INSDC, Pango/WHO nomenclature) |
-| **Document Owner**                      | Rukshat Yaduvanshi (Associate Product Manager)                                                                                                                                                                                                                   |
-| **Reviewed by**                         | Dr. Lijith K M (Senior Program Manager)                                                                                                                                                                                                                          |
-| **Approved By**                         | Rohit Satish (Director- Health, Data and AI)                                                                                                                                                                                                                     |
-| **Review Cadence**                      | Upon major changes or significant platform updates.                                                                                                                                                                                                              |
-| **Next Scheduled Review**               | Approval Date+1 Year                                                                                                                                                                                                                                             |
-
-## Version History
-
-| Version | Date       | Author             | Change Summary                              |
-| :------ | :--------- | :----------------- | :------------------------------------------ |
-| 1.0     | 21.10.2025 | Sneha Sai          | Initial version; standards mapped per field |
-| 2.0     | 20.01.2026 | Rukshat Yaduvanshi | Updated version                             |
-| 3.0     | 20.08.2026 | Rukshat Yaduvanshi | Updated the ontology tree                   |
 
 # 1\. Purpose & Scope
 
@@ -48,7 +31,7 @@ This document is the approved reference for the terminology, ontology, and unit 
 
 ## Standards Followed
 
-## The system follows applicable standards and data practices from PHA4GE, WOAH, the Government of India Local Government Directory (LGD), and the standard ontologies and data schemes used by the National Digital Livestock Mission (NDLM). Where these primary sources do not define field-level standards, internationally recognized domain ontologies and standards are used for areas such as species taxonomy, anatomical and environmental specimen sources, units of measurement, dates, and geographic coordinates.
+The system follows applicable standards and data practices from PHA4GE, WOAH, the Government of India Local Government Directory (LGD), and the standard ontologies and data schemes used by the National Digital Livestock Mission (NDLM). Where these primary sources do not define field-level standards, internationally recognized domain ontologies and standards are used for areas such as species taxonomy, anatomical and environmental specimen sources, units of measurement, dates, and geographic coordinates.
 
 ## Field Tiering
 

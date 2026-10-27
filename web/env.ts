@@ -8,6 +8,7 @@ type ENV = {
   API_URL: string;
   SUPER_ADMIN_LAB_FLOW: string | undefined;
   APK_DOWNLOAD_URL: string | undefined;
+  MOBILE_WEB_URL: string | undefined;
 };
 
 declare global {
@@ -21,6 +22,7 @@ export const PUBLIC_ENV_NAMES = [
   "NEXT_PUBLIC_API_URL",
   "NEXT_PUBLIC_SUPER_ADMIN_LAB_FLOW",
   "NEXT_PUBLIC_APK_DOWNLOAD_URL",
+  "NEXT_PUBLIC_MOBILE_WEB_URL",
 ] as const;
 
 // Looked up by name on purpose: `process.env.NEXT_PUBLIC_X` written out would
@@ -46,5 +48,8 @@ export const env: ENV = {
   },
   get APK_DOWNLOAD_URL() {
     return read("NEXT_PUBLIC_APK_DOWNLOAD_URL");
+  },
+  get MOBILE_WEB_URL() {
+    return read("NEXT_PUBLIC_MOBILE_WEB_URL");
   },
 };
