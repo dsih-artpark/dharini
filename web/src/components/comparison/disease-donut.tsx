@@ -31,7 +31,7 @@ export default function PositiveDonut({ items, centerSubLabel }: Props) {
       // const ownRate = d.totalCount > 0 ? (d.positiveCount / d.totalCount) * 100 : 0;
       return {
         ...d,
-        legend: `${d.label} — ${d.positiveCount}/${totalPositive} · ${d.percentage}% of all positives`,
+        legend: `${d.label} — ${d.positiveCount} of ${totalPositive} positives (${d.percentage}%)`,
       };
     });
 
