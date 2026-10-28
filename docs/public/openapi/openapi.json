@@ -6840,7 +6840,17 @@
     "/geolens/sites": {
       "get": {
         "operationId": "GeoLensController_getSites",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "workspaceId",
+            "required": false,
+            "in": "query",
+            "description": "Only sites in this workspace (the one selected in the UI). Narrows the caller’s access; never widens it.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -7041,6 +7051,27 @@
           }
         ],
         "summary": "Bird migration predictions (species, maps, seasons)",
+        "tags": [
+          "ML predictions"
+        ]
+      }
+    },
+    "/ml/birds/place/{path}": {
+      "post": {
+        "description": "Relayed to the dharini-ml prediction service, whose API reference (paths, parameters, responses) is at https://ml.dharini.artpark.ai/docs. Any logged-in user may call it. Returns 404 when ML is not enabled on this server, 503 when the ML service is unavailable or busy.",
+        "operationId": "MlController_birdsPlace",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bird forecasts for a place (boundary or centre + radius)",
         "tags": [
           "ML predictions"
         ]

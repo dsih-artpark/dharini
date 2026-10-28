@@ -833,6 +833,26 @@ export class StatisticsService {
     return qb;
   }
 
+  // The disease filter in applyDashboardFilters only matches the diseases a
+  // sample is tagged for; it does not touch the `labtest` join. Without this,
+  // a sample tagged LSD + FMD that is FMD-positive would count as positive
+  // (and untested-for-LSD samples as "total") under an LSD filter.
+  // Restricting the lab-test rows to the selected disease(s) keeps the
+  // comparison pages' positive/total counts disease-scoped.
+  private scopeLabTestsToDiseases(qb, query: any) {
+    const scopedDiseaseIds = query.diseaseId
+      ? Array.isArray(query.diseaseId)
+        ? query.diseaseId
+        : [query.diseaseId]
+      : [];
+    if (scopedDiseaseIds.length) {
+      qb.andWhere('labtest."diseaseId" IN (:...scopedDiseaseIds)', {
+        scopedDiseaseIds,
+      });
+    }
+    return qb;
+  }
+
   async getMonitorDashboardStats(query: any, user: User): Promise<any> {
     const userData = user;
     const tenant = await this.tenantScopeService.forUser(userData);
@@ -1169,10 +1189,13 @@ export class StatisticsService {
       .leftJoin('sample.labTests', 'labtest');
 
     const scoped = (q) =>
-      this.applyProjectFilter(
-        this.applyDashboardFilters(baseQuery.clone(), q, userData, tenant),
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(baseQuery.clone(), q, userData, tenant),
+          q,
+          tenant,
+        ),
         q,
-        tenant,
       );
 
     // 1. Summary
@@ -1284,44 +1307,22 @@ export class StatisticsService {
         .getRawMany();
     }
 
-    // 6. Sample-type distribution of positive samples (scoped to the selected
-    //    disease[s] when a disease filter is applied). Powers the donut when a
-    //    single disease is selected.
-    const sampleTypeDistQuery = scoped(query)
+    // 6. Sample-type distribution of positive samples (disease-scoped via
+    //    `scoped` when a disease filter is applied). Powers the donut when a
+    //    disease is selected.
+    const sampleTypeDistRaw = await scoped(query)
       .select('sampletype.id', 'sampleTypeId')
       .addSelect('sampletype.name', 'sampleTypeName')
+      .addSelect(
+        `COUNT(DISTINCT CASE WHEN labtest."testResult" = :positive THEN sample.id END)`,
+        'positiveCount',
+      )
+      .addSelect('COUNT(DISTINCT sample.id)', 'totalCount')
+      .setParameter('positive', TestResultType.POSITIVE)
       .andWhere('sampletype.id IS NOT NULL')
       .groupBy('sampletype.id')
-      .addGroupBy('sampletype.name');
-
-    if (query.diseaseId) {
-      const ids = Array.isArray(query.diseaseId)
-        ? query.diseaseId
-        : [query.diseaseId];
-      if (ids.length > 0) {
-        sampleTypeDistQuery
-          .addSelect(
-            `COUNT(DISTINCT CASE WHEN labtest."testResult" = :positive AND labtest."diseaseId" IN (:...stDiseaseIds) THEN sample.id END)`,
-            'positiveCount',
-          )
-          .addSelect(
-            `COUNT(DISTINCT CASE WHEN labtest."diseaseId" IN (:...stDiseaseIds) THEN sample.id END)`,
-            'totalCount',
-          )
-          .setParameter('positive', TestResultType.POSITIVE)
-          .setParameter('stDiseaseIds', ids);
-      }
-    } else {
-      sampleTypeDistQuery
-        .addSelect(
-          `COUNT(DISTINCT CASE WHEN labtest."testResult" = :positive THEN sample.id END)`,
-          'positiveCount',
-        )
-        .addSelect('COUNT(DISTINCT sample.id)', 'totalCount')
-        .setParameter('positive', TestResultType.POSITIVE);
-    }
-
-    const sampleTypeDistRaw = await sampleTypeDistQuery.getRawMany();
+      .addGroupBy('sampletype.name')
+      .getRawMany();
 
     // 7. Per-project, per-disease monthly trend (feeds the disease-wise trend chart)
     let diseaseTrendRaw: any[] = [];
@@ -1426,15 +1427,18 @@ export class StatisticsService {
 
     // Scope to the two chosen sites (+ project + user scope + date range).
     const scoped = () =>
-      this.applyProjectFilter(
-        this.applyDashboardFilters(
-          baseQuery.clone(),
-          { ...query, siteId: siteIds },
-          userData,
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(
+            baseQuery.clone(),
+            { ...query, siteId: siteIds },
+            userData,
+            tenant,
+          ),
+          query,
           tenant,
         ),
         query,
-        tenant,
       );
 
     // 1. Per-site summary
@@ -1549,15 +1553,18 @@ export class StatisticsService {
 
     // Scope to the two chosen sample types (+ project + user scope + state + date).
     const scoped = () =>
-      this.applyProjectFilter(
-        this.applyDashboardFilters(
-          baseQuery.clone(),
-          { ...query, sampleTypeId: typeIds },
-          userData,
+      this.scopeLabTestsToDiseases(
+        this.applyProjectFilter(
+          this.applyDashboardFilters(
+            baseQuery.clone(),
+            { ...query, sampleTypeId: typeIds },
+            userData,
+            tenant,
+          ),
+          query,
           tenant,
         ),
         query,
-        tenant,
       );
 
     // 1. Per-type summary

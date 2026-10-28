@@ -1,29 +1,7 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { OpenStreetMapProvider, GeoSearchControl } from "leaflet-geosearch";
 import "leaflet.heat";
-
-// --- CUSTOM TYPES FOR PLUGINS ---
-interface GeoSearchEvent extends L.LeafletEvent {
-  location?: {
-    x: number;
-    y: number;
-    label: string;
-    lat?: number;
-    lng?: number;
-  };
-  results?: Array<{
-    x: number;
-    y: number;
-    label: string;
-  }>;
-  x?: number;
-  y?: number;
-  label?: string;
-  lat?: number;
-  lng?: number;
-}
 
 interface LayersControlEvent extends L.LeafletEvent {
   name: string;
@@ -86,130 +64,6 @@ export function FlyToLocation({ target }: FlyToLocationProps) {
   return null;
 }
 
-interface SearchBarProps {
-  onLocationFound: (lat: number, lng: number, label: string) => void;
-}
-
-export function SearchBar({ onLocationFound }: SearchBarProps) {
-  const map = useMap();
-  const callbackRef = useRef(onLocationFound);
-  useEffect(() => {
-    callbackRef.current = onLocationFound;
-  }, [onLocationFound]);
-  const providerRef = useRef(new OpenStreetMapProvider());
-
-  const fireResult = useCallback(
-    (
-      lat: number | null | undefined,
-      lng: number | null | undefined,
-      label?: string,
-    ) => {
-      if (lat == null || lng == null) return;
-      callbackRef.current(lat, lng, label || "Searched Location");
-      map.setView([lat, lng], Math.max(map.getZoom(), 13));
-    },
-    [map],
-  );
-
-  useEffect(() => {
-    const provider = providerRef.current;
-    const searchControl = new (
-      GeoSearchControl as unknown as new (opts: Record<string, unknown>) => {
-        addTo: (map: L.Map) => void;
-        remove: () => void;
-      }
-    )({
-      provider,
-      style: "button",
-      position: "topleft",
-      showMarker: false,
-      autoClose: true,
-      searchLabel: "Search address or city...",
-      keepResult: true,
-    });
-    map.addControl(searchControl as unknown as L.Control);
-
-    const onShow = (e: L.LeafletEvent) => {
-      const loc = (e as GeoSearchEvent).location || (e as GeoSearchEvent);
-      fireResult(loc.y ?? loc.lat, loc.x ?? loc.lng, loc.label);
-    };
-    map.on("geosearch/showlocation", onShow);
-
-    const onResults = (e: L.LeafletEvent) => {
-      const results = (e as GeoSearchEvent).results;
-      if (results && results.length > 0) {
-        const r = results[0];
-        fireResult(r.y, r.x, r.label);
-      }
-    };
-    map.on("geosearch/results", onResults);
-
-    let inputEl:
-      | (HTMLInputElement & {
-          _gsKeyDown?: (e: KeyboardEvent) => void;
-          _gsClick?: () => void;
-        })
-      | null = null;
-    const attachInput = () => {
-      inputEl = map
-        .getContainer()
-        .querySelector(
-          ".geosearch input, input.glass-search-input, .leaflet-bar input",
-        );
-      if (!inputEl) return;
-      const onKeyDown = async (e: KeyboardEvent) => {
-        if (e.key !== "Enter") return;
-        const query = inputEl?.value.trim();
-        if (!query) return;
-        try {
-          const results = await provider.search({ query });
-          if (results?.length > 0)
-            fireResult(results[0].y, results[0].x, results[0].label);
-        } catch (err) {
-          console.error("Search fallback error:", err);
-        }
-      };
-      const onClick = async () => {
-        setTimeout(async () => {
-          const query = inputEl?.value.trim();
-          if (!query) return;
-          try {
-            const results = await provider.search({ query });
-            if (results?.length > 0)
-              fireResult(results[0].y, results[0].x, results[0].label);
-          } catch {}
-        }, 300);
-      };
-      inputEl.addEventListener("keydown", onKeyDown);
-      const suggestionContainer = map
-        .getContainer()
-        .querySelector(".geosearch .results, .leaflet-bar .results");
-      if (suggestionContainer)
-        suggestionContainer.addEventListener("click", onClick);
-      inputEl._gsKeyDown = onKeyDown;
-      inputEl._gsClick = onClick;
-    };
-    setTimeout(attachInput, 500);
-
-    return () => {
-      map.off("geosearch/showlocation", onShow);
-      map.off("geosearch/results", onResults);
-      if (inputEl) {
-        if (inputEl._gsKeyDown)
-          inputEl.removeEventListener("keydown", inputEl._gsKeyDown);
-        const sc = map
-          .getContainer()
-          .querySelector(".geosearch .results, .leaflet-bar .results");
-        if (sc && inputEl._gsClick)
-          sc.removeEventListener("click", inputEl._gsClick);
-      }
-      map.removeControl(searchControl as unknown as L.Control);
-    };
-  }, [map, fireResult]);
-
-  return null;
-}
-
 interface HeatmapPoint {
   lat: number;
   lng: number;
@@ -218,9 +72,16 @@ interface HeatmapPoint {
 
 interface HeatmapLayerProps {
   points: HeatmapPoint[];
+  /** leaflet.heat options; defaults to the bird-density look. */
+  options?: Record<string, unknown>;
 }
 
-export function HeatmapLayer({ points }: HeatmapLayerProps) {
+const DEFAULT_HEAT_OPTIONS = { radius: 20, blur: 15, maxZoom: 10 };
+
+export function HeatmapLayer({
+  points,
+  options = DEFAULT_HEAT_OPTIONS,
+}: HeatmapLayerProps) {
   const map = useMap();
   const heatRef = useRef<L.Layer | null>(null);
 
@@ -236,11 +97,7 @@ export function HeatmapLayer({ points }: HeatmapLayerProps) {
     // @ts-expect-error - L.heatLayer is a plugin
     const heatLayer = L.heatLayer(
       points.map((p) => [p.lat, p.lng, p.intensity]),
-      {
-        radius: 20,
-        blur: 15,
-        maxZoom: 10,
-      },
+      options,
     ).addTo(map);
     heatRef.current = heatLayer;
 
@@ -266,7 +123,7 @@ export function HeatmapLayer({ points }: HeatmapLayerProps) {
         heatRef.current = null;
       }
     };
-  }, [map, points]);
+  }, [map, points, options]);
 
   return null;
 }

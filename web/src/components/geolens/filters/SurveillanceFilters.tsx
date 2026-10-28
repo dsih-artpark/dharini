@@ -1,11 +1,13 @@
+import { X } from "lucide-react";
 import Select from "@/src/components/ui/select";
 import type { FilterType } from "@/src/types/statistics";
 import type { Wetland } from "@/src/app/(dashboard)/geolens/types";
-import type { SelectOption } from "./useSurveillanceFilters";
+import { RESULT_OPTIONS, type SelectOption } from "./useSurveillanceFilters";
 
 interface SurveillanceFiltersProps {
   resetKey: number;
   show: boolean;
+  onClose: () => void;
   filters: FilterType;
   handleFilterChange: (name: string, value: string | string[]) => void;
   resetFilters: () => void;
@@ -30,6 +32,7 @@ export function SurveillanceFilters(props: SurveillanceFiltersProps) {
   const {
     resetKey,
     show,
+    onClose,
     filters,
     handleFilterChange,
     resetFilters,
@@ -52,17 +55,33 @@ export function SurveillanceFilters(props: SurveillanceFiltersProps) {
   if (!show) return null;
 
   return (
-    <div className="absolute right-4 top-[68px] z-[1100] flex w-[300px] flex-col gap-2 rounded-lg border border-grey-20 bg-white p-4 shadow-xl">
-      <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-grey-80">Filters</h3>
-        <button
-          type="button"
-          onClick={resetFilters}
-          className="text-xs font-medium text-blue-40 hover:text-blue-60"
-        >
-          Reset
-        </button>
+    <div
+      id="geolens-filters"
+      className="absolute right-3 top-3 z-[1100] flex max-h-[calc(100%-24px)] w-[300px] max-w-[calc(100%-24px)] flex-col gap-2 overflow-y-auto rounded-xl border border-grey-20 bg-white p-4 shadow-xl"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-grey-80">Map filters</h3>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded px-1.5 py-1 text-xs font-semibold text-blue-40 hover:bg-blue-10"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close filters"
+            className="flex h-7 w-7 items-center justify-center rounded text-grey-60 hover:bg-grey-10 hover:text-grey-80"
+          >
+            <X size={15} />
+          </button>
+        </div>
       </div>
+      <p className="-mt-1 mb-1 text-xs text-grey-60">
+        Applies as you choose. Active filters show as chips on the map.
+      </p>
 
       {showProjectSelector && (
         <Select
@@ -137,11 +156,7 @@ export function SurveillanceFilters(props: SurveillanceFiltersProps) {
         name="testResult"
         isMulti
         className="w-full"
-        options={[
-          { label: "Positive", value: "positive" },
-          { label: "Negative", value: "negative" },
-          { label: "Inconclusive", value: "unclear" },
-        ]}
+        options={RESULT_OPTIONS}
         onChange={(e) => handleFilterChange("testResult", e.target.value)}
         defaultValue={filters.testResult}
         placeholder="All Results"

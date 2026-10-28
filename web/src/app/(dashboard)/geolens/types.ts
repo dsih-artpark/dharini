@@ -47,18 +47,40 @@ export interface Disease {
   id: string;
   name: string;
 }
-export interface SurveillanceSite {
-  lat: number;
-  lng: number;
-  color: string;
-  siteName: string;
+export interface SurveillanceCounts {
   totalSampleCount?: number;
   totalPositiveSampleCount?: number;
   totalNegativeSampleCount?: number;
   totalUnclearSampleCount?: number;
-  diseaseShortName?: string;
-  farmType?: string;
 }
+export interface SurveillanceSite extends SurveillanceCounts {
+  lat: number;
+  lng: number;
+  siteName: string;
+  farmType?: string;
+  /** A positive site's counts for each disease it's positive for (none on a disease-free site). */
+  diseases?: (SurveillanceCounts & { shortName: string })[];
+}
+/** Element in the app header (components/nav/header.tsx) that GeoLens renders its bar into. */
+export const GEOLENS_HEADER_SLOT_ID = "geolens-header-slot";
+
+/** Tabs in the GeoLens top bar. `null` means no tab picked yet (panel closed). */
+export type GeoLensTab = "layers" | "compare" | "risk";
+
+export const GEOLENS_TABS: { value: GeoLensTab; label: string }[] = [
+  { value: "layers", label: "Layers" },
+  { value: "compare", label: "Compare" },
+  { value: "risk", label: "Risk Map" },
+];
+
+export type BaseMapKey = "osm" | "satellite" | "topo";
+
+export const BASE_MAPS: { value: BaseMapKey; label: string; hint: string }[] = [
+  { value: "osm", label: "OpenStreetMap", hint: "Streets and places" },
+  { value: "satellite", label: "Satellite", hint: "Aerial imagery" },
+  { value: "topo", label: "Topographic", hint: "Terrain and contours" },
+];
+
 export interface FlyTarget {
   lat: number;
   lng: number;
@@ -108,7 +130,6 @@ export interface LeafletRefType {
   }) => Leaflet.Map;
   MapClickHandler: React.ElementType;
   FlyToLocation: React.ElementType;
-  SearchBar: React.ElementType;
   HeatmapLayer: React.ElementType;
   LayerTracker: React.ElementType;
   MarkerClusterGroup: React.ElementType;

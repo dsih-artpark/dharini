@@ -1,5 +1,5 @@
 import { RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type * as Leaflet from "leaflet";
 import type {
@@ -9,45 +9,64 @@ import type {
   LeafletRefType,
   PoultryFarm,
   Site,
+  SurveillanceCounts,
   SurveillanceSite,
   ViewportBounds,
 } from "@/src/app/(dashboard)/geolens/types";
 import { haversineKm } from "@/src/app/(dashboard)/geolens/utils/geo";
+import {
+  RISK_STATUS,
+  type RiskMapGrid,
+  type RiskMapPoint,
+  type RiskOutline,
+} from "./risk/useRiskPrediction";
+import { ACCENT, formatPercent } from "./prediction/utils";
+import {
+  CHANCE_BINS,
+  GRID_BINS,
+  gridColor,
+  type ForecastGridCell,
+  type ForecastGridLayerData,
+} from "./compare/forecastGrid";
+import { createSiteDotIcon } from "@/src/components/monitor/diseases/site-dot-icon";
 
-// Nested-circle marker: outer ring = disease colour (grey for disease-free),
-// yellow ring if any negatives, red core if any positives. Sized by sample count.
-const makeSurveillanceIcon = (L: typeof Leaflet, site: SurveillanceSite) => {
-  const total = site.totalSampleCount || 0;
-  const neg = site.totalNegativeSampleCount || 0;
-  const pos = site.totalPositiveSampleCount || 0;
+// Site names are typed in by users; escape them before they go into HTML
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
 
-  const minSize = 10;
-  const maxSize = 24;
-  const size = Math.min(
-    Math.max(minSize + Math.log(total + 1) * 8, minSize),
-    maxSize,
-  );
-  const yellowSize = size * 0.7;
-  const redSize = size * 0.4;
+// Same content and classes as the dot tooltip on the Monitor Geospatial
+// Distribution map (leaflet-map-renderer.tsx): Total always, the other
+// counts only when non-zero. A positive site has these per disease, each
+// under the disease's short name.
+const surveillanceCountsHtml = (counts: SurveillanceCounts) => {
+  const pos = counts.totalPositiveSampleCount || 0;
+  const neg = counts.totalNegativeSampleCount || 0;
+  const unclear = counts.totalUnclearSampleCount || 0;
+  const row = (label: string, count: number, color: string) =>
+    `<span class="${color}">${label}:</span><span class="font-semibold text-right ${color}">${count}</span>`;
 
-  let html = `<div style="position:relative;border-radius:9999px;background:${site.color};border:1.5px solid rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;box-shadow:0 1px 3px rgba(0,0,0,0.3)">`;
-  if (neg > 0) {
-    html += `<div style="border-radius:9999px;background:#facc15;border:1px solid #eab308;display:flex;align-items:center;justify-content:center;width:${yellowSize}px;height:${yellowSize}px">`;
-  }
-  if (pos > 0) {
-    html += `<div style="border-radius:9999px;background:#dc2626;border:1px solid #b91c1c;width:${redSize}px;height:${redSize}px"></div>`;
-    if (neg > 0) html += `</div>`;
-  } else if (neg > 0) {
-    html += `</div>`;
-  }
-  html += `</div>`;
+  return `<div class="grid grid-cols-2 gap-x-2 text-xs">
+      <span class="text-gray-600">Total:</span><span class="font-semibold text-right">${counts.totalSampleCount || 0}</span>
+      ${pos > 0 ? row("Positive", pos, "text-red-600") : ""}
+      ${neg > 0 ? row("Negative", neg, "text-yellow-500") : ""}
+      ${unclear > 0 ? row("Unclear", unclear, "text-gray-500") : ""}
+    </div>`;
+};
 
-  return L.divIcon({
-    className: "geolens-surveillance-marker",
-    html,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-  });
+const surveillanceTooltipHtml = (site: SurveillanceSite) => {
+  const body = site.diseases?.length
+    ? site.diseases
+        .map(
+          (d) =>
+            `<div class="text-xs font-semibold text-gray-700">${escapeHtml(d.shortName)}</div>${surveillanceCountsHtml(d)}`,
+        )
+        .join("")
+    : surveillanceCountsHtml(site);
+
+  return `<div class="flex flex-col gap-1 min-w-[150px]">
+    <div class="font-bold text-sm border-b pb-1">${escapeHtml(site.siteName)}</div>
+    ${body}
+  </div>`;
 };
 
 function ViewportTracker({
@@ -120,6 +139,317 @@ function RecenterControl({
       control.remove();
     };
   }, [L, map]);
+
+  return null;
+}
+
+// lucide's maximize-2 / minimize-2, drawn into the Leaflet control.
+const FULLSCREEN_ICON_ATTRS =
+  'xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block;margin:auto"';
+const ENTER_FULLSCREEN_ICON = `<svg ${FULLSCREEN_ICON_ATTRS}><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+const EXIT_FULLSCREEN_ICON = `<svg ${FULLSCREEN_ICON_ATTRS}><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+
+function paintFullscreenButton(button: HTMLButtonElement, active: boolean) {
+  const label = active ? "Exit full screen" : "Full screen";
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.innerHTML = active ? EXIT_FULLSCREEN_ICON : ENTER_FULLSCREEN_ICON;
+}
+
+// Under the recenter button. The page decides what goes full screen (the map
+// frame with its overlays); this only shows the toggle.
+function FullscreenControl({
+  L,
+  useMap,
+  active,
+  onToggle,
+}: {
+  L: typeof Leaflet;
+  useMap: () => Leaflet.Map;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const map = useMap();
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+
+  // Read when the control is built and on click, so the control isn't
+  // rebuilt (and doesn't lose focus) on every toggle.
+  const latest = useRef({ active, onToggle });
+  useEffect(() => {
+    latest.current = { active, onToggle };
+  });
+
+  useEffect(() => {
+    const control = new L.Control({ position: "topright" });
+
+    control.onAdd = () => {
+      const container = L.DomUtil.create(
+        "div",
+        "leaflet-control dashboard-fullscreen-control",
+      );
+      const button = L.DomUtil.create("button", "", container);
+      button.type = "button";
+      paintFullscreenButton(button, latest.current.active);
+      buttonRef.current = button;
+
+      L.DomEvent.disableClickPropagation(container);
+      L.DomEvent.on(button, "click", (event) => {
+        L.DomEvent.preventDefault(event);
+        latest.current.onToggle();
+      });
+
+      return container;
+    };
+
+    control.addTo(map);
+
+    return () => {
+      control.remove();
+      buttonRef.current = null;
+    };
+  }, [L, map]);
+
+  useEffect(() => {
+    if (buttonRef.current) paintFullscreenButton(buttonRef.current, active);
+  }, [active]);
+
+  return null;
+}
+
+// The map's container changes size when the side panel opens or closes, and
+// Leaflet only measures it on window resize; re-measure on any size change.
+function ResizeWatcher({ useMap }: { useMap: () => Leaflet.Map }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => map.invalidateSize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [map]);
+
+  return null;
+}
+
+// Below this many screen pixels a grid cell can't be seen, so each site's
+// forecast is shown as one halo instead.
+const MIN_GRID_CELL_PX = 4;
+
+const RISK_OUTLINE_STYLE = {
+  color: ACCENT,
+  weight: 2,
+  fillColor: ACCENT,
+  fillOpacity: 0.06,
+};
+
+/**
+ * Risk Map: a district's or sub-district's 6 km cells, each in its
+ * prediction's colour with the answer on hover, and the region's outline
+ * over them. Drawn together so the outline stays on top as cells are
+ * redrawn with new answers.
+ */
+function RiskGridLayer({
+  L,
+  useMap,
+  grid,
+  outline,
+}: {
+  L: typeof Leaflet;
+  useMap: () => Leaflet.Map;
+  grid: RiskMapGrid;
+  outline: RiskOutline | null;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const group = L.layerGroup(
+      grid.cells.map((cell) => {
+        const { label, color } = RISK_STATUS[cell.status];
+        return L.rectangle(cell.bounds, {
+          color: "#ffffff",
+          weight: 0.5,
+          fillColor: color,
+          fillOpacity: cell.status === "pending" ? 0.12 : 0.5,
+        }).bindTooltip(
+          cell.probability === undefined
+            ? label
+            : `${label} · ${formatPercent(cell.probability)}`,
+          { sticky: true },
+        );
+      }),
+    );
+    if (outline)
+      group.addLayer(
+        L.geoJSON(outline.geometry, {
+          style: RISK_OUTLINE_STYLE,
+          interactive: false,
+        }),
+      );
+    group.addTo(map);
+    return () => {
+      group.remove();
+    };
+  }, [L, map, grid, outline]);
+  return null;
+}
+
+// Compare forecast: squares of `spacingKm` around each sample point,
+// coloured by how many species clear the minimum chance there (or by a
+// picked species' chance), drawn in a pane of their own that is blurred so
+// the squares blend into one smooth surface. Zoomed out too far to see them
+// (two far-apart sites fit on one map), each site gets a halo around its pin
+// in the colour of its busiest cell instead. Raw Leaflet (react-leaflet has
+// no non-interactive Rectangle in our bundle), so the squares never swallow
+// the map clicks that place sites; the value under the cursor comes from the
+// map's own mouse moves instead.
+const FORECAST_PANE = "forecastGrid";
+
+function ForecastGridLayer({
+  L,
+  useMap,
+  grid,
+}: {
+  L: typeof Leaflet;
+  useMap: () => Leaflet.Map;
+  grid: ForecastGridLayerData;
+}) {
+  const map = useMap();
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useEffect(() => {
+    const onZoom = () => setZoom(map.getZoom());
+    map.on("zoomend", onZoom);
+    return () => {
+      map.off("zoomend", onZoom);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    // Screen size of a cell at this zoom (Web Mercator metres per pixel)
+    const lat = grid.areas[0]?.lat ?? grid.cells[0]?.lat ?? 20;
+    const metresPerPx =
+      (40075016.686 * Math.cos((lat * Math.PI) / 180)) / 2 ** (zoom + 8);
+    const cellPx = (grid.spacingKm * 1000) / metresPerPx;
+    // A picked species: coloured by its chance, not by a species count
+    const bins = grid.species ? CHANCE_BINS : GRID_BINS;
+
+    if (cellPx < MIN_GRID_CELL_PX) {
+      const halos = L.layerGroup(
+        grid.areas
+          .filter((area) => area.maxCount > 0)
+          .map((area) =>
+            L.circleMarker([area.lat, area.lng], {
+              radius: 14,
+              color: "#ffffff",
+              weight: 2,
+              fillColor: gridColor(area.maxCount, bins),
+              fillOpacity: 0.85,
+              interactive: false,
+            }),
+          ),
+      );
+      halos.addTo(map);
+      return () => {
+        halos.remove();
+      };
+    }
+
+    // Under the overlay pane, so buffers, outlines, pins and tooltips stay
+    // sharp on top. globals.css gives every Leaflet pane the same z-index, so
+    // panes stack in page order: this one goes just before the overlay pane.
+    // Opaque squares, see-through pane: no seams where they meet.
+    let pane = map.getPane(FORECAST_PANE);
+    if (!pane) {
+      pane = map.createPane(FORECAST_PANE);
+      const overlayPane = map.getPane("overlayPane");
+      overlayPane?.parentNode?.insertBefore(pane, overlayPane);
+    }
+    pane.style.pointerEvents = "none";
+    pane.style.opacity = "0.65";
+    // About half a cell, so neighbouring cells blend and the edges fade
+    pane.style.filter = `blur(${Math.min(cellPx / 2, 40)}px)`;
+    const renderer = L.canvas({ pane: FORECAST_PANE });
+
+    const boxes = grid.cells.map((cell) => {
+      // Each site's grid has its own cell size
+      const spacingKm = cell.spacingKm ?? grid.spacingKm;
+      const dLat = spacingKm / 2 / 110.574;
+      const dLng =
+        spacingKm / 2 / (111.32 * Math.cos((cell.lat * Math.PI) / 180));
+      return { cell, dLat, dLng };
+    });
+    const group = L.layerGroup(
+      boxes.map(({ cell, dLat, dLng }) =>
+        L.rectangle(
+          [
+            [cell.lat - dLat, cell.lon - dLng],
+            [cell.lat + dLat, cell.lon + dLng],
+          ],
+          {
+            renderer,
+            stroke: false,
+            fillColor: gridColor(cell.count, bins),
+            fillOpacity: 1,
+            interactive: false,
+          },
+        ),
+      ),
+    );
+    group.addTo(map);
+
+    // The cell under the cursor: a picked species' chance there, or how many
+    // species clear the minimum chance and which, with their chances. Built
+    // once per cell entered, not on every mouse move.
+    const tooltip = L.tooltip({ direction: "top", offset: [0, -8] });
+    const contentOf = (cell: ForecastGridCell): string | HTMLElement => {
+      if (grid.species)
+        return `${grid.species.name}: ${cell.count}% chance it's here`;
+      const box = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "mb-0.5 font-semibold";
+      title.textContent = `${cell.count} species ≥ ${grid.minChance}% here`;
+      box.append(title);
+      for (const { name, chance } of cell.species?.() ?? []) {
+        const row = document.createElement("div");
+        row.className = "flex justify-between gap-3";
+        const label = document.createElement("span");
+        label.textContent = name;
+        const value = document.createElement("span");
+        value.className = "font-semibold tabular-nums";
+        value.textContent = `${chance}%`;
+        row.append(label, value);
+        box.append(row);
+      }
+      return box;
+    };
+    let shown: ForecastGridCell | null = null;
+    const onMove = (e: Leaflet.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      const hit = boxes.find(
+        ({ cell, dLat, dLng }) =>
+          Math.abs(lat - cell.lat) <= dLat && Math.abs(lng - cell.lon) <= dLng,
+      );
+      if (!hit) {
+        map.closeTooltip(tooltip);
+        return;
+      }
+      if (hit.cell !== shown) {
+        shown = hit.cell;
+        tooltip.setContent(contentOf(hit.cell));
+      }
+      tooltip.setLatLng(e.latlng);
+      if (!map.hasLayer(tooltip)) map.openTooltip(tooltip);
+    };
+    const onOut = () => map.closeTooltip(tooltip);
+    map.on("mousemove", onMove);
+    map.on("mouseout", onOut);
+    return () => {
+      map.off("mousemove", onMove);
+      map.off("mouseout", onOut);
+      map.closeTooltip(tooltip);
+      group.remove();
+      renderer.remove();
+    };
+  }, [L, map, grid, zoom]);
 
   return null;
 }
@@ -383,7 +713,11 @@ function NativeCattleMarketClusterLayer({
   return null;
 }
 
-function NativeSurveillanceClusterLayer({
+/**
+ * Surveillance sites as individual dots, drawn the same as on the Monitor
+ * Geospatial Distribution map (no clustering into count bubbles).
+ */
+function NativeSurveillanceLayer({
   L,
   useMap,
   sites,
@@ -399,66 +733,26 @@ function NativeSurveillanceClusterLayer({
   useEffect(() => {
     if (!sites.length) return;
 
-    const markerClusterFactory = (
-      L as unknown as {
-        markerClusterGroup?: (
-          options: Record<string, unknown>,
-        ) => Leaflet.LayerGroup & {
-          addLayers?: (layers: Leaflet.Layer[]) => void;
-        };
-      }
-    ).markerClusterGroup;
-
-    if (!markerClusterFactory) {
-      console.warn("Leaflet markercluster plugin is not available.");
-      return;
-    }
-
-    const clusterGroup = markerClusterFactory({
-      chunkedLoading: true,
-      chunkInterval: 100,
-      chunkDelay: 10,
-      maxClusterRadius: 50,
-      disableClusteringAtZoom: 11,
-      iconCreateFunction: (cluster: { getChildCount: () => number }) =>
-        createClusterIcon(L, "#0f766e", "#115e59", cluster.getChildCount()),
-    });
-
     const markers = sites
       .filter((site) => Number.isFinite(site.lat) && Number.isFinite(site.lng))
       .map((site) => {
         const marker = L.marker([site.lat, site.lng], {
-          icon: makeSurveillanceIcon(L, site),
+          icon: createSiteDotIcon(L, site),
         });
-
-        marker.bindTooltip(
-          `
-          <div style="font-family: 'Inter', sans-serif; font-size: 11px; padding: 4px 6px; min-width: 160px;">
-            <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px; border-bottom: 1px solid #ecf0f1; padding-bottom: 3px;">
-              <strong style="color: #2c3e50;">${site.siteName}</strong>
-            </div>
-            ${(site.totalPositiveSampleCount || 0) > 0 ? `<div style="color: #e74c3c; font-size: 10px;">Positive: <strong>${site.totalPositiveSampleCount}</strong></div>` : ""}
-            ${(site.totalNegativeSampleCount || 0) > 0 ? `<div style="color: #f39c12; font-size: 10px;">Negative: <strong>${site.totalNegativeSampleCount}</strong></div>` : ""}
-            ${(site.totalUnclearSampleCount || 0) > 0 ? `<div style="color: #95a5a6; font-size: 10px;">Inconclusive: <strong>${site.totalUnclearSampleCount}</strong></div>` : ""}
-            ${site.diseaseShortName ? `<div style="color: #bdc3c7; font-size: 9px; margin-top: 2px;">${site.diseaseShortName}</div>` : ""}
-          </div>
-        `,
-          { direction: "top", offset: [0, -10], sticky: true },
-        );
-
+        marker.bindTooltip(surveillanceTooltipHtml(site), {
+          direction: "top",
+          offset: [0, -12],
+          opacity: 1,
+        });
         marker.on("click", () => onSurveillanceSiteClick?.(site));
         return marker;
       });
 
-    if (clusterGroup.addLayers) {
-      clusterGroup.addLayers(markers);
-    } else {
-      markers.forEach((marker) => clusterGroup.addLayer(marker));
-    }
-    map.addLayer(clusterGroup);
+    const layer = L.layerGroup(markers);
+    map.addLayer(layer);
 
     return () => {
-      map.removeLayer(clusterGroup);
+      map.removeLayer(layer);
     };
   }, [L, map, onSurveillanceSiteClick, sites]);
 
@@ -504,6 +798,21 @@ interface DashboardMapProps {
   surveillanceSites?: SurveillanceSite[];
   showSurveillanceSites?: boolean;
   onSurveillanceSiteClick?: (site: SurveillanceSite) => void;
+  /** A click on empty map space; DashboardApp routes it by the active tab. */
+  onMapClick: (lat: number, lng: number) => void;
+  /** "risk" draws that tab's layer and hides site pins/buffers. */
+  mode?: "default" | "risk";
+  /** Compare: the bird-forecast grid for the selected week, or null. */
+  forecastGrid?: ForecastGridLayerData | null;
+  /** Risk Map: the place being predicted, coloured by its result. */
+  riskPoint?: RiskMapPoint | null;
+  /** Risk Map: the outline of the region picked, if one is. */
+  riskOutline?: RiskOutline | null;
+  /** Risk Map: a district's or sub-district's cells, when one is picked. */
+  riskGrid?: RiskMapGrid | null;
+  /** Full-screen toggle in the map controls; null where the browser can't
+   *  do full screen. */
+  fullscreen?: { active: boolean; onToggle: () => void } | null;
 }
 
 export function DashboardMap(props: DashboardMapProps) {
@@ -544,7 +853,18 @@ export function DashboardMap(props: DashboardMapProps) {
     surveillanceSites = [],
     showSurveillanceSites = false,
     onSurveillanceSiteClick,
+    onMapClick,
+    mode = "default",
+    forecastGrid = null,
+    riskPoint = null,
+    riskOutline = null,
+    riskGrid = null,
+    fullscreen = null,
   } = props;
+
+  // Site pins, buffers and eBird points belong to the site tools; the
+  // risk tab shows its own layer instead.
+  const showSiteTools = mode === "default";
 
   // Memoize filtered poultry farms to prevent expensive haversine calculation on every render
   const filteredPoultry = useMemo(() => {
@@ -596,13 +916,14 @@ export function DashboardMap(props: DashboardMapProps) {
   }, [validBirdsList]);
 
   return (
-    <section className="map-viewport" style={{ position: "relative" }}>
+    <section className="map-viewport">
       {(isWaterLoading || loadingLayerLabels.length > 0) && (
         <div
           style={{
             position: "absolute",
-            top: "20px",
-            right: "20px",
+            top: "12px",
+            left: "50%",
+            transform: "translateX(-50%)",
             zIndex: 1000,
             background: "rgba(44, 62, 80, 0.95)",
             color: "white",
@@ -667,8 +988,6 @@ export function DashboardMap(props: DashboardMapProps) {
             MapClickHandler,
             FlyToLocation,
             HeatmapLayer,
-            SearchBar,
-            MarkerClusterGroup,
             L,
             useMap,
             useMapEvents,
@@ -684,6 +1003,15 @@ export function DashboardMap(props: DashboardMapProps) {
             >
               <ZoomControl position="topright" />
               <RecenterControl L={L} useMap={useMap} />
+              {fullscreen && (
+                <FullscreenControl
+                  L={L}
+                  useMap={useMap}
+                  active={fullscreen.active}
+                  onToggle={fullscreen.onToggle}
+                />
+              )}
+              <ResizeWatcher useMap={useMap} />
               {activeBaseMap === "satellite" && (
                 <TileLayer
                   url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -694,12 +1022,6 @@ export function DashboardMap(props: DashboardMapProps) {
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                />
-              )}
-              {activeBaseMap === "light" && (
-                <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                 />
               )}
               {activeBaseMap === "topo" && (
@@ -728,11 +1050,7 @@ export function DashboardMap(props: DashboardMapProps) {
                 siteB={siteB}
                 searchPin={searchPin}
               />
-              <MapClickHandler
-                onClick={(lat: number, lng: number) =>
-                  handleSiteSelection(lat, lng, "Custom Location")
-                }
-              />
+              <MapClickHandler onClick={onMapClick} />
 
               {(showWetlandLayer || showBufferWetlands) &&
                 waterBoundariesData && (
@@ -824,7 +1142,7 @@ export function DashboardMap(props: DashboardMapProps) {
               )}
 
               {showSurveillanceSites && surveillanceSites.length > 0 && (
-                <NativeSurveillanceClusterLayer
+                <NativeSurveillanceLayer
                   L={L}
                   useMap={useMap}
                   sites={surveillanceSites}
@@ -832,179 +1150,7 @@ export function DashboardMap(props: DashboardMapProps) {
                 />
               )}
 
-              {false && (showPoultryLayer || showBufferPoultry) && (
-                <MarkerClusterGroup
-                  chunkedLoading
-                  maxClusterRadius={60}
-                  disableClusteringAtZoom={10}
-                  iconCreateFunction={(cluster: {
-                    getChildCount: () => number;
-                  }) => {
-                    const count = cluster.getChildCount();
-                    return L.divIcon({
-                      html: `<div style="background-color: #9b59b6; color: white; border: 2px solid #8e44ad; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 5px rgba(0,0,0,0.4); font-size: 13px;">${count}</div>`,
-                      className: "custom-marker-cluster",
-                      iconSize: L.point(40, 40, true),
-                    });
-                  }}
-                >
-                  {filteredPoultry.map((p) => (
-                    <CircleMarker
-                      key={p.id}
-                      center={[p.lat, p.lng]}
-                      radius={5}
-                      pathOptions={{
-                        color: "#8e44ad",
-                        fillColor: "#9b59b6",
-                        fillOpacity: 0.8,
-                        weight: 1.5,
-                      }}
-                      eventHandlers={{
-                        click: () =>
-                          handleSiteSelection(p.lat, p.lng, `[Farm] ${p.name}`),
-                      }}
-                    >
-                      <Tooltip sticky>
-                        <div
-                          style={{
-                            fontFamily: "'Inter', sans-serif",
-                            fontSize: "11px",
-                            padding: "4px 6px",
-                            minWidth: "140px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "5px",
-                              marginBottom: "3px",
-                            }}
-                          >
-                            <span
-                              style={{ color: "#9b59b6", fontSize: "13px" }}
-                            >
-                              🐔
-                            </span>
-                            <strong style={{ color: "#2c3e50" }}>
-                              {p.name}
-                            </strong>
-                          </div>
-                          {p.district && p.state ? (
-                            <div style={{ color: "#7f8c8d", fontSize: "10px" }}>
-                              📍 {p.district}, {p.state}
-                            </div>
-                          ) : null}
-                          <div
-                            style={{
-                              color: "#bdc3c7",
-                              fontSize: "9px",
-                              marginTop: "2px",
-                            }}
-                          >
-                            {p.lat.toFixed(4)}°N, {p.lng.toFixed(4)}°E
-                          </div>
-                        </div>
-                      </Tooltip>
-                    </CircleMarker>
-                  ))}
-                </MarkerClusterGroup>
-              )}
-
-              {false &&
-                showSurveillanceSites &&
-                surveillanceSites.length > 0 && (
-                  <MarkerClusterGroup
-                    chunkedLoading
-                    maxClusterRadius={50}
-                    disableClusteringAtZoom={11}
-                    iconCreateFunction={(cluster: {
-                      getChildCount: () => number;
-                    }) => {
-                      const count = cluster.getChildCount();
-                      return L.divIcon({
-                        html: `<div style="background-color: #0f766e; color: white; border: 2px solid #115e59; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-family: sans-serif; box-shadow: 0 2px 5px rgba(0,0,0,0.4); font-size: 13px;">${count}</div>`,
-                        className: "custom-marker-cluster",
-                        iconSize: L.point(40, 40, true),
-                      });
-                    }}
-                  >
-                    {surveillanceSites.map((site, i) => (
-                      <Marker
-                        key={`surv_${i}_${site.lat}_${site.lng}`}
-                        position={[site.lat, site.lng]}
-                        icon={makeSurveillanceIcon(L, site)}
-                        eventHandlers={{
-                          click: () => onSurveillanceSiteClick?.(site),
-                        }}
-                      >
-                        <Tooltip direction="top" offset={[0, -10]} sticky>
-                          <div
-                            style={{
-                              fontFamily: "'Inter', sans-serif",
-                              fontSize: "11px",
-                              padding: "4px 6px",
-                              minWidth: "160px",
-                            }}
-                          >
-                            <div
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "5px",
-                                marginBottom: "4px",
-                                borderBottom: "1px solid #ecf0f1",
-                                paddingBottom: "3px",
-                              }}
-                            >
-                              <span style={{ fontSize: "13px" }}>📍</span>
-                              <strong style={{ color: "#2c3e50" }}>
-                                {site.siteName}
-                              </strong>
-                            </div>
-                            {(site.totalPositiveSampleCount || 0) > 0 && (
-                              <div
-                                style={{ color: "#e74c3c", fontSize: "10px" }}
-                              >
-                                Positive:{" "}
-                                <strong>{site.totalPositiveSampleCount}</strong>
-                              </div>
-                            )}
-                            {(site.totalNegativeSampleCount || 0) > 0 && (
-                              <div
-                                style={{ color: "#f39c12", fontSize: "10px" }}
-                              >
-                                Negative:{" "}
-                                <strong>{site.totalNegativeSampleCount}</strong>
-                              </div>
-                            )}
-                            {(site.totalUnclearSampleCount || 0) > 0 && (
-                              <div
-                                style={{ color: "#95a5a6", fontSize: "10px" }}
-                              >
-                                Inconclusive:{" "}
-                                <strong>{site.totalUnclearSampleCount}</strong>
-                              </div>
-                            )}
-                            {site.diseaseShortName ? (
-                              <div
-                                style={{
-                                  color: "#bdc3c7",
-                                  fontSize: "9px",
-                                  marginTop: "2px",
-                                }}
-                              >
-                                {site.diseaseShortName}
-                              </div>
-                            ) : null}
-                          </div>
-                        </Tooltip>
-                      </Marker>
-                    ))}
-                  </MarkerClusterGroup>
-                )}
-
-              {(showBirdsLayer || showHeatmap) && (
+              {showSiteTools && (showBirdsLayer || showHeatmap) && (
                 <>
                   {showHeatmap && <HeatmapLayer points={heatmapPoints} />}
                   {validBirdsList.map((b, i) => {
@@ -1084,7 +1230,7 @@ export function DashboardMap(props: DashboardMapProps) {
                 </>
               )}
 
-              {showBuffer && siteA && (
+              {showSiteTools && showBuffer && siteA && (
                 <Circle
                   center={siteA.end}
                   radius={radius * 1000}
@@ -1097,7 +1243,7 @@ export function DashboardMap(props: DashboardMapProps) {
                   interactive={false}
                 />
               )}
-              {showBuffer && siteB && (
+              {showSiteTools && showBuffer && siteB && (
                 <Circle
                   center={siteB.end}
                   radius={radius * 1000}
@@ -1110,7 +1256,7 @@ export function DashboardMap(props: DashboardMapProps) {
                   interactive={false}
                 />
               )}
-              {showBuffer && searchPin && (
+              {showSiteTools && showBuffer && searchPin && (
                 <Circle
                   center={searchPin.end}
                   radius={radius * 1000}
@@ -1124,27 +1270,74 @@ export function DashboardMap(props: DashboardMapProps) {
                 />
               )}
 
-              {siteA && iconA && (
+              {showSiteTools && siteA && iconA && (
                 <Marker position={siteA.end} icon={iconA}>
-                  <Tooltip permanent>Site A: {siteA.name}</Tooltip>
+                  <Tooltip>Site A: {siteA.name}</Tooltip>
                 </Marker>
               )}
-              {siteB && iconB && (
+              {showSiteTools && siteB && iconB && (
                 <Marker position={siteB.end} icon={iconB}>
-                  <Tooltip permanent>Site B: {siteB.name}</Tooltip>
+                  <Tooltip>Site B: {siteB.name}</Tooltip>
                 </Marker>
               )}
-              {searchPin && searchIcon && (
+              {showSiteTools && searchPin && searchIcon && (
                 <Marker position={searchPin.end} icon={searchIcon}>
                   <Tooltip permanent>Searched: {searchPin.name}</Tooltip>
                 </Marker>
               )}
 
-              <SearchBar
-                onLocationFound={(lat: number, lng: number, label: string) =>
-                  handleSiteSelection(lat, lng, label)
-                }
-              />
+              {/* Compare: the forecast grid, under the buffers and pins */}
+              {forecastGrid && (
+                <ForecastGridLayer L={L} useMap={useMap} grid={forecastGrid} />
+              )}
+
+              {mode === "risk" && riskGrid ? (
+                <RiskGridLayer
+                  L={L}
+                  useMap={useMap}
+                  grid={riskGrid}
+                  outline={riskOutline}
+                />
+              ) : (
+                // Remounted per region: GeoJSON doesn't redraw when its data changes
+                mode === "risk" &&
+                riskOutline && (
+                  <GeoJSON
+                    key={`risk-outline-${riskOutline.key}`}
+                    data={riskOutline.geometry}
+                    style={RISK_OUTLINE_STYLE}
+                    interactive={false}
+                  />
+                )
+              )}
+
+              {/* Keyed by its result too: re-added after its cell is
+                  redrawn with the answer, so it stays on top of it */}
+              {mode === "risk" && riskPoint && (
+                <CircleMarker
+                  key={`${riskPoint.lat},${riskPoint.lng},${riskPoint.status},${riskPoint.probability}`}
+                  center={[riskPoint.lat, riskPoint.lng]}
+                  radius={10}
+                  pathOptions={{
+                    color: "#ffffff",
+                    weight: 3,
+                    fillColor: RISK_STATUS[riskPoint.status].color,
+                    fillOpacity: 1,
+                  }}
+                >
+                  <Tooltip permanent direction="top" offset={[0, -10]}>
+                    <strong>{riskPoint.name}</strong>
+                    {riskPoint.status !== "pending" &&
+                      riskPoint.probability !== undefined && (
+                        <>
+                          {" · "}
+                          {RISK_STATUS[riskPoint.status].label} (
+                          {formatPercent(riskPoint.probability)})
+                        </>
+                      )}
+                  </Tooltip>
+                </CircleMarker>
+              )}
 
               <ViewportTracker
                 useMapEvents={useMapEvents}

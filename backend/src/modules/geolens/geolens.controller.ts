@@ -1,4 +1,11 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  ParseUUIDPipe,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -183,11 +190,23 @@ export class GeoLensController {
   // ── Sites & Diseases ────────────────────────────────────────────────────
 
   @Get('sites')
-  @ServiceScoped('getSites() filters to the caller reachable projects')
+  @ServiceScoped(
+    'getSites() filters to the caller reachable projects, narrowed to ?workspaceId when given',
+  )
   @CheckPolicies((ability: AppAbility) => ability.can('read', 'site'))
   @ApiOperation({ summary: 'Get sites the caller can see, with locations' })
-  async getSites(@Req() req) {
-    const data = await this.geoLensService.getSites(req.user);
+  @ApiQuery({
+    name: 'workspaceId',
+    required: false,
+    description:
+      'Only sites in this workspace (the one selected in the UI). Narrows the caller’s access; never widens it.',
+  })
+  async getSites(
+    @Req() req,
+    @Query('workspaceId', new ParseUUIDPipe({ optional: true }))
+    workspaceId?: string,
+  ) {
+    const data = await this.geoLensService.getSites(req.user, workspaceId);
     return { success: true, count: data.length, data };
   }
 

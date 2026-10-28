@@ -8,6 +8,7 @@ import { BioWaterBoundary } from 'src/entities/bio-water-boundary.entity';
 import { BioCattleMarket } from 'src/entities/bio-cattle-market.entity';
 import { Site } from 'src/entities/site.entity';
 import { Disease } from 'src/entities/disease.entity';
+import { Project } from 'src/entities/project.entity';
 import { TenantScopeService } from 'src/common/authorization/tenant-scope.service';
 
 @Injectable()
@@ -25,6 +26,8 @@ export class GeoLensService {
     private siteRepo: Repository<Site>,
     @InjectRepository(Disease)
     private diseaseRepo: Repository<Disease>,
+    @InjectRepository(Project)
+    private projectRepo: Repository<Project>,
     private readonly tenantScopeService: TenantScopeService,
   ) {}
 
@@ -310,20 +313,39 @@ export class GeoLensService {
    * and GPS position of every site in the database to anyone who asked. Both
    * halves are fixed - the controller now requires a JWT, and the query is
    * bound to the projects the caller reaches through user_roles.
+   *
+   * `workspaceId` (the workspace selected in the UI) narrows that further, the
+   * same way SitesService.exploreSites does. It only ever narrows: a workspace
+   * the caller has no projects in leaves nothing, never that workspace's
+   * sites. A super-admin gets every project in it.
    */
-  async getSites(user: any): Promise<any[]> {
+  async getSites(user: any, workspaceId?: string): Promise<any[]> {
     const tenant = await this.tenantScopeService.forUser(user);
+    let isSystem = tenant.isSystem;
+    let projectIds = tenant.projectIds;
+
+    if (workspaceId) {
+      const workspaceProjects = await this.projectRepo.find({
+        where: { workspace: { id: workspaceId } },
+        select: ['id'],
+      });
+      const ids = workspaceProjects.map((p) => p.id);
+      projectIds = isSystem
+        ? ids
+        : ids.filter((id) => tenant.projectIds.includes(id));
+      isSystem = false;
+    }
 
     // Not system scope and no reachable project means no sites, never all of
     // them. Interpolating an empty IN list would be a syntax error, so the
     // empty case returns early rather than building a query at all.
-    if (!tenant.isSystem && !tenant.projectIds.length) return [];
+    if (!isSystem && !projectIds.length) return [];
 
     // `sites."projectId"` is a text column, not uuid - cast accordingly.
-    const scopePredicate = tenant.isSystem
+    const scopePredicate = isSystem
       ? ''
       : 'WHERE s."projectId" = ANY($1::text[])';
-    const params = tenant.isSystem ? [] : [tenant.projectIds];
+    const params = isSystem ? [] : [projectIds];
 
     const rows = await this.siteRepo.query(
       `
