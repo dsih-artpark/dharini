@@ -150,11 +150,6 @@ export class User {
 
   @Exclude({ toClassOnly: true })
   @ApiHideProperty()
-  @OneToMany(() => Site, (site) => site.collectionCollector)
-  sites: Site[];
-
-  @Exclude({ toClassOnly: true })
-  @ApiHideProperty()
   @OneToMany(() => Site, (site) => site.createdBy, { nullable: true })
   createdSites?: Site[] | null;
 

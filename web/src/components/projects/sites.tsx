@@ -15,7 +15,7 @@ import Spinner from "@/src/components/ui/spinner";
 import UpdateCollectionPlanModal from "@/src/components/projects/sites/update-collection-plan";
 import { useHasPermission } from "@/src/hooks/check-permission";
 import { toast } from "react-toastify";
-import { formatDate } from "@/src/utils";
+import { collectorNames, formatDate } from "@/src/utils";
 
 export default function Sites() {
   const { id } = useParams<{ id: string }>();
@@ -135,15 +135,6 @@ export default function Sites() {
       default:
         return "inline-flex items-center rounded-full bg-grey-10 px-3 py-1 text-xs font-medium text-grey-70 capitalize";
     }
-  };
-
-  const collectorName = (collector: Site["collectionCollector"]) => {
-    if (!collector) return "—";
-    if (typeof collector === "string") return collector;
-    if (collector.firstName || collector.lastName) {
-      return `${collector.firstName ?? ""} ${collector.lastName ?? ""}`.trim();
-    }
-    return collector.email ?? "—";
   };
 
   return (
@@ -368,7 +359,7 @@ export default function Sites() {
                     {site.siteSubType || site.siteType || "—"}
                   </td>
                   <td className="px-5 py-4 text-sm text-grey-70 whitespace-nowrap">
-                    {collectorName(site.collectionCollector)}
+                    {collectorNames(site) || "—"}
                   </td>
                   <td className="px-5 py-4 whitespace-nowrap">
                     <span className={testResultBadgeClass(site.testResult)}>

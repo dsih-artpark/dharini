@@ -51,7 +51,7 @@ void main() {
       ..regionId = 'district_572'
       ..latitude = 13.04
       ..longitude = 77.59
-      ..collectionCollector = 'u1');
+      ..collectionCollectors = ListBuilder(['u1']));
     final visit = CreateVisitDto((b) => b
       ..siteId = 'local-site-1'
       ..collectorId = 'u1'
@@ -109,6 +109,27 @@ void main() {
     expect(visitIdMap.get('local-visit-1'), 'r1');
     expect(visits.containsKey('r1'), isTrue);
     expect(queue.isEmpty, isTrue);
+  });
+
+  test(
+      'a site queued by a build from before several collectors keeps its collector',
+      () async {
+    await queueSiteAndVisit();
+    // As an older build queued it: the single `collectionCollector` id.
+    final key = queue.keys.first;
+    final entry = Map<dynamic, dynamic>.from(queue.get(key));
+    final payload = Map<String, dynamic>.from(entry['payload'] as Map)
+      ..remove('collectionCollectors')
+      ..['collectionCollector'] = 'u1';
+    await queue.put(key, {...entry, 'payload': payload});
+    final server = _FakeServer(overdue: const [], overdueUp: true);
+
+    await syncChangesToServerQueue(clientFor(server), 'PNIAW2');
+
+    expect(server.sitesPosted, hasLength(1));
+    final body = server.sitesPosted.single.data as Map;
+    expect(body['collectionCollectors'], ['u1']);
+    expect(body.containsKey('collectionCollector'), isFalse);
   });
 
   test('a visit with no overdue round and no visit today is still posted',

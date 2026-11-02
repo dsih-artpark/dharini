@@ -22,7 +22,7 @@ part 'update_site_dto.g.dart';
 /// * [regionId] - ID of the region
 /// * [latitude] - latitude
 /// * [longitude] - longitude
-/// * [collectionCollector] - collectionCollector id
+/// * [collectionCollectors] - IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are.
 /// * [collectionConsent] - Site owner's collection consent: 'true' or 'false'
 /// * [name] 
 /// * [collectionFrequencyInterval] 
@@ -70,9 +70,9 @@ abstract class UpdateSiteDto implements Built<UpdateSiteDto, UpdateSiteDtoBuilde
   @BuiltValueField(wireName: r'longitude')
   num get longitude;
 
-  /// collectionCollector id
-  @BuiltValueField(wireName: r'collectionCollector')
-  String get collectionCollector;
+  /// IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are.
+  @BuiltValueField(wireName: r'collectionCollectors')
+  BuiltList<String>? get collectionCollectors;
 
   /// Site owner's collection consent: 'true' or 'false'
   @BuiltValueField(wireName: r'collectionConsent')
@@ -188,11 +188,13 @@ class _$UpdateSiteDtoSerializer implements PrimitiveSerializer<UpdateSiteDto> {
       object.longitude,
       specifiedType: const FullType(num),
     );
-    yield r'collectionCollector';
-    yield serializers.serialize(
-      object.collectionCollector,
-      specifiedType: const FullType(String),
-    );
+    if (object.collectionCollectors != null) {
+      yield r'collectionCollectors';
+      yield serializers.serialize(
+        object.collectionCollectors,
+        specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+      );
+    }
     if (object.collectionConsent != null) {
       yield r'collectionConsent';
       yield serializers.serialize(
@@ -372,12 +374,13 @@ class _$UpdateSiteDtoSerializer implements PrimitiveSerializer<UpdateSiteDto> {
           ) as num;
           result.longitude = valueDes;
           break;
-        case r'collectionCollector':
+        case r'collectionCollectors':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.collectionCollector = valueDes;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>?;
+          if (valueDes == null) continue;
+          result.collectionCollectors.replace(valueDes);
           break;
         case r'collectionConsent':
           final valueDes = serializers.deserialize(

@@ -509,7 +509,10 @@ class SiteDetails extends HookWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                if (site.collectionCollector != null)
+                                // Every collector, primary first.
+                                for (final collector
+                                    in site.collectionCollectors?.toList() ??
+                                        const <User>[])
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16),
@@ -530,16 +533,13 @@ class SiteDetails extends HookWidget {
                                             height: 40,
                                             child: Center(
                                               child: Text(
-                                                (site.collectionCollector
-                                                                ?.firstName ??
-                                                            '')
-                                                        .length >= 2
-                                                    ? site.collectionCollector!
-                                                        .firstName!
+                                                (collector.firstName ?? '')
+                                                            .length >=
+                                                        2
+                                                    ? collector.firstName!
                                                         .substring(0, 2)
                                                         .toUpperCase()
-                                                    : (site.collectionCollector
-                                                                ?.firstName ??
+                                                    : (collector.firstName ??
                                                             '')
                                                         .toUpperCase(),
                                                 style: AppTypography
@@ -557,9 +557,15 @@ class SiteDetails extends HookWidget {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  site.collectionCollector
-                                                          ?.firstName ??
-                                                      '',
+                                                  collector ==
+                                                              site.collectionCollectors!
+                                                                  .first &&
+                                                          site.collectionCollectors!
+                                                                  .length >
+                                                              1
+                                                      ? '${collector.firstName ?? ''} · Primary'
+                                                      : collector.firstName ??
+                                                          '',
                                                   style: AppTypography
                                                       .textTheme.bodyB2SemiBold
                                                       .copyWith(
@@ -567,9 +573,7 @@ class SiteDetails extends HookWidget {
                                                   ),
                                                 ),
                                                 Text(
-                                                  site.collectionCollector
-                                                          ?.email ??
-                                                      '',
+                                                  collector.email ?? '',
                                                   style: AppTypography
                                                       .textTheme.bodyB3Regular
                                                       .copyWith(

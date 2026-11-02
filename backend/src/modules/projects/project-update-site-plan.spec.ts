@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common';
 import { DateTime, Settings } from 'luxon';
 import { Site } from 'src/entities/site.entity';
+import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { SitesService } from '../sites/sites.service';
 import { ProjectsController } from './projects.controller';
@@ -38,7 +39,7 @@ describe('Editing a collection plan', () => {
       photos: null,
       project: { id: PROJECT_ID },
       location: { id: 'loc-1' },
-      collectionCollector: { id: 'u1' },
+      collectorIds: ['u1'],
       collectionFrequency: 1,
       collectionTime: '09:00:00',
       ...plan,
@@ -83,7 +84,7 @@ describe('Editing a collection plan', () => {
     regionId: 'district_572',
     latitude: 13.04,
     longitude: 77.59,
-    collectionCollector: 'u1',
+    collectionCollectors: ['u1'],
     ...plan,
   });
   const mobilePlan = (interval: number, days: string[], duration: number) =>
@@ -101,7 +102,7 @@ describe('Editing a collection plan', () => {
     collectionDayOfWeek = ['Monday'],
     collectionDuration = 60,
   ) => ({
-    collectionCollector: 'u1',
+    collectionCollectors: ['u1'],
     collectionFrequency: 1,
     collectionFrequencyInterval: 7,
     collectionDuration,
@@ -142,6 +143,39 @@ describe('Editing a collection plan', () => {
   const argsOf = (builder: any, method: string) =>
     builder.calls.filter((c) => c.method === method).map((c) => c.args);
 
+  // The users and project teams SitesService checks collectors against:
+  // u3 is in the project's other team, t2, and u9 in a team outside it.
+  const teamOf = (id: string) =>
+    ({ u3: 't2', u9: 't9' })[id as 'u3' | 'u9'] ?? 't1';
+  const collectorQuery = () => {
+    let ids: string[] = [];
+    const builder: any = new Proxy(
+      {},
+      {
+        get(_, method: string) {
+          if (method === 'then') return undefined;
+          if (method === 'getMany') {
+            return async () =>
+              ids.map((id) => ({
+                id,
+                status: 'active',
+                team: { id: teamOf(id) },
+                roles: [],
+              }));
+          }
+          if (method === 'getRawMany') {
+            return async () => [{ id: 't1' }, { id: 't2' }];
+          }
+          return (_sql: unknown, params?: { ids?: string[] }) => {
+            if (params?.ids) ids = params.ids;
+            return builder;
+          };
+        },
+      },
+    );
+    return builder;
+  };
+
   // The site row as the UPDATE leaves it, read back the way node-postgres does.
   const applyUpdate = (site: Site, set: Record<string, any>) => {
     const row: Record<string, any> = { ...site };
@@ -177,20 +211,22 @@ describe('Editing a collection plan', () => {
         managerQueries.push(builder);
         return builder;
       }),
-      findOne: jest.fn(async (entity: unknown) => {
-        if (entity !== Site) return { id: 'u1', team: { id: 't1' } };
+      findOne: jest.fn(async (entity: unknown, options?: any) => {
+        // A collector, with their team.
+        if (entity !== Site) {
+          const id = options?.where?.id;
+          return { id, team: { id: teamOf(id) } };
+        }
         const update = managerQueries.find((q) => argsOf(q, 'update').length);
-        const row = applyUpdate(site, argsOf(update, 'set')[0][0]);
-        // The collector the relation query last set, if any.
-        const [assigned] = managerQueries
-          .filter((q) => argsOf(q, 'relation').length)
-          .flatMap((q) => argsOf(q, 'set').map(([user]) => user))
-          .filter(Boolean)
-          .reverse();
-        return assigned ? { ...row, collectionCollector: assigned } : row;
+        return applyUpdate(site, argsOf(update, 'set')[0][0]);
       }),
-      // The visits left once the replaceable ones are deleted.
-      find: jest.fn().mockResolvedValue(visits),
+      // The visits left once the replaceable ones are deleted, or the users
+      // the site's collectors are returned as.
+      find: jest.fn(async (entity: unknown, options?: any) =>
+        entity === User
+          ? options.where.id.value.map((id: string) => ({ id }))
+          : visits,
+      ),
       save: jest.fn<Promise<void>, any[]>(async () => {
         if (failSave) throw new Error('insert failed');
       }),
@@ -211,15 +247,19 @@ describe('Editing a collection plan', () => {
           'collectionLastScheduleDate',
           'collectionDuration',
           'collectionExpiryDate',
+          'collectorIds',
         ].map((propertyName) => ({ propertyName })),
-        relations: ['collectionCollector', 'updatedBy', 'location'].map(
-          (propertyName) => ({ propertyName }),
-        ),
+        relations: ['updatedBy', 'location'].map((propertyName) => ({
+          propertyName,
+        })),
       },
       manager: {
         transaction: jest.fn(async (work: (m: any) => unknown) =>
           work(manager),
         ),
+        // The collector checks: every test user is an active member of the
+        // project's one team.
+        createQueryBuilder: jest.fn(() => collectorQuery()),
       },
     };
     const locationService = {
@@ -427,7 +467,7 @@ describe('Editing a collection plan', () => {
       // a kept visit already has are skipped, as before.
       const edit = await editPlan(
         activeWeeklyMondays(),
-        mobileBody({ collectionCollector: 'u2' }),
+        mobileBody({ collectionCollectors: ['u2'] }),
         {
           visits: [
             {
@@ -528,7 +568,7 @@ describe('Editing a collection plan', () => {
         collectionDuration: 30,
       });
       const edit = await editPlan(site, {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 0,
         collectionDuration: 0,
@@ -729,7 +769,7 @@ describe('Editing a collection plan', () => {
         legacyWeeklyMondays(),
         {
           ...webPlan('2026-09-07', ['Monday'], 120),
-          collectionCollector: 'u2',
+          collectionCollectors: ['u2'],
         },
         {
           visits: [
@@ -771,7 +811,7 @@ describe('Editing a collection plan', () => {
 
       const edit = await editPlan(site, {
         ...webPlan('2026-02-02', ['Monday'], 30),
-        collectionCollector: 'u2',
+        collectionCollectors: ['u2'],
       });
       const response = await edit.request;
 
@@ -819,7 +859,7 @@ describe('Editing a collection plan', () => {
       });
     const toNewCollector = () => ({
       ...webPlan('2026-10-19', ['Wednesday'], 30),
-      collectionCollector: 'u2',
+      collectionCollectors: ['u2'],
     });
     const planVisitsFrom19Oct = [
       '2026-10-19',
@@ -1002,7 +1042,7 @@ describe('Editing a collection plan', () => {
       setClock('2026-03-01T05:30:00.000Z'); // Sun 1 Mar, 11:00 IST
       const edit = await editPlan(
         endedPlan(7),
-        mobileBody({ collectionCollector: 'u2' }),
+        mobileBody({ collectionCollectors: ['u2'] }),
       );
       const response = await edit.request;
 
@@ -1010,6 +1050,79 @@ describe('Editing a collection plan', () => {
       expect(edit.visitDelete()).toBeUndefined();
       expect(edit.manager.save).not.toHaveBeenCalled();
       expectsOpenVisitsReassigned(edit);
+    });
+
+    it('adds a collector without touching the visits', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u1', 'u2'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u1', 'u2']);
+      // The visits stay the primary's, ids and all.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeUndefined();
+      expect(edit.manager.save).not.toHaveBeenCalled();
+      expect(response.data.collectionCollectors.map((user) => user.id)).toEqual(
+        ['u1', 'u2'],
+      );
+    });
+
+    it('hands the visits to a new primary collector', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u2', 'u1'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u2', 'u1']);
+      expectsOpenVisitsReassigned(edit);
+      expect(
+        edit.createdVisits().every((visit) => visit.collector?.id === 'u2'),
+      ).toBe(true);
+    });
+
+    it('adds a collector from another team, leaving the visits with the primary', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u1', 'u3'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u1', 'u3']);
+      // The visits stay the primary's, under their team t1.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeUndefined();
+      expect(edit.manager.save).not.toHaveBeenCalled();
+      expect(response.data.collectionCollectors.map((user) => user.id)).toEqual(
+        ['u1', 'u3'],
+      );
+    });
+
+    it('refuses a collector who is not in the project', async () => {
+      await expectRefused(
+        await editPlan(
+          fromMonday19Oct(),
+          mobileBody({ collectionCollectors: ['u1', 'u9'] }),
+        ),
+        'u9 is not a member of a team in this project',
+      );
+    });
+
+    it('still saves a site whose collector has left, sent back unchanged', async () => {
+      const edit = await editPlan(
+        { ...fromMonday19Oct(), collectorIds: ['u9'] } as Site,
+        mobileBody({ collectionCollectors: ['u9'], address: '2 Farm Road' }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields()).not.toHaveProperty('collectorIds');
+      expect(edit.visitReassign()).toBeUndefined();
     });
 
     it('leaves the visits alone when the collector stays the same', async () => {
@@ -1028,7 +1141,7 @@ describe('Editing a collection plan', () => {
 
     // Monthly on the 2nd Monday from Thu 10 Sep for 90 days, so until 9 Dec.
     const septemberPlan = (duration = 90) => ({
-      collectionCollector: 'u1',
+      collectionCollectors: ['u1'],
       collectionFrequency: 1,
       collectionFrequencyInterval: 30,
       collectionDuration: duration,
@@ -1048,6 +1161,29 @@ describe('Editing a collection plan', () => {
         '2026-10-12',
         '2026-11-09',
       ]);
+    });
+
+    it('schedules a plan with collectors from two teams under the primary collector’s team', async () => {
+      // u3 is in team t2, u1 in t1; u3 is the primary.
+      const edit = await editPlan(
+        { ...planlessSite(), collectorIds: [] } as Site,
+        { ...septemberPlan(), collectionCollectors: ['u3', 'u1'] },
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u3', 'u1']);
+      expect(edit.createdDates()).toEqual([
+        '2026-09-10',
+        '2026-09-14',
+        '2026-10-12',
+        '2026-11-09',
+      ]);
+      expect(
+        edit
+          .createdVisits()
+          .map((visit) => [visit.collector.id, visit.team.id]),
+      ).toEqual(edit.createdVisits().map(() => ['u3', 't2']));
     });
 
     it('is refused when it moves an existing plan back more than a month', async () => {
@@ -1073,7 +1209,7 @@ describe('Editing a collection plan', () => {
     it('saves a one-time collection on a past start date, as an overdue visit', async () => {
       // Sunday 4 Oct, ten days back.
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 0,
         collectionDuration: 0,
@@ -1091,7 +1227,7 @@ describe('Editing a collection plan', () => {
     it('saves a weekly Monday plan for one month from the earliest date', async () => {
       // 14 Sep to 14 Oct: its Mondays so far are all past.
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 7,
         collectionDuration: 30,
@@ -1116,7 +1252,7 @@ describe('Editing a collection plan', () => {
       // Today 14 Aug; 14 Jul to 13 Aug, all past.
       setClock('2026-08-14T05:30:00.000Z');
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 1,
         collectionDuration: 30,
@@ -1146,7 +1282,7 @@ describe('Editing a collection plan', () => {
       // 12 Sep is before the earliest date, 14 Sep, by more than the margin.
       await expectRefused(
         await editPlan(planlessSite(), {
-          collectionCollector: 'u1',
+          collectionCollectors: ['u1'],
           collectionFrequency: 1,
           collectionFrequencyInterval: 0,
           collectionDuration: 0,
@@ -1263,7 +1399,7 @@ describe('Editing a collection plan', () => {
     it('saves the web form sent back unchanged apart from the collector', async () => {
       // The web form sends the whole plan, prefilled start date included.
       const edit = await editPlan(endedPlan(7), {
-        collectionCollector: 'u2',
+        collectionCollectors: ['u2'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 7,
         collectionDuration: 30,

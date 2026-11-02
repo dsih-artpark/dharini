@@ -1,3 +1,4 @@
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VisitService } from './visits.service';
 import { VisitStatus } from '../../common/enums/visitStatus.enum';
 import { Visit } from '../../entities/visit.entity';
@@ -74,19 +75,6 @@ describe('VisitService visit submission', () => {
     return { service, deps };
   };
 
-  const submitDto = (over: any = {}) =>
-    ({
-      visitData: {
-        visitedBy: 'u1',
-        siteId: 'site1',
-        projectId: 'p1',
-        teamId: 't1',
-        isCompleted: true,
-        ...over,
-      },
-      samples: [{ barcode: 'B-1' }],
-    }) as any;
-
   describe('executeSubmissionOfCompleteVisit', () => {
     it('marks an OVERDUE visit COMPLETED on submission', async () => {
       const visit = makeVisit({ visitStatus: VisitStatus.OVERDUE });
@@ -131,45 +119,245 @@ describe('VisitService visit submission', () => {
     });
   });
 
-  describe('submitVisit idempotency', () => {
-    it('does not recreate samples when the visit already has them, even if visitStatus is stale', async () => {
+  /**
+   * A site's collectors share its visits, so one visit can be submitted by
+   * two of them at once, or by one of them long after another completed it
+   * (offline), and a phone resends a submission whose response it lost.
+   *
+   * `makeDb` stands in for Postgres: a transaction's writes are seen by
+   * others only once it commits, and `FOR UPDATE` (setLock) waits for the
+   * transaction holding the row. Dropping the lock from submitVisit lets
+   * both submissions read the visit as open and fails the concurrency test.
+   */
+  describe('submitVisit', () => {
+    const makeDb = (visit: any, samples: { id: string; barcode: string }[]) => {
+      const db = { visit: visit && { ...visit }, samples: [...samples] };
+      let queue = Promise.resolve();
+      const lockRow = () => {
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => (release = resolve));
+        const turn = queue.then(() => release);
+        queue = queue.then(() => held);
+        return turn;
+      };
+      const locks: string[] = [];
+
+      const transaction = jest.fn(async (work: (tem: any) => unknown) => {
+        let unlock: (() => void) | null = null;
+        const pending = { visit: null as any, samples: [] as any[] };
+        const tem = {
+          pending,
+          createQueryBuilder: jest.fn((entity: unknown) => {
+            let lockMode: string | null = null;
+            const qb: any = {
+              setLock: jest.fn((mode: string) => {
+                lockMode = mode;
+                return qb;
+              }),
+              select: jest.fn(() => qb),
+              where: jest.fn(() => qb),
+              andWhere: jest.fn(() => qb),
+              getOne: jest.fn(async () => {
+                if (lockMode) {
+                  locks.push(lockMode);
+                  unlock = await lockRow();
+                }
+                return entity === Visit && db.visit ? { ...db.visit } : null;
+              }),
+              getMany: jest.fn(async () =>
+                db.samples.map(({ id, barcode }) => ({ id, barcode })),
+              ),
+            };
+            return qb;
+          }),
+          findOne: jest.fn(async (entity: unknown) =>
+            entity === Visit ? { ...db.visit } : { id: 'u' },
+          ),
+          save: jest.fn(async (v: any) => {
+            pending.visit = { ...v };
+            return v;
+          }),
+        };
+        try {
+          const result = await work(tem);
+          if (pending.visit) db.visit = pending.visit;
+          db.samples.push(...pending.samples);
+          return result;
+        } finally {
+          unlock?.();
+        }
+      });
+
+      return { db, transaction, locks };
+    };
+
+    // Creates the samples inside the caller's transaction, yielding first so
+    // a second submission gets the chance to interleave.
+    const createSamples = jest.fn(
+      async (
+        dto: any,
+        _visitId: string,
+        _siteId: string,
+        _projectId: string,
+        _teamId: string,
+        collectedBy: string,
+        tem: any,
+      ) => {
+        await new Promise((resolve) => setImmediate(resolve));
+        const created = dto.samples.map((sample: any) => ({
+          id: `s-${sample.barcode}`,
+          barcode: sample.barcode,
+          collectedBy,
+        }));
+        tem.pending.samples.push(...created);
+        return created;
+      },
+    );
+
+    const submission = (visitedBy: string, barcodes: string[]) =>
+      ({
+        visitData: {
+          visitedBy,
+          siteId: 'site1',
+          projectId: 'p1',
+          teamId: 't1',
+          isCompleted: true,
+          comment: `by ${visitedBy}`,
+        },
+        samples: barcodes.map((barcode) => ({ barcode })),
+      }) as any;
+
+    const setup = (visit: any, samples: { id: string; barcode: string }[]) => {
+      const { db, transaction, locks } = makeDb(visit, samples);
+      createSamples.mockClear();
+      const { service, deps } = makeService({
+        sampleService: {
+          createMultipleSamples: createSamples,
+          getSignedUrlForSampleFroVisitSubmit: jest.fn().mockResolvedValue([]),
+        },
+        collectorRepository: {
+          findOne: jest.fn(async ({ where }) => ({
+            id: where.id,
+            team: { id: 't1' },
+          })),
+        },
+        entityManager: { transaction },
+      });
+      return { service, deps, db, locks };
+    };
+
+    it('locks the visit row before reading it', async () => {
+      const { service, locks } = setup(makeVisit(), []);
+
+      await service.submitVisit('v1', submission('u1', ['B-1']));
+
+      expect(locks).toEqual(['pessimistic_write']);
+    });
+
+    it('completes a visit submitted by two collectors at once only once, adding the second one only its new samples', async () => {
+      const { service, db } = setup(makeVisit(), []);
+
+      await Promise.all([
+        service.submitVisit('v1', submission('u1', ['B-1', 'B-2'])),
+        service.submitVisit('v1', submission('u2', ['B-2', 'B-3'])),
+      ]);
+
+      // The first completes the visit; the second only adds B-3.
+      expect(createSamples).toHaveBeenCalledTimes(2);
+      expect(
+        createSamples.mock.calls.map(([dto, , , , , collectedBy]) => [
+          collectedBy,
+          dto.samples.map((sample) => sample.barcode),
+        ]),
+      ).toEqual([
+        ['u1', ['B-1', 'B-2']],
+        ['u2', ['B-3']],
+      ]);
+      expect(db.samples.map((sample) => sample.barcode)).toEqual([
+        'B-1',
+        'B-2',
+        'B-3',
+      ]);
+      expect(db.visit.isCompleted).toBe(true);
+      expect(db.visit.visitStatus).toBe(VisitStatus.COMPLETED);
+      expect(db.visit.comment).toBe('by u1');
+    });
+
+    it('adds a late offline submission’s new samples to the completed visit and keeps the visit’s details', async () => {
+      const completed = makeVisit({
+        isCompleted: true,
+        visitStatus: VisitStatus.COMPLETED,
+        comment: 'by u1',
+      });
+      const { service, db } = setup(completed, [{ id: 's1', barcode: 'B-1' }]);
+
+      await service.submitVisit('v1', submission('u2', ['B-1', 'B-9']));
+
+      expect(createSamples).toHaveBeenCalledTimes(1);
+      const [dto, visitId, , , , collectedBy] = createSamples.mock.calls[0];
+      expect(visitId).toBe('v1');
+      expect(collectedBy).toBe('u2');
+      expect(dto.samples).toEqual([{ barcode: 'B-9' }]);
+      expect(db.samples.map((sample) => sample.barcode)).toEqual([
+        'B-1',
+        'B-9',
+      ]);
+      expect(db.visit.comment).toBe('by u1');
+    });
+
+    it('adds nothing when a completed visit is sent again, even if visitStatus is stale', async () => {
       // The state a lost response leaves behind: samples committed, but the
       // status never promoted because the cron had marked the visit overdue.
-      const existing = makeVisit({
-        isCompleted: true,
-        visitStatus: VisitStatus.OVERDUE,
-        samples: [{ id: 's1', barcode: 'B-1' }],
-      });
-      const { service, deps } = makeService({
-        visitRepository: {
-          findOne: jest.fn().mockResolvedValue(existing),
-          save: jest.fn(async (v: any) => v),
-        },
-      });
+      const { service, db } = setup(
+        makeVisit({ isCompleted: true, visitStatus: VisitStatus.OVERDUE }),
+        [{ id: 's1', barcode: 'B-1' }],
+      );
 
-      await service.submitVisit('v1', submitDto());
+      await service.submitVisit('v1', submission('u1', ['B-1']));
 
-      expect(deps.sampleService.createMultipleSamples).not.toHaveBeenCalled();
-      expect(deps.entityManager.transaction).not.toHaveBeenCalled();
+      expect(createSamples).not.toHaveBeenCalled();
+      expect(db.samples).toHaveLength(1);
+    });
+
+    it('refuses, rather than drops, late samples it cannot add', async () => {
+      const { service, db } = setup(
+        makeVisit({ isCompleted: true, visitStatus: VisitStatus.COMPLETED }),
+        [{ id: 's1', barcode: 'B-1' }],
+      );
+      createSamples.mockRejectedValueOnce(
+        new BadRequestException(
+          'Barcodes already exist in database. Duplicate Barcodes: B-7',
+        ),
+      );
+
+      await expect(
+        service.submitVisit('v1', submission('u2', ['B-7'])),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(db.samples.map((sample) => sample.barcode)).toEqual(['B-1']);
     });
 
     it('still submits a visit that has no samples yet', async () => {
-      const existing = makeVisit({ visitStatus: VisitStatus.OVERDUE });
-      const tem = makeTem(existing);
-      const { service, deps } = makeService({
-        visitRepository: {
-          findOne: jest.fn().mockResolvedValue(existing),
-          save: jest.fn(async (v: any) => v),
-        },
-        entityManager: {
-          transaction: jest.fn(async (cb: any) => cb(tem)),
-        },
-      });
+      const { service, db } = setup(
+        makeVisit({ visitStatus: VisitStatus.OVERDUE }),
+        [],
+      );
 
-      await service.submitVisit('v1', submitDto());
+      await service.submitVisit('v1', submission('u1', ['B-1']));
 
-      expect(deps.sampleService.createMultipleSamples).toHaveBeenCalled();
-      expect(existing.visitStatus).toBe(VisitStatus.COMPLETED);
+      expect(createSamples).toHaveBeenCalledTimes(1);
+      expect(db.visit.visitStatus).toBe(VisitStatus.COMPLETED);
+      expect(db.samples.map((sample) => sample.barcode)).toEqual(['B-1']);
+    });
+
+    it("returns 404 for a visit outside the route's project", async () => {
+      const { service } = setup(makeVisit(), []);
+      const { transaction } = makeDb(null, []);
+      (service as any).entityManager = { transaction };
+
+      await expect(
+        service.submitVisit('v1', submission('u1', ['B-1']), 'p2'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(createSamples).not.toHaveBeenCalled();
     });
   });
 });

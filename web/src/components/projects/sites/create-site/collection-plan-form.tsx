@@ -9,6 +9,7 @@ import { getSiteDetailApi } from "@/src/app/(dashboard)/projects/[id]/sites/load
 import Select from "@/src/components/ui/select";
 import { siteAtom } from "@/src/store/siteAtom";
 import { User } from "@/src/types/global";
+import { collectorName, siteCollectors } from "@/src/utils";
 
 // Semantic frequency type — no magic numbers in UI logic
 type FrequencyType =
@@ -58,7 +59,8 @@ interface CollectionPlan {
   collectionFrequency: number;
   collectionTime: string;
   collectionDuration: string;
-  collectionCollector: string;
+  // Primary first, in the order they were picked.
+  collectionCollectors: string[];
   collectionStartDate: string;
 }
 
@@ -122,11 +124,11 @@ export default function CollectionPlanForm({
     collectionFrequency: 1,
     collectionTime: currentUTCTime(),
     collectionDuration: "0",
-    collectionCollector: "",
+    collectionCollectors: [],
     collectionStartDate: getTodayDate(),
   });
   const [errors, setErrors] = useState({
-    collectionCollector: "",
+    collectionCollectors: "",
     collectionFrequency: "",
     collectionFrequencyInterval: "",
     dayOfWeek: "",
@@ -147,14 +149,15 @@ export default function CollectionPlanForm({
 
   useEffect(() => {
     if (site?.id) {
-      const collectionCollector = site.collectionCollector as User;
       const interval = site.collectionFrequencyInterval ?? 7;
       setCollectionPlanData({
         frequencyType: INTERVAL_TO_FREQUENCY[interval] ?? "weekly",
         collectionFrequency: site.collectionFrequency ?? 1,
         collectionTime: site.collectionTime ?? currentUTCTime(),
         collectionDuration: ((site.collectionDuration ?? 0) / 30)?.toString(),
-        collectionCollector: collectionCollector?.id ?? "",
+        collectionCollectors: siteCollectors(site).map(
+          (collector) => collector.id,
+        ),
         collectionStartDate: site.collectionStartDate
           ? new Date(site.collectionStartDate).toISOString().split("T")[0]
           : getTodayDate(),
@@ -221,6 +224,20 @@ export default function CollectionPlanForm({
     setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
+  // The multi-select reports its picks in list order; keep them in the order
+  // they were picked instead, so the first stays the primary until removed.
+  const handleCollectorsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const picked = (e.target.value as unknown as string[]) ?? [];
+    setCollectionPlanData((prev) => ({
+      ...prev,
+      collectionCollectors: [
+        ...prev.collectionCollectors.filter((id) => picked.includes(id)),
+        ...picked.filter((id) => !prev.collectionCollectors.includes(id)),
+      ],
+    }));
+    setErrors((prev) => ({ ...prev, collectionCollectors: "" }));
+  };
+
   const collectionDayClick = (day: (typeof WEEK_DAYS)[number]) => {
     const isOnce = collectionPlanData.frequencyType === "once";
     const isDaily = collectionPlanData.frequencyType === "daily";
@@ -234,7 +251,7 @@ export default function CollectionPlanForm({
 
   const validate = () => {
     const newErrors: typeof errors = {
-      collectionCollector: "",
+      collectionCollectors: "",
       collectionFrequency: "",
       collectionFrequencyInterval: "",
       dayOfWeek: "",
@@ -243,8 +260,8 @@ export default function CollectionPlanForm({
       collectionStartDate: "",
     };
 
-    if (!collectionPlanData.collectionCollector) {
-      newErrors.collectionCollector = "Need to assign any 1 collector";
+    if (!collectionPlanData.collectionCollectors.length) {
+      newErrors.collectionCollectors = "Need to assign at least 1 collector";
     }
     if (!collectionPlanData.collectionFrequency) {
       newErrors.collectionFrequency = "Frequency is required.";
@@ -289,7 +306,7 @@ export default function CollectionPlanForm({
           // Build the payload explicitly — `frequencyType` is UI-only and
           // must not be sent to the API (Site has no such column).
           const { success, message, data } = await updateSiteApi(id, siteId, {
-            collectionCollector: collectionPlanData.collectionCollector,
+            collectionCollectors: collectionPlanData.collectionCollectors,
             collectionFrequency: Number(collectionPlanData.collectionFrequency),
             // Convert semantic type to API number only at submission boundary
             collectionFrequencyInterval:
@@ -347,8 +364,9 @@ export default function CollectionPlanForm({
                 Collector Name <span className="text-red-500">*</span>
               </label>
               <Select
-                name="collectionCollector"
+                name="collectionCollectors"
                 className="w-full self-stretch"
+                isMulti
                 options={projectMembers?.map((member) => ({
                   value: member.id,
                   label:
@@ -356,13 +374,30 @@ export default function CollectionPlanForm({
                       ? `${member.firstName} ${member.lastName}`
                       : member.email,
                 }))}
-                onChange={handleChange}
-                defaultValue={collectionPlanData.collectionCollector}
+                onChange={handleCollectorsChange}
+                defaultValue={collectionPlanData.collectionCollectors}
                 placeholder=""
               />
-              {errors.collectionCollector && (
+              {collectionPlanData.collectionCollectors.length > 0 && (
+                <p className="text-grey-70 text-xs leading-[18px]">
+                  {collectionPlanData.collectionCollectors
+                    .map((collectorId, index) => {
+                      const member = projectMembers.find(
+                        (m) => m.id === collectorId,
+                      );
+                      const name = member ? collectorName(member) : "";
+                      return index === 0 &&
+                        collectionPlanData.collectionCollectors.length > 1
+                        ? `${name} (primary)`
+                        : name;
+                    })
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              )}
+              {errors.collectionCollectors && (
                 <p className="text-red-500 text-sm">
-                  {errors.collectionCollector}
+                  {errors.collectionCollectors}
                 </p>
               )}
             </div>

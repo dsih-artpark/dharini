@@ -7,6 +7,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   JoinTable,
   ManyToMany,
@@ -89,9 +90,13 @@ export class Site {
   @Column({ nullable: true })
   collectionDuration?: number | null;
 
-  @ManyToOne(() => User, (user) => user.sites, { nullable: true })
-  @JoinColumn({ name: 'collector_id' })
-  collectionCollector?: User | null;
+  // The site's collectors, primary first (see modules/sites/site-collectors).
+  // The column kept its old name when it went from one user id to several;
+  // its GIN index is created by migration 1794000000000.
+  @ApiHideProperty()
+  @Index('IDX_sites_collector_id', { synchronize: false })
+  @Column('uuid', { name: 'collector_id', array: true, default: '{}' })
+  collectorIds: string[];
 
   @Column({ nullable: true })
   collectionExpiryDate?: Date;

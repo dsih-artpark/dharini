@@ -3333,7 +3333,8 @@ Future<String> createLocalSite({
   required int frequencyInterval,
   required List<String> selectedDays,
   required String regionId,
-  required String collectionCollector,
+  // The site's collectors' user ids, primary first.
+  required List<String> collectionCollectors,
   required List<String> photoUrls,
   required double latitude,
   required double longitude,
@@ -3368,7 +3369,8 @@ Future<String> createLocalSite({
       ..photos.addAll(photoUrls)
       ..siteCode = siteCode
       ..diseases.addAll(diseases ?? [])
-      ..collectionCollector = (UserBuilder()..id = collectionCollector);
+      ..collectionCollectors
+          .addAll(collectionCollectors.map((id) => User((u) => u..id = id)));
 
     b.location.replace(Location((l) => l
       ..id = DatabaseService.generateLocalId()
@@ -3390,7 +3392,7 @@ Future<String> createLocalSite({
     'regionId': regionId,
     'latitude': latitude,
     'longitude': longitude,
-    'collectionCollector': collectionCollector,
+    'collectionCollectors': collectionCollectors,
   });
 
   // Add to sync queue
@@ -3421,7 +3423,8 @@ Future<String> createLocalSite({
     ..regionId = regionId
     ..latitude = latitude
     ..longitude = longitude
-    ..collectionCollector = collectionCollector
+    ..collectionCollectors =
+        collectionCollectors.isEmpty ? null : ListBuilder(collectionCollectors)
     ..diseaseIds =
         diseases != null ? ListBuilder(diseases.map((d) => d.id)) : null
     // Convert Date to UTC DateTime for serialization
@@ -3596,6 +3599,28 @@ Future<void> syncNetworkSitesToHive(List<SiteResponseData> networkSites) async {
       '[HiveSync] ✅ Sync complete. Success: $successCount, Failed: $failureCount');
 }
 
+// Collector ids as a queued site holds them: a list since sites have several
+// collectors, a single id (possibly empty) when an older build queued it.
+List<String> collectorIdsFromQueued(Object? value) {
+  final ids = value is String ? [value] : (value is List ? value : const []);
+  return ids.whereType<String>().where((id) => id.isNotEmpty).toList();
+}
+
+// A site creation queued by a build from before sites had several collectors
+// names its collector as `collectionCollector`, which today's CreateSiteDto
+// would drop. Moved to `collectionCollectors` so the site still syncs with it.
+Object? upgradeQueuedSitePayload(Object? payload) {
+  if (payload is! Map || !payload.containsKey('collectionCollector')) {
+    return payload;
+  }
+  final upgraded = Map<String, dynamic>.from(payload);
+  final ids = collectorIdsFromQueued(upgraded.remove('collectionCollector'));
+  if (upgraded['collectionCollectors'] == null && ids.isNotEmpty) {
+    upgraded['collectionCollectors'] = ids;
+  }
+  return upgraded;
+}
+
 // prepare local site dto request
 CreateSiteDto convertToCreateSiteDto(
   SiteResponseData site,
@@ -3620,7 +3645,8 @@ CreateSiteDto convertToCreateSiteDto(
     ..regionId = meta['regionId'] as String
     ..latitude = meta['latitude'] as double
     ..longitude = meta['longitude'] as double
-    ..collectionCollector = meta['collectionCollector'] as String
+    ..collectionCollectors = ListBuilder(collectorIdsFromQueued(
+        meta['collectionCollectors'] ?? meta['collectionCollector']))
     ..photos = site.photos != null
         ? ListBuilder(site.photos!)
         : ListBuilder<String>());
@@ -3797,7 +3823,7 @@ Future<SyncQueueResult> _syncChangesToServerQueue(
 
     try {
       final dto = standardSerializers.deserializeWith(
-          CreateSiteDto.serializer, payload);
+          CreateSiteDto.serializer, upgradeQueuedSitePayload(payload));
       if (dto == null) throw Exception('Failed to deserialize site $localId');
 
       final response = await api.getProjectsApi().projectsControllerCreateSite(

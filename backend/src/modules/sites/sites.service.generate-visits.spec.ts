@@ -62,7 +62,7 @@ describe('SitesService.generateAllVisitsForSite', () => {
       collectionFrequencyInterval: 7,
       collectionDuration: 30,
       collectionDayOfWeek: ['Monday'],
-      collectionCollector: { id: 'u1' },
+      collectorIds: ['u1'],
       project: { id: 'P4TOD6' },
     }) as unknown as Site;
 
@@ -87,6 +87,37 @@ describe('SitesService.generateAllVisitsForSite', () => {
     expect(manager.update).toHaveBeenCalledWith(Site, SITE_ID, {
       collectionLastScheduleDate: new Date('2026-11-09T00:00:00.000Z'),
     });
+  });
+
+  it('creates the visits under the primary collector and their team', async () => {
+    const { service, manager } = makeService();
+
+    await service.generateAllVisitsForSite({
+      ...saturdayStartSite(),
+      collectorIds: ['u1', 'u2'],
+    } as Site);
+
+    expect(manager.findOne).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ where: { id: 'u1' } }),
+    );
+    const visits: Visit[] = manager.save.mock.calls[0][1];
+    expect(visits.length).toBeGreaterThan(0);
+    for (const visit of visits) {
+      expect(visit.collector.id).toBe('u1');
+      expect(visit.team.id).toBe('t1');
+    }
+  });
+
+  it('creates no visits for a site without collectors', async () => {
+    const { service, manager } = makeService();
+
+    await service.generateAllVisitsForSite({
+      ...saturdayStartSite(),
+      collectorIds: [],
+    } as Site);
+
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('does not create a second visit when one already exists on the start date', async () => {

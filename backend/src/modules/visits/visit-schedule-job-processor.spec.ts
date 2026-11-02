@@ -18,7 +18,7 @@ describe('CronJobProcessor.process', () => {
   const makeSite = (id: string) => ({
     id,
     project: { id: 'p1' },
-    collectionCollector: { id: 'c1' },
+    collectorIds: ['c1', 'c2'],
     collectionStartDate: new Date('2026-05-22T00:00:00Z'),
     collectionLastScheduleDate: new Date('2026-06-12T00:00:00Z'),
     collectionFrequencyInterval: 7,
@@ -76,6 +76,34 @@ describe('CronJobProcessor.process', () => {
 
     expect(visitRepository.save).toHaveBeenCalledTimes(2);
     expect(siteRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives the visit to the primary collector and their team', async () => {
+    await processor.process();
+
+    expect(userRepository.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'c1' } }),
+    );
+    expect(visitRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collector: { id: 'c1', team: { id: 't1' } },
+        team: { id: 't1' },
+      }),
+    );
+  });
+
+  it('only picks sites that have a collector', async () => {
+    const builder = makeQueryBuilder();
+    siteRepository.createQueryBuilder.mockReturnValue(builder);
+
+    await processor.process();
+
+    const conditions = builder.andWhere.mock.calls.map(([sql]) => String(sql));
+    expect(
+      conditions.some((sql) =>
+        sql.includes('cardinality(site.collectorIds) > 0'),
+      ),
+    ).toBe(true);
   });
 
   it('looks for the existing visit by upcoming status', async () => {
