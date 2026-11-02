@@ -638,6 +638,22 @@ class ReviewVisitDetails extends HookWidget {
         );
         await DatabaseService.savePendingSubmission(pendingSubmission);
 
+        // The backend records the submitter as visitedBy; mirror that on the
+        // locally cached completed visit so the completed screens show who
+        // actually visited, not the assigned collector, before it syncs.
+        final submitter = profile.data;
+        final submittedBy = submitter == null
+            ? null
+            : User((b) => b
+              ..id = submitter.id
+              ..firstName = submitter.firstName
+              ..lastName = submitter.lastName
+              ..email = submitter.email
+              ..profilePicture = submitter.profilePicture
+              ..designation = submitter.designation
+              ..contactNumber = submitter.contactNumber
+              ..address = submitter.address);
+
         // Update query cache
         final upcomingKey = QueryKeys.scheduledVisits(
           projectId,
@@ -663,6 +679,7 @@ class ReviewVisitDetails extends HookWidget {
               (b) => b
                 ..visitStatus = VisitStatus.completed
                 ..visitedAt = DateTime.now().toUtc()
+                ..visitedBy = submittedBy?.toBuilder()
                 ..samples = convertSamplesToVisitSamples(samples),
             );
             return old == null ? [completedVisit] : [completedVisit, ...old];
@@ -681,6 +698,7 @@ class ReviewVisitDetails extends HookWidget {
             visit.rebuild((b) => b
               ..visitStatus = VisitStatus.completed
               ..visitedAt = DateTime.now().toUtc()
+              ..visitedBy = submittedBy?.toBuilder()
               ..samples = convertSamplesToVisitSamples(samples)),
           );
           if (serializedVisit != null) {
@@ -800,6 +818,7 @@ class ReviewVisitDetails extends HookWidget {
               (b) => b
                 ..visitStatus = VisitStatus.completed
                 ..visitedAt = DateTime.now().toUtc()
+                ..visitedBy = submittedBy?.toBuilder()
                 ..samples = convertSamplesToVisitSamples(samples),
             ),
           );

@@ -22,6 +22,7 @@ import 'package:es_platform_mobile/views/sites/widgets/shedulecollection.dart';
 import 'package:es_platform_mobile/widgets/image_upload_grid.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_dragmarker/flutter_map_dragmarker.dart';
@@ -277,6 +278,14 @@ class CreateSite extends HookWidget {
       //   print("Validation failed: workers empty");
       //   errors['workers'] = 'Number of workers is required';
       // }
+
+      // Optional, but if filled in it must be a whole number - otherwise the
+      // int.tryParse(...) ?? 0 at submit silently saves it as 0.
+      final workersText = noofworkersController.text.trim();
+      if (workersText.isNotEmpty && int.tryParse(workersText) == null) {
+        print("Validation failed: workers not a number");
+        errors['workers'] = 'Enter a valid number';
+      }
 
       if (addressController.text.isEmpty) {
         print("Validation failed: address empty");
@@ -1655,6 +1664,12 @@ class CreateSite extends HookWidget {
                               label: 'No. of Workers',
                               placeholder: 'Enter Number',
                               keyboardType: TextInputType.number,
+                              // Digits only; 9 keeps it inside the backend's
+                              // integer column.
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(9),
+                              ],
                               controller: noofworkersController,
                               onChanged: (value) {
                                 if (value.isNotEmpty) {

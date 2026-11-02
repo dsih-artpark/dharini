@@ -6,7 +6,7 @@ export default async function SpeciesPage() {
     <div className="flex flex-col">
       <Breadcrumb
         path={[
-          { name: "Manage", href: "/manage" },
+          { name: "Projects", href: "/manage" },
           { name: "Species", href: "/manage/species" },
         ]}
       />

@@ -16,8 +16,33 @@ class EditProfile extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
-    final updateProfile = useUpdateProfile(userId: profile?.id ?? '');
     final queryClient = useQueryClient();
+    // fquery's mutate() never rethrows, so success and failure are only
+    // reported through these callbacks, not by awaiting mutate().
+    final updateProfile = useUpdateProfile(
+      onSuccess: () {
+        queryClient.invalidateQueries(QueryKeys.profile);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          context.pop();
+        }
+      },
+      onError: (errorMessage) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update profile: $errorMessage'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      },
+    );
 
     // Text Editing Controllers
     final firstNameController = useTextEditingController();
@@ -392,36 +417,12 @@ class EditProfile extends HookWidget {
                     ),
                     AppButton(
                       isLoading: updateProfile.isPending,
-                      onPressed: () async {
-                        final updateUserDto = UpdateUserDtoBuilder()
+                      onPressed: () {
+                        final updateOwnProfileDto = UpdateOwnProfileDtoBuilder()
                           ..firstName = firstNameController.text
                           ..lastName = lastNameController.text;
 
-                        try {
-                          await updateProfile.mutate(
-                            updateUserDto.build(),
-                          );
-                          queryClient.invalidateQueries(QueryKeys.profile);
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Profile updated successfully!'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                            context.pop();
-                          }
-                        } catch (error) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                    'Failed to update profile: ${error.toString()}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        }
+                        updateProfile.mutate(updateOwnProfileDto.build());
                       },
                       child: const Text('Save Changes'),
                     ),

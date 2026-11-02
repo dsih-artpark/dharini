@@ -791,8 +791,10 @@ class SiteDetails extends HookWidget {
                                                   e.sampleType?.name ?? '')
                                               .toList(),
                                           siteCode: visit.site.siteCode ?? '',
-                                          visitedBy:
-                                              visit.collector?.firstName ?? '',
+                                          visitedBy: (visit.visitedBy ??
+                                                      visit.collector)
+                                                  ?.firstName ??
+                                              '',
                                         ),
                                         const SizedBox(height: 8),
                                       ],

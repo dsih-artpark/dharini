@@ -1432,7 +1432,8 @@ class CompleteVisits extends HookWidget {
       final unit = sample.unit ?? "";
       final comment = sample.comment ?? "";
 
-      final collectedByUser = sample.collectedBy ?? visit.collector;
+      final collectedByUser =
+          sample.collectedBy ?? visit.visitedBy ?? visit.collector;
       final collectedBy = collectedByUser != null
           ? "${collectedByUser.firstName ?? ""} ${collectedByUser.lastName ?? ""}"
               .trim()
