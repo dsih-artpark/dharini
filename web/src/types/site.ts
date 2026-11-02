@@ -40,7 +40,8 @@ export type Site = {
   nextCollectionDate?: string;
   collectionLastScheduleDate?: string;
   collectionExpiryDate?: string;
-  collectionCollector?: string | User;
+  // Sent as user ids, primary first; returned as the users, in that order.
+  collectionCollectors?: (string | User)[];
   createdBy?: User;
   createdAt?: string;
   updatedAt?: string;

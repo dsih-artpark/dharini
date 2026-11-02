@@ -64,7 +64,8 @@ class EditSite extends HookWidget {
     // 'true' / 'false' as strings (older APKs parse this field as String)
     final collectionConsent = useState<String?>(null);
     final selectedFarmType = useState<String?>(null);
-    final selectedCollectors = useState<String?>(null);
+    // Collector user ids, primary first.
+    final selectedCollectors = useState<List<String>>(const []);
     final selectedDays = useState<List<String>>([]);
     final uploadedPhotoUrls = useState<List<String>>([]);
 
@@ -177,9 +178,10 @@ class EditSite extends HookWidget {
           selectedDistrictId.value = site.location?.region?.id ?? '';
         });
 
-        // Store the collector ID but don't set it until we verify it exists in the options
-        final collectorId = site.collectionCollector?.id;
-        selectedCollectors.value = null; // Reset initially
+        // Every collector the site has, primary first, so an edit that
+        // leaves them alone sends them back unchanged.
+        selectedCollectors.value =
+            site.collectionCollectors?.map((user) => user.id).toList() ?? [];
 
         selectedDays.value = site.collectionDayOfWeek
                 ?.map((day) => day.name.toLowerCase())
@@ -209,22 +211,6 @@ class EditSite extends HookWidget {
     final stateRegions = useRegions('state');
     final districtRegions = useDistricts(parentId: selectedStateId.value);
     final collectorCollectors = useCollectors(projectId);
-
-    // Add effect to handle collector selection after options are loaded
-    useEffect(() {
-      if (collectorCollectors.data != null && siteDetails.data != null) {
-        final collectorId = siteDetails.data!.collectionCollector?.id;
-        if (collectorId != null) {
-          // Check if the collector ID exists in the available options
-          final exists = (collectorCollectors.data as List<User>)
-              .any((collector) => collector.id == collectorId);
-          if (exists) {
-            selectedCollectors.value = collectorId;
-          }
-        }
-      }
-      return null;
-    }, [collectorCollectors.data, siteDetails.data]);
 
     // Initial load of photos
     useEffect(() {
@@ -478,8 +464,8 @@ class EditSite extends HookWidget {
         errors['pincode'] = 'Pincode is required';
       }
 
-      if (selectedCollectors.value == null) {
-        errors['collector'] = 'Need to assign any 1 collector';
+      if (selectedCollectors.value.isEmpty) {
+        errors['collector'] = 'Need to assign at least 1 collector';
       }
 
       // if (contactnameController.text.isEmpty) {
@@ -593,7 +579,7 @@ class EditSite extends HookWidget {
             ..latitude = double.tryParse(latController.text) ?? 0.0
             ..longitude = double.tryParse(longController.text) ?? 0.0
             ..regionId = selectedDistrictId.value ?? ''
-            ..collectionCollector = selectedCollectors.value ?? ''
+            ..collectionCollectors = ListBuilder(selectedCollectors.value)
             // Send the complete list of photos
             ..photos = ListBuilder(allPhotos);
 

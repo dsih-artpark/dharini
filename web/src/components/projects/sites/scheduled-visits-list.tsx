@@ -15,7 +15,7 @@ import Spinner from "@/src/components/ui/spinner";
 import { Calendar, Edit3, ArrowDown } from "lucide-react";
 import { toast } from "react-toastify";
 
-import { formatDate } from "@/src/utils";
+import { collectorNames, formatDate } from "@/src/utils";
 
 export type ScheduleStatus =
   | "Overdue"
@@ -144,16 +144,7 @@ export default function ScheduledVisitsList({
   }, [siteDetail]);
 
   const planSubtitle = useMemo(() => {
-    const collector = siteDetail?.collectionCollector;
-    let collectorName = "";
-    if (collector) {
-      if (typeof collector === "object") {
-        const name = `${collector.firstName || ""} ${collector.lastName || ""}`.trim();
-        if (name) collectorName = name;
-      } else if (typeof collector === "string") {
-        collectorName = collector;
-      }
-    }
+    const collectorName = collectorNames(siteDetail);
     const expiryStr = siteDetail?.collectionExpiryDate
       ? formatDate(siteDetail.collectionExpiryDate)
       : "";

@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import Image from "next/image";
 import { Sample, SubtypeKitDetail } from "@/src/types/sample";
 import {
+  collectorNames,
   formatDate,
   formatTime,
   getFileNameFromS3Url,
@@ -58,10 +59,7 @@ export default function SampleAccessionDetails({
                 Assigned To
               </p>
               <p className="text-grey-80 text-base leading-normal">
-                {sampleDetail?.site?.collectionCollector &&
-                typeof sampleDetail?.site?.collectionCollector !== "string"
-                  ? `${sampleDetail?.site?.collectionCollector?.firstName} ${sampleDetail?.site?.collectionCollector?.lastName}`
-                  : "-"}
+                {collectorNames(sampleDetail?.site) || "-"}
               </p>
             </div>
             <div className="self-stretch justify-start items-start gap-2 inline-flex">

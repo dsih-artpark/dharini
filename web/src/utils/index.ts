@@ -1,3 +1,5 @@
+import type { User } from "@/src/types/global";
+
 export function generateRandomCode(length: number): string {
   const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
@@ -97,4 +99,31 @@ export function formatPhoneForAPI(phone: string): string {
     return cleaned.slice(2);
   }
   return cleaned;
+}
+
+// A site's collectors as the API returns them, primary first.
+export function siteCollectors(
+  site?: {
+    collectionCollectors?: (string | User)[];
+  } | null,
+): User[] {
+  return (site?.collectionCollectors ?? []).filter(
+    (collector): collector is User =>
+      typeof collector === "object" && collector !== null,
+  );
+}
+
+export function collectorName(collector: User): string {
+  const name =
+    `${collector.firstName ?? ""} ${collector.lastName ?? ""}`.trim();
+  return name || collector.email || "";
+}
+
+// "A, B" for a site's collectors, or "" when it has none.
+export function collectorNames(
+  site?: {
+    collectionCollectors?: (string | User)[];
+  } | null,
+): string {
+  return siteCollectors(site).map(collectorName).filter(Boolean).join(", ");
 }

@@ -9978,10 +9978,17 @@
             "description": "longitude",
             "example": "-70.4453"
           },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
+          "collectionCollectors": {
+            "description": "IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits.",
+            "example": [
+              "user-uuid"
+            ],
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "collectionConsent": {
             "type": "string",
@@ -10008,8 +10015,7 @@
           "photos",
           "regionId",
           "latitude",
-          "longitude",
-          "collectionCollector"
+          "longitude"
         ]
       },
       "UserWithTeamResponse": {
@@ -10299,8 +10305,11 @@
               "$ref": "#/components/schemas/Disease"
             }
           },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
+          "collectionCollectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           },
           "createdBy": {
             "$ref": "#/components/schemas/UserWithTeamResponse"
@@ -10486,8 +10495,11 @@
               "$ref": "#/components/schemas/Disease"
             }
           },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
+          "collectionCollectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           },
           "createdBy": {
             "$ref": "#/components/schemas/UserWithTeamResponse"
@@ -10636,10 +10648,17 @@
             "description": "longitude",
             "example": "-70.4453"
           },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
+          "collectionCollectors": {
+            "description": "IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are.",
+            "example": [
+              "user-uuid"
+            ],
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "collectionConsent": {
             "type": "string",
@@ -10654,8 +10673,7 @@
           "photos",
           "regionId",
           "latitude",
-          "longitude",
-          "collectionCollector"
+          "longitude"
         ]
       },
       "VisitSummaryResponseData": {

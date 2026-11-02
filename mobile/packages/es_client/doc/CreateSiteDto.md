@@ -17,7 +17,7 @@ Name | Type | Description | Notes
 **regionId** | **String** | ID of the region | 
 **latitude** | **num** | latitude | 
 **longitude** | **num** | longitude | 
-**collectionCollector** | **String** | collectionCollector id | 
+**collectionCollectors** | **BuiltList&lt;String&gt;** | IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits. | [optional] 
 **collectionConsent** | **String** | Site owner's collection consent: 'true' or 'false' | [optional] 
 **diseaseIds** | **BuiltList&lt;String&gt;** | IDs of diseases to associate with this site (subset of project diseases) | [optional] 
 **name** | **String** |  | 

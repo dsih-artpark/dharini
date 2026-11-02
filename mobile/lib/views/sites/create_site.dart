@@ -17,6 +17,7 @@ import 'package:es_platform_mobile/utils/extensions/go_router.dart';
 import 'package:es_platform_mobile/utils/extensions/validator.dart';
 import 'package:es_platform_mobile/utils/map_tile_provider.dart';
 import 'package:es_platform_mobile/utils/visit_selection.dart';
+import 'package:es_platform_mobile/views/sites/widgets/collector_picker.dart';
 import 'package:es_platform_mobile/views/sites/widgets/dropdown.dart';
 import 'package:es_platform_mobile/views/sites/widgets/shedulecollection.dart';
 import 'package:es_platform_mobile/widgets/image_upload_grid.dart';
@@ -153,7 +154,8 @@ class CreateSite extends HookWidget {
     final pendingDistrictName = useRef<String>('');
     final nominatimResults = useState<List<Map<String, dynamic>>>([]);
     final nominatimTimer = useRef<Timer?>(null);
-    final selectedCollectors = useState<String?>(null);
+    // Collector user ids, primary first.
+    final selectedCollectors = useState<List<String>>(const []);
     final selectedDays = useState<List<String>>([]);
     // The collection start date; as on the web, a new plan starts today
     // unless another date is picked.
@@ -308,9 +310,9 @@ class CreateSite extends HookWidget {
         errors['pincode'] = 'Pincode is required';
       }
 
-      if (selectedCollectors.value == null) {
-        print("Validation failed: collector null");
-        errors['collector'] = 'Need to assign any 1 collector';
+      if (selectedCollectors.value.isEmpty) {
+        print("Validation failed: no collector");
+        errors['collector'] = 'Need to assign at least 1 collector';
       }
 
       // if (contactnameController.text.isEmpty) {
@@ -810,12 +812,11 @@ class CreateSite extends HookWidget {
           children: <Widget>[
             KeyedSubtree(
               key: collectorKey,
-              child: CustomDropdown<String>(
-                label: 'Select Collector',
+              child: CollectorPicker(
                 options: collectorOptions,
-                value: selectedCollectors.value,
-                onChanged: (value) {
-                  selectedCollectors.value = value;
+                selectedIds: selectedCollectors.value,
+                onChanged: (ids) {
+                  selectedCollectors.value = ids;
                   final newErrors =
                       Map<String, String>.from(validationErrors.value);
                   newErrors.remove('collector');
@@ -1129,7 +1130,7 @@ class CreateSite extends HookWidget {
           selectedDays: selectedDays.value,
           regionId: selectedDistrictId.value ?? '',
           photoUrls: uploadedPhotoUrls.value,
-          collectionCollector: selectedCollectors.value ?? '',
+          collectionCollectors: selectedCollectors.value,
           latitude: latitude,
           longitude: longitude,
           collectionStartDate: selectedStartDate.value?.toDate(),
@@ -1160,12 +1161,16 @@ class CreateSite extends HookWidget {
         // start-date visit and take round 1.
         final startDate = selectedStartDate.value;
         final startsLater = planStartsAfterToday(startDate, now);
+        final primaryCollector = selectedCollectors.value.isEmpty
+            ? ''
+            : selectedCollectors.value.first;
 
         final localVisitId = startsLater
             ? null
             : await createLocalVisit(
                 siteId: localSite!.id,
-                collectorId: selectedCollectors.value ?? '',
+                // The visit is the primary collector's, as plan visits are.
+                collectorId: primaryCollector,
                 scheduledAt: now,
                 comment: commentController.text,
                 attachToOverdue: true,
@@ -1252,7 +1257,7 @@ class CreateSite extends HookWidget {
             if (startVisit != null) {
               context.pushReplacement('/AddvisitDetails', extra: {
                 'visitDetails': startVisit,
-                'collectorId': selectedCollectors.value ?? '',
+                'collectorId': primaryCollector,
                 'showSuccessSnackbar': true,
               });
             } else {
@@ -1358,7 +1363,7 @@ class CreateSite extends HookWidget {
     //       ..collectionDuration =
     //           (int.tryParse(durationController.text) ?? 0) * 30
     //       ..regionId = selectedDistrictId.value ?? ''
-    //       ..collectionCollector = selectedCollectors.value ?? ''
+    //       ..collectionCollectors = ListBuilder(selectedCollectors.value)
     //       ..photos = ListBuilder(uploadedPhotoUrls.value));
 
     //     print('Submitting site with photos: ${uploadedPhotoUrls.value}');

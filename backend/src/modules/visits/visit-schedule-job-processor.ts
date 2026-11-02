@@ -40,7 +40,6 @@ export class CronJobProcessor extends WorkerHost {
       const dueSites = await this.siteRepository
         .createQueryBuilder('site')
         .leftJoinAndSelect('site.project', 'project')
-        .leftJoinAndSelect('site.collectionCollector', 'collectionCollector')
         .where(
           `site.collectionLastScheduleDate IS NOT NULL AND
            DATE_TRUNC('day', CURRENT_TIMESTAMP) >=
@@ -49,7 +48,7 @@ export class CronJobProcessor extends WorkerHost {
         .andWhere(
           `site.collectionFrequencyInterval IS NOT NULL AND
          site.collectionFrequency IS NOT NULL AND
-         site.collectionCollector IS NOT NULL AND
+         cardinality(site.collectorIds) > 0 AND
          site.collectionStartDate IS NOT NULL AND
          site.collectionDuration IS NOT NULL`,
         )
@@ -129,10 +128,12 @@ export class CronJobProcessor extends WorkerHost {
     }
   }
 
-  async createNewVisit(collectionPlan, visitScheduleDateTime) {
+  // The visit goes to the site's primary collector and their team; the other
+  // collectors, whatever their team, see it too.
+  async createNewVisit(collectionPlan: Site, visitScheduleDateTime) {
     try {
       const userData = await this.userRepository.findOne({
-        where: { id: collectionPlan?.collectionCollector?.id },
+        where: { id: collectionPlan?.collectorIds?.[0] },
         relations: ['team'],
       });
       const teamData = await this.teamRepository.findOne({
@@ -140,7 +141,7 @@ export class CronJobProcessor extends WorkerHost {
       });
       const visit = this.visitRepository.create({
         site: collectionPlan,
-        collector: collectionPlan.collectionCollector,
+        collector: userData,
         team: teamData,
         project: collectionPlan.project,
         questionSetId: 'qs-1',

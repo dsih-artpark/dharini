@@ -221,7 +221,11 @@ class Sites extends HookWidget {
                                 siteNumber: site.siteCode ?? '',
                                 address: site.address ?? '',
                                 assignedCollectors:
-                                    site.collectionCollector?.firstName ?? '',
+                                    (site.collectionCollectors?.toList() ??
+                                            const <User>[])
+                                        .map((user) => user.firstName ?? '')
+                                        .where((name) => name.isNotEmpty)
+                                        .join(', '),
                                 collectionSchedule:
                                     '${site.collectionTime ?? ''} time / ${site.collectionDayOfWeek ?? ''} day',
                                 mapImageUrl:
