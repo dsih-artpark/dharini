@@ -995,12 +995,17 @@ export class VisitService implements OnModuleInit {
 
     let user = null;
 
+    // Suspected positives are set on this transaction's copy of the visit and
+    // written by the single save below. Writing them through visitRepository
+    // (updateSuspectedPositives) used another pooled connection, whose UPDATE
+    // waited on the row lock submitVisit holds until the statement timeout
+    // failed the whole submission.
     if (
       updateVisitDto.suspectDiseaseData &&
       updateVisitDto.suspectDiseaseData.length > 0
     ) {
-      const updatePromises = updateVisitDto.suspectDiseaseData.map((data) => {
-        let parsedData = data;
+      const entries = updateVisitDto.suspectDiseaseData.map((data) => {
+        let parsedData: any = data;
         if (typeof data === 'string') {
           try {
             parsedData = JSON.parse(data);
@@ -1008,15 +1013,45 @@ export class VisitService implements OnModuleInit {
             console.error('Error parsing suspectDiseaseData string', e);
           }
         }
-        return this.updateSuspectedPositives(
-          id,
-          parsedData.diseaseId,
-          parsedData.sampleCount,
-          parsedData.isSuspectedPositive,
-        );
+        return parsedData;
       });
 
-      await Promise.all(updatePromises);
+      const diseaseIds = entries
+        .map((entry) => entry?.diseaseId)
+        .filter((diseaseId): diseaseId is string => !!diseaseId);
+      const diseases = diseaseIds.length
+        ? await transactionalEntityManager.find(Disease, {
+            where: { id: In(diseaseIds) },
+          })
+        : [];
+      const diseasesById = new Map(
+        diseases.map((disease) => [disease.id, disease]),
+      );
+
+      const suspectedPositives = [...(visit.suspectedPositives ?? [])];
+      for (const entry of entries) {
+        const disease = diseasesById.get(entry?.diseaseId);
+        if (!disease) {
+          throw new Error('Disease not found');
+        }
+        const existingEntryIndex = suspectedPositives.findIndex(
+          (suspected) => suspected.disease?.id === disease.id,
+        );
+        if (existingEntryIndex !== -1) {
+          suspectedPositives[existingEntryIndex] = {
+            ...suspectedPositives[existingEntryIndex],
+            sampleCount: entry.sampleCount,
+            isSuspectedPositive: entry.isSuspectedPositive,
+          };
+        } else {
+          suspectedPositives.push({
+            disease,
+            sampleCount: entry.sampleCount,
+            isSuspectedPositive: entry.isSuspectedPositive,
+          });
+        }
+      }
+      visit.suspectedPositives = suspectedPositives;
     }
 
     const { isCompleted, latitude, longitude, ...otherFields } = updateVisitDto;
