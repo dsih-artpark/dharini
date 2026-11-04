@@ -85,6 +85,9 @@ export default function TeamMemberProgress() {
     fetchMembers,
   ]);
 
+  // The backend compares these as exact instants, so send the first and last
+  // moment of the month in the user's local time. (Midnight of the last day
+  // would drop that whole day.)
   const handleDateSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const now = new Date();
     if (e.target.value === "") {
@@ -100,6 +103,10 @@ export default function TeamMemberProgress() {
         now.getFullYear(),
         now.getMonth() + 1,
         0,
+        23,
+        59,
+        59,
+        999,
       ).toISOString();
       setFilter((prev) => ({ ...prev, startDate, endDate }));
     }
@@ -113,6 +120,10 @@ export default function TeamMemberProgress() {
         now.getFullYear(),
         now.getMonth(),
         0,
+        23,
+        59,
+        59,
+        999,
       ).toISOString();
       setFilter((prev) => ({ ...prev, startDate, endDate }));
     }

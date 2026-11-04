@@ -52,6 +52,7 @@ import {
   sameCollectorIds,
   validateSiteCollectors,
 } from './site-collectors';
+import { siteTestStatusSql } from './site-test-status';
 
 // A plan edit replaces only the future visits nobody has touched, which
 // mirrors VisitService's hasNoVisitData. Anything recorded on a visit or
@@ -95,7 +96,7 @@ export class SitesService {
     @InjectRepository(LabTest)
     private readonly labTestRepository: Repository<LabTest>,
     private readonly tenantScopeService: TenantScopeService,
-  ) {}
+  ) { }
 
   async findAll(query: any, user: any): Promise<Site[]> {
     const {
@@ -251,40 +252,14 @@ export class SitesService {
     diseaseId: string,
     siteId: string,
   ): Promise<{ siteId: string; status: TestResultType }> {
-    // Fetch lab tests with matching disease IDs
-    const result = await this.sampleRepository
-      .createQueryBuilder('sample')
-      .innerJoin('sample.site', 'site')
+    // Same status rule as the project Sites summary cards
+    // (ProjectsService.getSitesStatisticsByStatus) so badges and counts agree.
+    const result = await this.siteRepository
+      .createQueryBuilder('site')
       .select('site.id', 'siteId')
-      .addSelect(
-        `
-      CASE
-        WHEN EXISTS (
-          SELECT 1 FROM samples s
-          INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-          WHERE s."siteId" = site.id
-            AND lt."diseaseId" = :diseaseId
-            AND lt."testResult" = :positive
-        ) THEN :positive
-        WHEN EXISTS (
-          SELECT 1 FROM samples s
-          INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-          WHERE s."siteId" = site.id
-            AND lt."diseaseId" = :diseaseId
-            AND lt."testResult" = :negative
-        ) THEN :negative
-        ELSE :pending
-      END
-    `,
-        'status',
-      )
+      .addSelect(siteTestStatusSql('site.id', 'diseaseId'), 'status')
       .where('site.id = :siteId', { siteId })
-      .setParameters({
-        diseaseId,
-        positive: TestResultType.POSITIVE,
-        negative: TestResultType.NEGATIVE,
-        pending: TestResultType.PENDING,
-      })
+      .setParameter('diseaseId', diseaseId)
       .getRawOne();
 
     if (!result) {
@@ -742,8 +717,8 @@ export class SitesService {
     if (duplicateSite) {
       console.warn(
         `[SitesService] Conflict: A site named "${createSiteObj.name}" already exists in project ID: ${projectData.id}. ` +
-          `Existing site ID: ${duplicateSite.id}, SiteCode: ${duplicateSite.siteCode}, ` +
-          `Requested SiteCode: ${createSiteObj.siteCode}`,
+        `Existing site ID: ${duplicateSite.id}, SiteCode: ${duplicateSite.siteCode}, ` +
+        `Requested SiteCode: ${createSiteObj.siteCode}`,
       );
 
       if (
@@ -908,13 +883,13 @@ export class SitesService {
       !sameCollectorIds(collectorIds, existingSite.collectorIds);
     const collectors = collectorsChanged
       ? await validateSiteCollectors(
-          this.siteRepository.manager,
-          collectorIds,
-          {
-            projectId: existingSite.project.id,
-            existingIds: existingSite.collectorIds,
-          },
-        )
+        this.siteRepository.manager,
+        collectorIds,
+        {
+          projectId: existingSite.project.id,
+          existingIds: existingSite.collectorIds,
+        },
+      )
       : [];
     const primaryChanged =
       collectorsChanged && collectorIds[0] !== primaryCollectorId(existingSite);
@@ -937,8 +912,8 @@ export class SitesService {
     if (duplicateSite) {
       console.warn(
         `[SitesService] Conflict on Update: A site named "${updateSiteDto.name}" already exists in project ID: ${existingSite.project.id}. ` +
-          `Existing site ID: ${duplicateSite.id}, SiteCode: ${duplicateSite.siteCode}, ` +
-          `Updating site ID: ${id}`,
+        `Existing site ID: ${duplicateSite.id}, SiteCode: ${duplicateSite.siteCode}, ` +
+        `Updating site ID: ${id}`,
       );
       throw new ConflictException(
         `A site named "${updateSiteDto.name}" already exists in this project.`,
@@ -1299,8 +1274,8 @@ export class SitesService {
     const replacedDays: Date[] = scheduleChanged
       ? []
       : (deleted.raw ?? [])
-          .map((row: Partial<Visit>) => row.visitScheduledAt)
-          .filter(Boolean);
+        .map((row: Partial<Visit>) => row.visitScheduledAt)
+        .filter(Boolean);
 
     await this.generateAllVisitsForSite(site, {
       onlyFuture: !isFirstPlan && !replacesPlan,
@@ -1354,41 +1329,41 @@ export class SitesService {
       // Normalise disease param: may be a single id, comma-separated, or already an array
       const diseaseIds: string[] = disease
         ? (Array.isArray(disease)
-            ? disease
-            : (disease as string).split(',').map((d) => d.trim())
-          ).filter(Boolean)
+          ? disease
+          : (disease as string).split(',').map((d) => d.trim())
+        ).filter(Boolean)
         : [];
 
       // Normalise regionId param: may be single, comma-separated, or array
       const regionIds: string[] = regionId
         ? (Array.isArray(regionId)
-            ? regionId
-            : (regionId as string).split(',').map((r) => r.trim())
-          ).filter(Boolean)
+          ? regionId
+          : (regionId as string).split(',').map((r) => r.trim())
+        ).filter(Boolean)
         : [];
 
       // Normalise siteId param
       const siteIds: string[] = siteId
         ? (Array.isArray(siteId)
-            ? siteId
-            : (siteId as string).split(',').map((s) => s.trim())
-          ).filter(Boolean)
+          ? siteId
+          : (siteId as string).split(',').map((s) => s.trim())
+        ).filter(Boolean)
         : [];
 
       // Normalise sampleTypeId param
       const sampleTypeIds: string[] = sampleTypeId
         ? (Array.isArray(sampleTypeId)
-            ? sampleTypeId
-            : (sampleTypeId as string).split(',').map((s) => s.trim())
-          ).filter(Boolean)
+          ? sampleTypeId
+          : (sampleTypeId as string).split(',').map((s) => s.trim())
+        ).filter(Boolean)
         : [];
 
       // Normalise testResult param
       const testResults: string[] = testResult
         ? (Array.isArray(testResult)
-            ? testResult
-            : (testResult as string).split(',').map((r) => r.trim())
-          ).filter(Boolean)
+          ? testResult
+          : (testResult as string).split(',').map((r) => r.trim())
+        ).filter(Boolean)
         : [];
 
       const variants = Array.isArray(variant)

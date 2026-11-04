@@ -162,18 +162,24 @@ class ReviewVisitDetails extends HookWidget {
       return null;
     }, [sitesData, visit.site.id]);
 
-    useEffect(() {
-      Future.microtask(() async {
-        // ignore: use_build_context_synchronously
-        if (!context.mounted) return;
-        final position = await LocationManager.ensureLocation(context);
-        if (position == null) {
-          return;
-        }
+    final isFetchingLocation = useState<bool>(true);
 
+    // ensureLocation tells the user why when it returns null; the submit
+    // button then offers a retry instead of waiting forever.
+    Future<void> fetchLocation() async {
+      if (!context.mounted) return;
+      isFetchingLocation.value = true;
+      final position = await LocationManager.ensureLocation(context);
+      if (!context.mounted) return;
+      if (position != null) {
         latitude.value = position.latitude;
         longitude.value = position.longitude;
-      });
+      }
+      isFetchingLocation.value = false;
+    }
+
+    useEffect(() {
+      Future.microtask(fetchLocation);
       return null;
     }, []);
 
@@ -1523,9 +1529,13 @@ class ReviewVisitDetails extends HookWidget {
           ],
         ),
         child: ElevatedButton(
-          onPressed: hasCoords ? handleSubmitVisit : null,
+          onPressed: hasCoords
+              ? handleSubmitVisit
+              : isFetchingLocation.value
+                  ? null
+                  : fetchLocation,
           style: ElevatedButton.styleFrom(
-            backgroundColor: hasCoords
+            backgroundColor: hasCoords || !isFetchingLocation.value
                 ? AppColors.primaryLight
                 : AppColors.primaryLight.withOpacity(0.5),
             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -1535,33 +1545,39 @@ class ReviewVisitDetails extends HookWidget {
           ),
           child: submitVisitMutation.isPending
               ? const CircularProgressIndicator(color: Colors.white)
-              : !hasCoords
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Fetching Location...',
-                          style: AppTypography.textTheme.buttonSmall.copyWith(
-                            color: AppColors.white,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Text(
+              : hasCoords
+                  ? Text(
                       'Submit Visit',
                       style: AppTypography.textTheme.buttonSmall.copyWith(
                         color: AppColors.white,
                       ),
-                    ),
+                    )
+                  : isFetchingLocation.value
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Fetching Location...',
+                              style: AppTypography.textTheme.buttonSmall
+                                  .copyWith(color: AppColors.white),
+                            ),
+                          ],
+                        )
+                      : Text(
+                          'Location unavailable - Tap to retry',
+                          style: AppTypography.textTheme.buttonSmall.copyWith(
+                            color: AppColors.white,
+                          ),
+                        ),
         ),
       ),
       body: SingleChildScrollView(
