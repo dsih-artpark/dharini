@@ -19,6 +19,7 @@ import {
   storeSuperAdminProjectId,
 } from "@/src/lib/super-admin-lab-flow";
 import { useAtomValue } from "jotai";
+import { useHasPermission } from "@/src/hooks/check-permission";
 
 export default function SuperAdminProjectPicker() {
   const [user, setUser] = useAtom(userAtom);
@@ -28,6 +29,7 @@ export default function SuperAdminProjectPicker() {
   );
   const [isLoading, setIsLoading] = useState(false);
   const currentWorkspace = useAtomValue(currentWorkspaceAtom);
+  const hasPermission = useHasPermission();
 
   const isSuperAdmin = isUserSuperAdmin(user);
   // Show the picker for super-admins (via feature flag) OR for any user
@@ -68,7 +70,11 @@ export default function SuperAdminProjectPicker() {
           // project was selected yet, and otherwise left `user.project`
           // untouched — so switching workspaces kept the Lab flow pinned to
           // a project from the old workspace.
-          const projectStillInWorkspace = response.data.some(
+          // Only projects the user can read lab samples in are selectable.
+          const permitted = response.data.filter((project) =>
+            hasPermission("read", "sample-test", project.id),
+          );
+          const projectStillInWorkspace = permitted.some(
             (project) => project.id === user?.project?.id,
           );
           setUser((previous) =>
@@ -78,7 +84,7 @@ export default function SuperAdminProjectPicker() {
                   projects: response.data,
                   project: projectStillInWorkspace
                     ? previous.project
-                    : response.data[0],
+                    : (permitted[0] ?? response.data[0]),
                 }
               : previous,
           );
@@ -99,8 +105,20 @@ export default function SuperAdminProjectPicker() {
     }
   }, [isSuperAdminFlow, setIsAll]);
 
+  // Super-admins can pick any project; everyone else only those where they
+  // can read lab samples.
+  const selectableProjects = useMemo(
+    () =>
+      isSuperAdmin
+        ? projects
+        : projects.filter((project) =>
+            hasPermission("read", "sample-test", project.id),
+          ),
+    [projects, isSuperAdmin, user],
+  );
+
   const options = useMemo(() => {
-    const projectOptions = projects.map((project) => ({
+    const projectOptions = selectableProjects.map((project) => ({
       label: `${project.name}${project.code ? ` (${project.code})` : ""}`,
       value: project.id,
     }));
@@ -111,10 +129,10 @@ export default function SuperAdminProjectPicker() {
       ];
     }
     return projectOptions;
-  }, [projects, isSuperAdminFlow]);
+  }, [selectableProjects, isSuperAdminFlow]);
 
   // Show only when user has more than 1 project, or is a super-admin
-  if (projects.length <= 1 && !isSuperAdminFlow) return null;
+  if (selectableProjects.length <= 1 && !isSuperAdminFlow) return null;
 
   const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
@@ -125,7 +143,9 @@ export default function SuperAdminProjectPicker() {
       return;
     }
 
-    const nextProject = projects.find((project) => project.id === value);
+    const nextProject = selectableProjects.find(
+      (project) => project.id === value,
+    );
     if (!nextProject) return;
 
     if (isSuperAdminFlow) {

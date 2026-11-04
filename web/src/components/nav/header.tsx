@@ -81,7 +81,7 @@ export default function Header() {
   const isWorkspaceAdmin = useIsWorkspaceAdmin();
   const hasPermission = useHasPermission();
   const canUpload = useCanUploadAnywhere();
-  const { resolveProjectId } = useCurrentProjectResolver();
+  const { resolveProjectId, workspaceProjects } = useCurrentProjectResolver();
   // Evaluate the menu against the same project the destination pages
   // (/lab, /monitor, ...) act on: the /projects/:id route, else the user's
   // project in the current workspace, taken from their roles when the legacy
@@ -96,8 +96,14 @@ export default function Header() {
     isSuperAdmin ||
     isWorkspaceAdmin ||
     hasPermission("read", "project", activeProjectId);
+  // A member of several projects may hold the lab role on only one of them,
+  // so check every project in the workspace, not just the resolved one. The
+  // lab page's project picker lists only the permitted projects.
   const canLab =
     hasPermission("read", "sample-test", activeProjectId) ||
+    workspaceProjects.some((project) =>
+      hasPermission("read", "sample-test", project.id),
+    ) ||
     (isSuperAdmin && isSuperAdminLabFlowEnabled() && !!activeProjectId);
   // 4.3: workspace-admins have no user.project of their own (their UserRole
   // is workspace-scoped, not project-scoped) - without this they'd fall

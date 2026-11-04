@@ -2428,7 +2428,21 @@ UseMutationResult<UserProfileResponse, dynamic, UpdateOwnProfileDto>
           );
       return response.data!;
     },
-    onSuccess: (data, variables, context) {
+    onSuccess: (data, variables, context) async {
+      // getProfile answers from its persisted cache first, so a plain
+      // invalidate would refetch the stale copy and the old name would show
+      // until the next restart. Re-fetch past the cache (which also rewrites
+      // it) and seed the query with the result.
+      try {
+        final fresh = await getProfile(api, forceRefresh: true);
+        queryClient.setQueryData<UserProfileResponseData>(
+          QueryKeys.profile,
+          (_) => fresh,
+        );
+      } catch (e) {
+        print('[useUpdateProfile] Profile refresh failed: $e');
+        queryClient.invalidateQueries(QueryKeys.profile);
+      }
       queryClient.invalidateQueries(QueryKeys.visits(null));
       onSuccess?.call();
     },
