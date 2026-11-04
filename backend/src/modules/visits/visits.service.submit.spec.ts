@@ -117,6 +117,101 @@ describe('VisitService visit submission', () => {
       expect(visit.visitStatus).toBe(VisitStatus.SKIPPED);
       expect(visit.isCompleted).toBe(false);
     });
+
+    /**
+     * submitVisit holds `FOR UPDATE` on the visit row. Writing suspected
+     * positives through visitRepository went out on another pooled
+     * connection, whose UPDATE waited on that lock until the statement
+     * timeout failed the submission. They must go through the transaction,
+     * in its one save of the visit.
+     */
+    describe('suspected positives', () => {
+      const FMD = { id: 'd-fmd', shortName: 'FMD' };
+      const LSD = { id: 'd-lsd', shortName: 'LSD' };
+
+      const suspect = (
+        diseaseId: string,
+        sampleCount: number,
+        isSuspectedPositive: boolean,
+      ) => JSON.stringify({ diseaseId, sampleCount, isSuspectedPositive });
+
+      const makeTemWithDiseases = (visit: any) => ({
+        ...makeTem(visit),
+        find: jest.fn(async (_entity: any, { where }: any) =>
+          [FMD, LSD].filter((disease) => where.id.value.includes(disease.id)),
+        ),
+      });
+
+      it('records every disease on the visit inside the transaction, never through visitRepository', async () => {
+        const visit = makeVisit({ suspectedPositives: [] });
+        const tem = makeTemWithDiseases(visit);
+        const { service, deps } = makeService();
+
+        await service.executeSubmissionOfCompleteVisit(
+          'v1',
+          {
+            isCompleted: true,
+            visitedBy: 'u1',
+            suspectDiseaseData: [
+              suspect(FMD.id, 0, false),
+              suspect(LSD.id, 2, true),
+            ],
+          } as any,
+          tem as any,
+        );
+
+        expect(deps.visitRepository.findOne).not.toHaveBeenCalled();
+        expect(deps.visitRepository.save).not.toHaveBeenCalled();
+        expect(tem.save).toHaveBeenCalledTimes(1);
+        expect(tem.save.mock.calls[0][0].suspectedPositives).toEqual([
+          { disease: FMD, sampleCount: 0, isSuspectedPositive: false },
+          { disease: LSD, sampleCount: 2, isSuspectedPositive: true },
+        ]);
+      });
+
+      it('updates a disease already on the visit instead of adding it twice', async () => {
+        const visit = makeVisit({
+          suspectedPositives: [
+            { disease: FMD, sampleCount: 1, isSuspectedPositive: true },
+          ],
+        });
+        const tem = makeTemWithDiseases(visit);
+        const { service } = makeService();
+
+        await service.executeSubmissionOfCompleteVisit(
+          'v1',
+          {
+            isCompleted: true,
+            visitedBy: 'u1',
+            suspectDiseaseData: [suspect(FMD.id, 0, false)],
+          } as any,
+          tem as any,
+        );
+
+        expect(visit.suspectedPositives).toEqual([
+          { disease: FMD, sampleCount: 0, isSuspectedPositive: false },
+        ]);
+      });
+
+      it('refuses a disease that does not exist', async () => {
+        const visit = makeVisit({ suspectedPositives: [] });
+        const tem = makeTemWithDiseases(visit);
+        const { service } = makeService();
+
+        await expect(
+          service.executeSubmissionOfCompleteVisit(
+            'v1',
+            {
+              isCompleted: true,
+              visitedBy: 'u1',
+              suspectDiseaseData: [suspect('d-missing', 1, true)],
+            } as any,
+            tem as any,
+          ),
+        ).rejects.toThrow('Disease not found');
+        expect(tem.save).not.toHaveBeenCalled();
+      });
+    });
   });
 
   /**
