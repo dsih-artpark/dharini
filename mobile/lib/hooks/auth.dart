@@ -518,9 +518,11 @@ Future<List<VisitResponseData>> getScheduledVisits(
 //   }
 // }
 
-/// The ApiCache key [getSiteVisits] keeps a site's visits under.
+/// The ApiCache key [getSiteVisits] keeps a site's completed visits under.
+/// Distinct from the old 'siteVisits_' key, which held every visit status,
+/// so a stale cache can't put upcoming rounds back into Recent Visits.
 String siteVisitsCacheKey(String projectId, String siteId) =>
-    'siteVisits_${projectId}_$siteId';
+    'siteVisits_completed_${projectId}_$siteId';
 
 Future<List<VisitResponseData>> getSiteVisits(
   EsClient client,
@@ -544,11 +546,15 @@ Future<List<VisitResponseData>> getSiteVisits(
     print("Failed to load cached site visits: $e");
   }
 
-  // 2. Define network fetch
+  // 2. Define network fetch. Only completed visits, which the backend returns
+  // most recently visited first; without a status it returns the whole
+  // schedule, upcoming rounds included.
   Future<List<VisitResponseData>> fetchFromNetwork() async {
-    final response = await client
-        .getProjectsApi()
-        .projectsControllerGetVisits(projectId: projectId, siteId: siteId);
+    final response = await client.getProjectsApi().projectsControllerGetVisits(
+          projectId: projectId,
+          siteId: siteId,
+          visitStatus: 'completed',
+        );
     final data = response.data?.data.toList() ?? [];
     final serialized = data
         .map((e) =>
@@ -2403,8 +2409,8 @@ void _removeFromOfflineCache(String? siteId) {
 //   );
 // }
 
-UseMutationResult<UserResponse, dynamic, UpdateUserDto> useUpdateProfile({
-  required String userId,
+UseMutationResult<UserProfileResponse, dynamic, UpdateOwnProfileDto>
+    useUpdateProfile({
   void Function()? onSuccess,
   void Function(String errorMessage)? onError,
 }) {
@@ -2412,29 +2418,46 @@ UseMutationResult<UserResponse, dynamic, UpdateUserDto> useUpdateProfile({
   final queryClient = useQueryClient();
 
   return useMutation(
-    (UpdateUserDto request) async {
-      // TODO(multi-tenancy): switch to `userControllerUpdateProfile`
-      // (PATCH /users/profile) once es_client is regenerated —
-      // `mobile/scripts/gen-client.sh`, do not hand-edit the package.
-      //
-      // This calls PATCH /users/{id}, which is the ADMIN endpoint: it
-      // requires `manage all`, i.e. System scope, so it already returns 403
-      // for every ordinary user editing their own profile. The backend has a
-      // self-service PATCH /users/profile that always targets req.user.id and
-      // needs only `update user`, which every seeded role holds — but it
-      // post-dates the last client generation, so there is no method for it
-      // yet.
-      final response = await api.getUserApi().userControllerUpdate(
-            id: userId,
-            updateUserDto: request,
+    (UpdateOwnProfileDto request) async {
+      // PATCH /users/profile is the self-service endpoint: it always targets
+      // req.user.id and needs only `update user`, which every seeded role
+      // holds. Not PATCH /users/{id} - that is the admin endpoint, requires
+      // `manage all` (System scope) and 403s for everyone else.
+      final response = await api.getUserApi().userControllerUpdateProfile(
+            updateOwnProfileDto: request,
           );
       return response.data!;
     },
-    onSuccess: (data, variables, context) {
+    onSuccess: (data, variables, context) async {
+      // getProfile answers from its persisted cache first, so a plain
+      // invalidate would refetch the stale copy and the old name would show
+      // until the next restart. Re-fetch past the cache (which also rewrites
+      // it) and seed the query with the result.
+      try {
+        final fresh = await getProfile(api, forceRefresh: true);
+        queryClient.setQueryData<UserProfileResponseData>(
+          QueryKeys.profile,
+          (_) => fresh,
+        );
+      } catch (e) {
+        print('[useUpdateProfile] Profile refresh failed: $e');
+        queryClient.invalidateQueries(QueryKeys.profile);
+      }
       queryClient.invalidateQueries(QueryKeys.visits(null));
       onSuccess?.call();
     },
-    onError: (error, variables, context) => onError?.call(error.toString()),
+    onError: (error, variables, context) {
+      String errorMessage = 'Failed to update profile';
+      if (error is DioException) {
+        final responseData = error.response?.data;
+        errorMessage = (responseData is Map
+                ? responseData['message']?.toString()
+                : null) ??
+            error.message ??
+            errorMessage;
+      }
+      onError?.call(errorMessage);
+    },
   );
 }
 

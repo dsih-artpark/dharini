@@ -18,6 +18,9 @@ class VisitDetailsScreen extends HookWidget {
     // Refetch visit details when the screen is mounted
 
     final visit = visitDetails;
+    // Whoever submitted the visit, falling back to the assignee for older
+    // visits recorded before visitedBy was populated.
+    final visitedBy = visit.visitedBy ?? visit.collector;
 
     /// Counts the number of replicate samples
     /// A replicate sample has originalSampleId set to the parent's ID
@@ -530,24 +533,14 @@ class VisitDetailsScreen extends HookWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    if (visit.collector != null)
-                      // buildVisitorCard(
-                      //   visit.collector?.lastName
-                      //           ?.substring(0, 2)
-                      //           .toUpperCase() ??
-                      //       'NA',
-                      //   '${visit.collector?.firstName ?? ''} ${visit.collector?.lastName ?? ''}',
-                      //   visit.collector?.email ?? 'No email',
-                      // ),
+                    if (visitedBy != null)
                       buildVisitorCard(
-                        (visit.collector?.lastName != null &&
-                                visit.collector!.lastName!.length >= 2)
-                            ? visit.collector!.lastName!
-                                .substring(0, 2)
-                                .toUpperCase()
-                            : (visit.collector?.lastName ?? 'NA').toUpperCase(),
-                        '${visit.collector?.firstName ?? ''} ${visit.collector?.lastName ?? ''}',
-                        visit.collector?.email ?? 'No email',
+                        (visitedBy.lastName != null &&
+                                visitedBy.lastName!.length >= 2)
+                            ? visitedBy.lastName!.substring(0, 2).toUpperCase()
+                            : (visitedBy.lastName ?? 'NA').toUpperCase(),
+                        '${visitedBy.firstName ?? ''} ${visitedBy.lastName ?? ''}',
+                        visitedBy.email ?? 'No email',
                       ),
                   ],
                 ),

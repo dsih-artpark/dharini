@@ -11,7 +11,9 @@ export const getPastVisitsApi = async (
     isCompleted: boolean;
     siteId: string;
     disease: string;
-    siteType: string;
+    // Optional: the site's own Past Visits list doesn't filter by it (one
+    // site has one type); the data-purging screens still pass it.
+    siteType?: string;
     startDate: string;
     endDate: string;
     page?: number;

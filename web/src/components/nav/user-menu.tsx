@@ -5,7 +5,15 @@ import { useSetAtom } from "jotai";
 import Link from "next/link";
 import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
 
-export default function UserMenu({ onClose }: { onClose?: () => void }) {
+export default function UserMenu({
+  onClose,
+  showSettings = false,
+}: {
+  onClose?: () => void;
+  // Settings only has super-admin/workspace-admin content; the header
+  // decides, so this matches the sidebar's Settings item.
+  showSettings?: boolean;
+}) {
   const setCurrentWorkspace = useSetAtom(currentWorkspaceAtom);
 
   const handleLogoutClick = () => {
@@ -40,29 +48,31 @@ export default function UserMenu({ onClose }: { onClose?: () => void }) {
         </p>
       </Link>
 
-      <Link
-        href="/settings"
-        onClick={onClose}
-        className="self-stretch px-4 py-3 border-b border-grey-20 justify-start items-center gap-2.5 inline-flex cursor-pointer transition hover:bg-grey-10 text-grey-80 hover:text-grey-90"
-      >
-        <div className="w-4 h-4 relative overflow-hidden flex items-center justify-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-          >
-            <path
-              d="M6.66683 1.33337H9.3335L9.78016 3.12004C10.1375 3.26671 10.4802 3.46671 10.7868 3.72004L12.5468 3.17337L13.8802 5.50671L12.4535 6.70671C12.4935 6.92004 12.5202 7.12671 12.5202 7.33337C12.5202 7.54004 12.4935 7.74671 12.4535 7.96004L13.8802 9.16004L12.5468 11.4934L10.7868 10.9467C10.4802 11.2 10.1375 11.4 9.78016 11.5467L9.3335 13.3334H6.66683L6.22016 11.5467C5.86283 11.4 5.52016 11.2 5.2135 10.9467L3.4535 11.4934L2.12016 9.16004L3.54683 7.96004C3.50683 7.74671 3.48016 7.54004 3.48016 7.33337C3.48016 7.12671 3.50683 6.92004 3.54683 6.70671L2.12016 5.50671L3.4535 3.17337L5.2135 3.72004C5.52016 3.46671 5.86283 3.26671 6.22016 3.12004L6.66683 1.33337ZM8.00016 9.33337C9.10473 9.33337 10.0002 8.43794 10.0002 7.33337C10.0002 6.2288 9.10473 5.33337 8.00016 5.33337C6.89559 5.33337 6.00016 6.2288 6.00016 7.33337C6.00016 8.43794 6.89559 9.33337 8.00016 9.33337Z"
-              fill="#11181C"
-            />
-          </svg>
-        </div>
-        <p className="self-stretch text-grey-80 text-sm font-medium leading-normal">
-          Settings
-        </p>
-      </Link>
+      {showSettings && (
+        <Link
+          href="/settings"
+          onClick={onClose}
+          className="self-stretch px-4 py-3 border-b border-grey-20 justify-start items-center gap-2.5 inline-flex cursor-pointer transition hover:bg-grey-10 text-grey-80 hover:text-grey-90"
+        >
+          <div className="w-4 h-4 relative overflow-hidden flex items-center justify-center">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+            >
+              <path
+                d="M6.66683 1.33337H9.3335L9.78016 3.12004C10.1375 3.26671 10.4802 3.46671 10.7868 3.72004L12.5468 3.17337L13.8802 5.50671L12.4535 6.70671C12.4935 6.92004 12.5202 7.12671 12.5202 7.33337C12.5202 7.54004 12.4935 7.74671 12.4535 7.96004L13.8802 9.16004L12.5468 11.4934L10.7868 10.9467C10.4802 11.2 10.1375 11.4 9.78016 11.5467L9.3335 13.3334H6.66683L6.22016 11.5467C5.86283 11.4 5.52016 11.2 5.2135 10.9467L3.4535 11.4934L2.12016 9.16004L3.54683 7.96004C3.50683 7.74671 3.48016 7.54004 3.48016 7.33337C3.48016 7.12671 3.50683 6.92004 3.54683 6.70671L2.12016 5.50671L3.4535 3.17337L5.2135 3.72004C5.52016 3.46671 5.86283 3.26671 6.22016 3.12004L6.66683 1.33337ZM8.00016 9.33337C9.10473 9.33337 10.0002 8.43794 10.0002 7.33337C10.0002 6.2288 9.10473 5.33337 8.00016 5.33337C6.89559 5.33337 6.00016 6.2288 6.00016 7.33337C6.00016 8.43794 6.89559 9.33337 8.00016 9.33337Z"
+                fill="#11181C"
+              />
+            </svg>
+          </div>
+          <p className="self-stretch text-grey-80 text-sm font-medium leading-normal">
+            Settings
+          </p>
+        </Link>
+      )}
 
       <button
         type="button"

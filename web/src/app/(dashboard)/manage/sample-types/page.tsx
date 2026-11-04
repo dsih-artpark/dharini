@@ -6,7 +6,7 @@ export default async function SampleTypesPage() {
     <div className="flex flex-col">
       <Breadcrumb
         path={[
-          { name: "Manage", href: "/manage" },
+          { name: "Projects", href: "/manage" },
           { name: "Sample Types", href: "/manage/sample-types" },
         ]}
       />
