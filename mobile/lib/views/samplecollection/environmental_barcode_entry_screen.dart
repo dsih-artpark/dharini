@@ -676,6 +676,9 @@ class EnvironmentalBarcodeEntryScreen extends HookWidget {
           }
 
           final allSampleData = <SampleData>[];
+          // Recorded so the review screen lists clinical samples as clinical
+          // even when no animal tag or bird ID was entered.
+          final flowType = isClinical ? 'Clinical' : 'Environmental';
           for (final g in groups.value) {
             for (final s in g.samples) {
               if (s.barcode.isEmpty) continue;
@@ -702,6 +705,7 @@ class EnvironmentalBarcodeEntryScreen extends HookWidget {
                 quantity: s.quantity,
                 unit: s.unit,
                 metadata: sampleMeta.isNotEmpty ? sampleMeta : null,
+                flowType: flowType,
               ));
               for (final r in s.replicateBarcodes.where((r) => r.isNotEmpty)) {
                 allSampleData.add(SampleData(
@@ -716,6 +720,7 @@ class EnvironmentalBarcodeEntryScreen extends HookWidget {
                   quantity: s.quantity,
                   unit: s.unit,
                   metadata: sampleMeta.isNotEmpty ? sampleMeta : null,
+                  flowType: flowType,
                 ));
               }
             }

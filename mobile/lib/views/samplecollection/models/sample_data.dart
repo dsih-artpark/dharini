@@ -11,6 +11,12 @@ class SampleData {
   final String? unit;
   final Map<String, dynamic>? metadata;
 
+  /// The flow the sample was collected in: 'Clinical' or 'Environmental'.
+  /// Null for samples saved in a draft before this was recorded. Kept on the
+  /// device (drafts and the review screen); the submit payloads list their
+  /// fields explicitly, so it is not sent to the server.
+  final String? flowType;
+
   SampleData({
     required this.replicates,
     required this.photos,
@@ -23,6 +29,7 @@ class SampleData {
     this.quantity,
     this.unit,
     this.metadata,
+    this.flowType,
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +44,7 @@ class SampleData {
         'quantity': quantity,
         'unit': unit,
         if (metadata != null && metadata!.isNotEmpty) 'metadata': metadata,
+        if (flowType != null) 'flowType': flowType,
       };
 
   factory SampleData.fromJson(Map<String, dynamic> json) {
@@ -52,6 +60,7 @@ class SampleData {
       quantity: json['quantity'] as num?,
       unit: json['unit']?.toString(),
       metadata: json['metadata'] is Map ? Map<String, dynamic>.from(json['metadata'] as Map) : null,
+      flowType: json['flowType']?.toString(),
     );
   }
 

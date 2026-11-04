@@ -26,6 +26,7 @@ import 'package:hive/hive.dart';
 
 import '../../utils/api_cache.dart';
 import '../../utils/tenant_roles.dart';
+import 'models/review_sample_groups.dart';
 import 'models/sample_data.dart';
 import 'package:es_platform_mobile/managers/location_manager.dart';
 import 'package:es_platform_mobile/hooks/species.dart';
@@ -1076,47 +1077,7 @@ class ReviewVisitDetails extends HookWidget {
           ),
         );
 
-    Map<String, List<SampleData>> _groupSamplesByAnimal(
-        List<SampleData> samples) {
-      final Map<String, List<SampleData>> groups = {};
-      for (var sample in samples) {
-        // Show all unique barcodes in review
-        if (sample.originalSampleBarcode != sample.barcode &&
-            sample.originalSampleBarcode.isNotEmpty) {
-          // It's a replicate
-        }
-
-        final metadata = sample.metadata != null
-            ? Map<String, dynamic>.from(sample.metadata!)
-            : <String, dynamic>{};
-        final animalMeta = metadata['animalMetadata'] != null
-            ? Map<String, dynamic>.from(metadata['animalMetadata'] as Map)
-            : null;
-
-        // Try to get animal ID from nested or top level metadata
-        final String? animalId = (animalMeta != null
-                ? (animalMeta['animalTagId'] ?? animalMeta['birdId'])
-                : (metadata['animalTagId'] ?? metadata['birdId']))
-            ?.toString();
-
-        if (animalId != null && animalId.trim().isNotEmpty) {
-          groups.putIfAbsent(animalId, () => []).add(sample);
-        } else {
-          // If it lacks an animal identifier, check if it's explicitly environmental
-          // or just fallback to environmental bucket.
-          groups.putIfAbsent('Environmental', () => []).add(sample);
-        }
-      }
-      return groups;
-    }
-
-    int _getAnimalIndex(String animalId, List<SampleData> samples) {
-      final ids = _groupSamplesByAnimal(samples)
-          .keys
-          .where((k) => k != 'Environmental')
-          .toList();
-      return ids.indexOf(animalId) + 1;
-    }
+    final sampleGroups = groupReviewSamples(samples);
 
     Widget _buildSampleRow(SampleData sample) {
       final photoCount = sample.photos.length;
@@ -1617,23 +1578,13 @@ class ReviewVisitDetails extends HookWidget {
             buildDiseaseHerdInfoCard(),
 
             // Clinical Samples Logic
-            if (_groupSamplesByAnimal(samples)
-                .keys
-                .any((k) => k != 'Environmental')) ...[
+            if (sampleGroups.animals.isNotEmpty) ...[
               _buildSmallHeading('Clinical Samples'),
-              ..._groupSamplesByAnimal(samples)
-                  .entries
-                  .where((e) => e.key != 'Environmental')
-                  .map((entry) {
-                final animalId = entry.key;
-                final animalSamples = entry.value;
-                final metadata = animalSamples.first.metadata != null
-                    ? Map<String, dynamic>.from(animalSamples.first.metadata!)
-                    : <String, dynamic>{};
-                final animalMeta = metadata['animalMetadata'] != null
-                    ? Map<String, dynamic>.from(
-                        metadata['animalMetadata'] as Map)
-                    : metadata;
+              ...sampleGroups.animals.indexed.map((entry) {
+                final (index, animal) = entry;
+                final animalSamples = animal.samples;
+                final animalMeta = animalDetailsOf(animalSamples.first) ??
+                    <String, dynamic>{};
                 final fever = animalMeta['feverObserved'] == true;
 
                 final speciesId =
@@ -1684,7 +1635,7 @@ class ReviewVisitDetails extends HookWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Animal ${_getAnimalIndex(animalId, samples)} — $animalId',
+                            'Animal ${index + 1} — ${animal.displayId ?? 'No tag ID'}',
                             style:
                                 AppTypography.textTheme.bodyB2SemiBold.copyWith(
                               color: AppColors.textStrong,
@@ -1729,8 +1680,7 @@ class ReviewVisitDetails extends HookWidget {
             ],
 
             // Environmental Samples Logic
-            if (_groupSamplesByAnimal(samples)
-                .containsKey('Environmental')) ...[
+            if (sampleGroups.environmental.isNotEmpty) ...[
               _buildSmallHeading('Environmental Samples'),
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1742,7 +1692,7 @@ class ReviewVisitDetails extends HookWidget {
                       Border.all(color: AppColors.strokeWeak.withOpacity(0.5)),
                 ),
                 child: Column(
-                  children: _groupSamplesByAnimal(samples)['Environmental']!
+                  children: sampleGroups.environmental
                       .map((sample) => _buildSampleRow(sample))
                       .toList(),
                 ),
