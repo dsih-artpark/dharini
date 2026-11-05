@@ -66,9 +66,7 @@ class CollectorPicker extends StatelessWidget {
               for (var i = 0; i < selectedIds.length; i++)
                 InputChip(
                   label: Text(
-                    i == 0 && selectedIds.length > 1
-                        ? '${_labelOf(selectedIds[i])} · Primary'
-                        : _labelOf(selectedIds[i]),
+                    _labelOf(selectedIds[i]),
                     style: AppTypography.textTheme.bodyB3Regular.copyWith(
                       color: AppColors.textStrong,
                     ),

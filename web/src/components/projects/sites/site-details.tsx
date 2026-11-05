@@ -447,7 +447,7 @@ export default function SiteDetails() {
                 Assigned Collectors
               </h3>
               {collectors.length ? (
-                collectors.map((collector, index) => (
+                collectors.map((collector) => (
                   <div
                     key={collector.id}
                     className="flex items-center gap-3 border-t border-grey-20 pt-3"
@@ -460,11 +460,6 @@ export default function SiteDetails() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-grey-90">
                         {collector?.firstName} {collector?.lastName}
-                        {index === 0 && collectors.length > 1 && (
-                          <span className="ml-2 rounded bg-blue-10 px-1.5 py-0.5 text-xs font-normal text-primary-500">
-                            Primary
-                          </span>
-                        )}
                       </p>
                       <p className="truncate text-xs text-grey-60">
                         {collector?.email}

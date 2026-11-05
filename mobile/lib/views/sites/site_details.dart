@@ -557,15 +557,7 @@ class SiteDetails extends HookWidget {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  collector ==
-                                                              site.collectionCollectors!
-                                                                  .first &&
-                                                          site.collectionCollectors!
-                                                                  .length >
-                                                              1
-                                                      ? '${collector.firstName ?? ''} · Primary'
-                                                      : collector.firstName ??
-                                                          '',
+                                                  collector.firstName ?? '',
                                                   style: AppTypography
                                                       .textTheme.bodyB2SemiBold
                                                       .copyWith(

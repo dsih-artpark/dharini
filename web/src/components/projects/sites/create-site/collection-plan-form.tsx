@@ -381,15 +381,11 @@ export default function CollectionPlanForm({
               {collectionPlanData.collectionCollectors.length > 0 && (
                 <p className="text-grey-70 text-xs leading-[18px]">
                   {collectionPlanData.collectionCollectors
-                    .map((collectorId, index) => {
+                    .map((collectorId) => {
                       const member = projectMembers.find(
                         (m) => m.id === collectorId,
                       );
-                      const name = member ? collectorName(member) : "";
-                      return index === 0 &&
-                        collectionPlanData.collectionCollectors.length > 1
-                        ? `${name} (primary)`
-                        : name;
+                      return member ? collectorName(member) : "";
                     })
                     .filter(Boolean)
                     .join(", ")}
