@@ -94,9 +94,9 @@ export class VisitService implements OnModuleInit {
     private mediaRepository: Repository<Media>,
     @InjectEntityManager() private readonly entityManager: EntityManager,
     private readonly tenantScopeService: TenantScopeService,
-  ) { }
+  ) {}
 
-  async onModuleInit() { }
+  async onModuleInit() {}
   async createVisit(createVisitDto: CreateVisitDto): Promise<Visit> {
     try {
       const {
@@ -330,7 +330,7 @@ export class VisitService implements OnModuleInit {
         completedVisitsIndividual,
         totalSampleCollected,
       ] = isValidDateRange
-          ? await Promise.all([
+        ? await Promise.all([
             // Scheduled in the past, still UPCOMING/not completed, within [startDate, endDate]
             // (the old `visitStatus !== COMPLETED` check is dropped: it's implied by
             // `visitStatus === UPCOMING`, since a visit can't be both at once)
@@ -342,43 +342,43 @@ export class VisitService implements OnModuleInit {
             !scopeHasResults
               ? Promise.resolve(0)
               : this.visitRepository.count({
-                where: {
-                  ...visitWhereCondition,
-                  visitStatus: VisitStatus.UPCOMING,
-                  isCompleted: false,
-                  visitScheduledAt: And(
-                    LessThan(currentDate),
-                    MoreThanOrEqual(startDateObj),
-                    LessThanOrEqual(endDateObj),
-                  ),
-                },
-              }),
+                  where: {
+                    ...visitWhereCondition,
+                    visitStatus: VisitStatus.UPCOMING,
+                    isCompleted: false,
+                    visitScheduledAt: And(
+                      LessThan(currentDate),
+                      MoreThanOrEqual(startDateObj),
+                      LessThanOrEqual(endDateObj),
+                    ),
+                  },
+                }),
             // Scheduled today or later, still UPCOMING/not completed, within [startDate, endDate]
             !scopeHasResults
               ? Promise.resolve(0)
               : this.visitRepository.count({
-                where: {
-                  ...visitWhereCondition,
-                  visitStatus: VisitStatus.UPCOMING,
-                  isCompleted: false,
-                  visitScheduledAt: And(
-                    MoreThanOrEqual(currentDate),
-                    MoreThanOrEqual(startDateObj),
-                    LessThanOrEqual(endDateObj),
-                  ),
-                },
-              }),
+                  where: {
+                    ...visitWhereCondition,
+                    visitStatus: VisitStatus.UPCOMING,
+                    isCompleted: false,
+                    visitScheduledAt: And(
+                      MoreThanOrEqual(currentDate),
+                      MoreThanOrEqual(startDateObj),
+                      LessThanOrEqual(endDateObj),
+                    ),
+                  },
+                }),
             // Completed, visitedAt within [startDate, endDate]
             !scopeHasResults
               ? Promise.resolve(0)
               : this.visitRepository.count({
-                where: {
-                  ...visitWhereCondition,
-                  isCompleted: true,
-                  visitStatus: VisitStatus.COMPLETED,
-                  visitedAt: Between(startDateObj, endDateObj),
-                },
-              }),
+                  where: {
+                    ...visitWhereCondition,
+                    isCompleted: true,
+                    visitStatus: VisitStatus.COMPLETED,
+                    visitedAt: Between(startDateObj, endDateObj),
+                  },
+                }),
             // Same as pendingVisits, scoped to this collector instead of team/project
             this.visitRepository.count({
               where: individualVisitsWhere({
@@ -411,7 +411,7 @@ export class VisitService implements OnModuleInit {
               })),
             }),
           ])
-          : [0, 0, 0, 0, 0, 0];
+        : [0, 0, 0, 0, 0, 0];
 
       return {
         visitCount: completedVisitsIndividual, // total visit completed by the member
@@ -853,9 +853,9 @@ export class VisitService implements OnModuleInit {
     // Without an id, findOne would match whichever user comes first.
     const userData = submitterId
       ? await this.collectorRepository.findOne({
-        where: { id: submitterId },
-        relations: ['team', 'project'],
-      })
+          where: { id: submitterId },
+          relations: ['team', 'project'],
+        })
       : null;
     if (!userData) {
       throw new Error(`User not found for visitedBy=${submitterId}`);
@@ -1108,8 +1108,8 @@ export class VisitService implements OnModuleInit {
         .filter((diseaseId): diseaseId is string => !!diseaseId);
       const diseases = diseaseIds.length
         ? await transactionalEntityManager.find(Disease, {
-          where: { id: In(diseaseIds) },
-        })
+            where: { id: In(diseaseIds) },
+          })
         : [];
       const diseasesById = new Map(
         diseases.map((disease) => [disease.id, disease]),

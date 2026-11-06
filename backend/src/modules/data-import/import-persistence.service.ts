@@ -1,4 +1,8 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource, ILike, In, IsNull, QueryFailedError } from 'typeorm';
 import { Disease } from 'src/entities/disease.entity';
@@ -19,10 +23,10 @@ import { VisitStatus } from 'src/common/enums/visitStatus.enum';
 import { SampleStatus } from 'src/common/enums/sample-status.enum';
 import { StatusType } from 'src/common/enums/status.enum';
 import { TestResultType } from 'src/common/enums/test-result.enum';
-import { RegionType } from 'src/common/enums/region.enum';
 import { RoleType } from 'src/common/enums/user-type.enum';
 import { DiseaseGroup, FINAL_TEST_RESULTS } from './data-import.types';
 import { parseDiseaseList } from './config/parse-disease-list';
+import { RegionLookup, loadRegionLookup } from './config/region-lookup';
 
 /**
  * Persists a fully-validated batch of collection or lab rows in a single
@@ -56,6 +60,10 @@ export class ImportPersistenceService {
       if (projectTeams.length === 0) {
         throw new Error('No team is configured for this project yet');
       }
+      const regionLookup = await loadRegionLookup(
+        manager.getRepository(Region),
+        rows.map((row) => row['state']),
+      );
 
       const collectorCache = new Map<string, User>();
       const collectorTeamCache = new Map<string, Team>();
@@ -96,7 +104,11 @@ export class ImportPersistenceService {
           relations: ['diseases', 'location'],
         });
         if (!site) {
-          const location = await this.createImportLocation(manager, row);
+          const location = await this.createImportLocation(
+            manager,
+            row,
+            regionLookup,
+          );
           site = manager.create(Site, {
             project: { id: projectId } as any,
             name: row['siteName'],
@@ -554,31 +566,25 @@ export class ImportPersistenceService {
   private async createImportLocation(
     manager: DataSource['manager'],
     row: Record<string, any>,
-  ): Promise<Location | null> {
-    const state = row['state']
-      ? await manager.findOne(Region, {
-          where: {
-            name: ILike(row['state']),
-            regionType: RegionType.STATE,
-          },
-        })
-      : null;
-    const district = row['district']
-      ? await manager.findOne(Region, {
-          where: {
-            name: ILike(row['district']),
-            regionType: RegionType.DISTRICT,
-            ...(state ? { parentRegion: { id: state.id } } : {}),
-          },
-        })
-      : null;
-    const region = district ?? state;
-    if (!region && !row['latitude'] && !row['longitude']) return null;
+    regionLookup: RegionLookup,
+  ): Promise<Location> {
+    const state = regionLookup.findState(row['state']);
+    const district = state
+      ? regionLookup.findDistrict(state.id, row['district'])
+      : undefined;
+    // Validation rejects rows whose state/district don't resolve, so this
+    // only trips if the region list changed mid-upload. Fail the file rather
+    // than save a site that no location filter can reach.
+    if (!district) {
+      throw new BadRequestException(
+        `Row ${row['__row']}: could not match state "${row['state']}" and district "${row['district']}". Re-upload the file.`,
+      );
+    }
 
     return manager.save(
       Location,
       manager.create(Location, {
-        region: region ?? null,
+        region: district,
         coordinates:
           row['latitude'] && row['longitude']
             ? {
