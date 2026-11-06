@@ -6,6 +6,7 @@ import 'package:es_platform_mobile/hooks/auth.dart';
 import 'package:es_platform_mobile/hooks/permissions.dart';
 import 'package:es_platform_mobile/utils/extensions/index.dart';
 import 'package:es_platform_mobile/utils/map_tile_provider.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:es_platform_mobile/views/sites/site_past_visit_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -787,10 +788,9 @@ class SiteDetails extends HookWidget {
                                                   e.sampleType?.name ?? '')
                                               .toList(),
                                           siteCode: visit.site.siteCode ?? '',
-                                          visitedBy: (visit.visitedBy ??
-                                                      visit.collector)
-                                                  ?.firstName ??
-                                              '',
+                                          visitedBy: visitorsOf(visit)
+                                              .map(visitorName)
+                                              .join(', '),
                                         ),
                                         const SizedBox(height: 8),
                                       ],

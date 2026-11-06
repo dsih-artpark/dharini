@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   ManyToOne,
   OneToMany,
   Point,
@@ -84,8 +85,18 @@ export class Visit {
   @ManyToOne(() => User, (user) => user.visits, { nullable: false })
   collector: User;
 
-  @ManyToOne(() => User, (user) => user.visited, { nullable: true })
-  visitedBy?: User | null;
+  // Everyone who was at the visit, its submitter first (see
+  // modules/visits/visit-visited-by). The column kept its old name when it
+  // went from one user id to several; its GIN index is created by migration
+  // 1795000000000.
+  @ApiHideProperty()
+  @Index('IDX_visits_visitedById', { synchronize: false })
+  @Column('uuid', { name: 'visitedById', array: true, default: '{}' })
+  visitedByIds: string[];
+
+  // The users visitedByIds names, in order. Not a column: attachVisitedBy
+  // sets it on the visits a response returns.
+  visitedBy?: User[];
 
   @ApiHideProperty()
   @Column({

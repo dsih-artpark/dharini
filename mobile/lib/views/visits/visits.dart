@@ -3,6 +3,7 @@ import 'package:es_client/es_client.dart';
 import 'package:es_platform_mobile/hooks/auth.dart';
 import 'package:es_platform_mobile/hooks/visit_drafts.dart';
 import 'package:es_platform_mobile/utils/tenant_roles.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:es_platform_mobile/views/visits/visits_overdue_visit_card.dart';
 import 'package:es_platform_mobile/widgets/visit_card.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -1432,8 +1433,11 @@ class CompleteVisits extends HookWidget {
       final unit = sample.unit ?? "";
       final comment = sample.comment ?? "";
 
+      // The sample's collector, else the visit's submitter (its first
+      // visitor), else its assignee.
+      final visitors = visitorsOf(visit);
       final collectedByUser =
-          sample.collectedBy ?? visit.visitedBy ?? visit.collector;
+          sample.collectedBy ?? (visitors.isEmpty ? null : visitors.first);
       final collectedBy = collectedByUser != null
           ? "${collectedByUser.firstName ?? ""} ${collectedByUser.lastName ?? ""}"
               .trim()

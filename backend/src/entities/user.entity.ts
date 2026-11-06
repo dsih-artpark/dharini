@@ -82,11 +82,6 @@ export class User {
 
   @Exclude({ toClassOnly: true })
   @ApiHideProperty()
-  @ManyToMany(() => Visit, (visit) => visit.collector, { nullable: true })
-  visited?: Visit[] | null;
-
-  @Exclude({ toClassOnly: true })
-  @ApiHideProperty()
   @OneToMany(() => Invite, (invite) => invite.invitedBy)
   invites: Invite;
 

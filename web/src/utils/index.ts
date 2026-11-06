@@ -127,3 +127,16 @@ export function collectorNames(
 ): string {
   return siteCollectors(site).map(collectorName).filter(Boolean).join(", ");
 }
+
+// Everyone who was at a visit, its submitter first. A visit recorded before
+// visitedBy was filled in shows its assigned collector instead.
+export function visitVisitors(
+  visit?: {
+    visitedBy?: User[] | null;
+    collector?: User | null;
+  } | null,
+): User[] {
+  const visitors = (visit?.visitedBy ?? []).filter(Boolean);
+  if (visitors.length) return visitors;
+  return visit?.collector ? [visit.collector] : [];
+}

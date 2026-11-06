@@ -57,7 +57,8 @@ import {
 // pointing at it keeps it: samples and lab tests would block the delete, and
 // animal metadata would be deleted along with it.
 const UNTOUCHED_VISIT_SQL = `
-  "visitStartedAt" IS NULL AND "visitedAt" IS NULL AND "visitedById" IS NULL
+  "visitStartedAt" IS NULL AND "visitedAt" IS NULL
+  AND COALESCE(cardinality("visitedById"), 0) = 0
   AND COALESCE("comment", '') = ''
   AND COALESCE(cardinality("photos"), 0) = 0
   AND COALESCE("suspectedPositives", '[]'::jsonb) = '[]'::jsonb
