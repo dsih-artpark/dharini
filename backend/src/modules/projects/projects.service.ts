@@ -2738,7 +2738,7 @@ export class ProjectsService {
             siteId: visit['Site ID*'],
             teamId: teamId,
             visitedAt: visit['Visit Date*'],
-            visitedBy: visit['Collector ID*'],
+            visitedBy: [visit['Collector ID*']],
           },
           samples: samplesByVisitId[visitId] || [],
         };

@@ -18,7 +18,7 @@ class _$UpdateVisitOnSubmitDto extends UpdateVisitOnSubmitDto {
   @override
   final String? teamId;
   @override
-  final String? visitedBy;
+  final BuiltList<String>? visitedBy;
   @override
   final BuiltList<String>? photos;
   @override
@@ -153,9 +153,11 @@ class UpdateVisitOnSubmitDtoBuilder
   String? get teamId => _$this._teamId;
   set teamId(String? teamId) => _$this._teamId = teamId;
 
-  String? _visitedBy;
-  String? get visitedBy => _$this._visitedBy;
-  set visitedBy(String? visitedBy) => _$this._visitedBy = visitedBy;
+  ListBuilder<String>? _visitedBy;
+  ListBuilder<String> get visitedBy =>
+      _$this._visitedBy ??= ListBuilder<String>();
+  set visitedBy(ListBuilder<String>? visitedBy) =>
+      _$this._visitedBy = visitedBy;
 
   ListBuilder<String>? _photos;
   ListBuilder<String> get photos => _$this._photos ??= ListBuilder<String>();
@@ -204,7 +206,7 @@ class UpdateVisitOnSubmitDtoBuilder
       _siteId = $v.siteId;
       _projectId = $v.projectId;
       _teamId = $v.teamId;
-      _visitedBy = $v.visitedBy;
+      _visitedBy = $v.visitedBy?.toBuilder();
       _photos = $v.photos?.toBuilder();
       _comment = $v.comment;
       _suspectDiseaseData = $v.suspectDiseaseData?.toBuilder();
@@ -242,7 +244,7 @@ class UpdateVisitOnSubmitDtoBuilder
             siteId: siteId,
             projectId: projectId,
             teamId: teamId,
-            visitedBy: visitedBy,
+            visitedBy: _visitedBy?.build(),
             photos: _photos?.build(),
             comment: comment,
             suspectDiseaseData: _suspectDiseaseData?.build(),
@@ -256,6 +258,9 @@ class UpdateVisitOnSubmitDtoBuilder
     } catch (_) {
       late String _$failedField;
       try {
+        _$failedField = 'visitedBy';
+        _visitedBy?.build();
+
         _$failedField = 'photos';
         _photos?.build();
 

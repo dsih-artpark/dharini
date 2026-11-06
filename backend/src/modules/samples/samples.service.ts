@@ -48,6 +48,7 @@ import { UpdateSampleDto } from './dto/update-sample.dto';
 import { UpdateSampleStageDetailsDto } from './dto/update-sample-stage-details.dto';
 import { computeVisitRoundsForSites } from '../../common/utils/visit-rounds.util';
 import { attachCollectionCollectors } from '../sites/site-collectors';
+import { attachVisitedBy } from '../visits/visit-visited-by';
 import { shouldScopeToProject } from './sample-scope.util';
 
 @Injectable()
@@ -1298,7 +1299,6 @@ export class SamplesService {
       .leftJoinAndSelect('location.region', 'region')
       .leftJoinAndSelect('region.parentRegion', 'parentRegion')
       .leftJoinAndSelect('sample.visit', 'visit')
-      .leftJoinAndSelect('visit.visitedBy', 'visitedBy')
       .leftJoinAndSelect('sample.diseases', 'disease') // Diseases relation
       .leftJoinAndSelect('sample.receivedBy', 'receivedBy')
       .leftJoinAndSelect('sample.extractedBy', 'extractedBy')
@@ -1536,6 +1536,10 @@ export class SamplesService {
     await attachCollectionCollectors(
       this.sampleRepository.manager,
       samples.map((sample) => sample.site),
+    );
+    await attachVisitedBy(
+      this.sampleRepository.manager,
+      samples.map((sample) => sample.visit),
     );
 
     // Batch-fetch every sample's photos in a single query instead of one
@@ -1843,7 +1847,6 @@ export class SamplesService {
         .leftJoinAndSelect('site.location', 'location')
         .leftJoinAndSelect('location.region', 'region')
         .leftJoinAndSelect('sample.visit', 'visit')
-        .leftJoinAndSelect('visit.visitedBy', 'visitedBy')
         .leftJoinAndSelect('sample.diseases', 'disease')
         .leftJoinAndSelect('sample.receivedBy', 'receivedBy')
         .leftJoinAndSelect('sample.extractedBy', 'extractedBy')
@@ -1877,6 +1880,7 @@ export class SamplesService {
       await attachCollectionCollectors(this.sampleRepository.manager, [
         sampleData.site,
       ]);
+      await attachVisitedBy(this.sampleRepository.manager, [sampleData.visit]);
 
       const signedUrls = await this.getSignedUrlForSample(sampleData);
       sampleData.photos = signedUrls;

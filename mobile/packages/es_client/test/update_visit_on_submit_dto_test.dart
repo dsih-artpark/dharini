@@ -30,8 +30,8 @@ void main() {
       // TODO
     });
 
-    // team member id
-    // String visitedBy
+    // IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.
+    // BuiltList<String> visitedBy
     test('to test the property `visitedBy`', () async {
       // TODO
     });

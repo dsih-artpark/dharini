@@ -17,8 +17,9 @@ type CollectorSite = {
   collectionCollectors?: User[];
 };
 
-// The user fields a site's collectors are returned with.
-const COLLECTOR_FIELDS: (keyof User)[] = [
+// The user fields a site's collectors, and a visit's visitors, are returned
+// with.
+export const COLLECTOR_FIELDS: (keyof User)[] = [
   'id',
   'firstName',
   'lastName',
@@ -67,6 +68,38 @@ const nameOf = (user: User): string =>
   user.email ||
   user.id;
 
+// The ids of the teams taking part in a project.
+export async function projectTeamIds(
+  manager: EntityManager,
+  projectId: string,
+): Promise<Set<string>> {
+  const teamRows = await manager
+    .createQueryBuilder(Team, 'team')
+    .innerJoin('team.projects', 'project', 'project.id = :projectId', {
+      projectId,
+    })
+    .select('team.id', 'id')
+    .getRawMany<{ id: string }>();
+  return new Set(teamRows.map((row) => row.id));
+}
+
+// Whether a user belongs to one of a project's teams, as the collector
+// picker lists them: through their own team, or an active role on the
+// project with one of its teams. Needs the user's `team` and `roles`.
+export const isProjectTeamMember = (
+  user: User,
+  projectId: string,
+  teamIds: Set<string>,
+): boolean =>
+  (!!user.team && teamIds.has(user.team.id)) ||
+  (user.roles ?? []).some(
+    (userRole) =>
+      userRole.status === StatusType.ACTIVE &&
+      userRole.project === projectId &&
+      !!userRole.team &&
+      teamIds.has(userRole.team),
+  );
+
 /**
  * Checks the collectors a save assigns to a site and returns them in the
  * given order, with their teams.
@@ -111,14 +144,7 @@ export async function validateSiteCollectors(
   const kept = new Set(existingIds ?? []);
   const added = collectors.filter((user) => !kept.has(user.id));
   if (added.length) {
-    const teamRows = await manager
-      .createQueryBuilder(Team, 'team')
-      .innerJoin('team.projects', 'project', 'project.id = :projectId', {
-        projectId,
-      })
-      .select('team.id', 'id')
-      .getRawMany<{ id: string }>();
-    const projectTeamIds = new Set(teamRows.map((row) => row.id));
+    const teamIds = await projectTeamIds(manager, projectId);
 
     for (const user of added) {
       if (getUserScope(user) === Scope.System) {
@@ -129,16 +155,7 @@ export async function validateSiteCollectors(
           `${nameOf(user)} is not an active user and can't be a collector`,
         );
       }
-      const isMember =
-        (user.team && projectTeamIds.has(user.team.id)) ||
-        (user.roles ?? []).some(
-          (userRole) =>
-            userRole.status === StatusType.ACTIVE &&
-            userRole.project === projectId &&
-            !!userRole.team &&
-            projectTeamIds.has(userRole.team),
-        );
-      if (!isMember) {
+      if (!isProjectTeamMember(user, projectId, teamIds)) {
         throw new BadRequestException(
           `${nameOf(user)} is not a member of a team in this project`,
         );

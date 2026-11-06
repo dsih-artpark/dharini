@@ -1,6 +1,9 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { VisitService } from './visits.service';
+import { StatusType } from '../../common/enums/status.enum';
 import { VisitStatus } from '../../common/enums/visitStatus.enum';
+import { Team } from '../../entities/team.entity';
+import { User } from '../../entities/user.entity';
 import { Visit } from '../../entities/visit.entity';
 
 /**
@@ -20,6 +23,7 @@ describe('VisitService visit submission', () => {
     id: 'v1',
     isCompleted: false,
     visitStatus: VisitStatus.UPCOMING,
+    visitedByIds: [],
     samples: [],
     site: { id: 'site1' },
     project: { id: 'p1' },
@@ -88,6 +92,7 @@ describe('VisitService visit submission', () => {
 
       expect(visit.visitStatus).toBe(VisitStatus.COMPLETED);
       expect(visit.isCompleted).toBe(true);
+      expect(visit.visitedByIds).toEqual(['u1']);
     });
 
     it('still marks an UPCOMING visit COMPLETED on submission', async () => {
@@ -225,7 +230,16 @@ describe('VisitService visit submission', () => {
    * both submissions read the visit as open and fails the concurrency test.
    */
   describe('submitVisit', () => {
-    const makeDb = (visit: any, samples: { id: string; barcode: string }[]) => {
+    // `users` and `projectTeams` answer resolveVisitedByIds' lookups of the
+    // visitors a submission names and the project's teams.
+    const makeDb = (
+      visit: any,
+      samples: { id: string; barcode: string }[],
+      {
+        users = [] as any[],
+        projectTeams = [] as string[],
+      }: { users?: any[]; projectTeams?: string[] } = {},
+    ) => {
       const db = { visit: visit && { ...visit }, samples: [...samples] };
       let queue = Promise.resolve();
       const lockRow = () => {
@@ -244,13 +258,19 @@ describe('VisitService visit submission', () => {
           pending,
           createQueryBuilder: jest.fn((entity: unknown) => {
             let lockMode: string | null = null;
+            let params: any = {};
             const qb: any = {
               setLock: jest.fn((mode: string) => {
                 lockMode = mode;
                 return qb;
               }),
               select: jest.fn(() => qb),
-              where: jest.fn(() => qb),
+              leftJoinAndSelect: jest.fn(() => qb),
+              innerJoin: jest.fn(() => qb),
+              where: jest.fn((_sql: string, where?: any) => {
+                params = { ...params, ...where };
+                return qb;
+              }),
               andWhere: jest.fn(() => qb),
               getOne: jest.fn(async () => {
                 if (lockMode) {
@@ -260,7 +280,12 @@ describe('VisitService visit submission', () => {
                 return entity === Visit && db.visit ? { ...db.visit } : null;
               }),
               getMany: jest.fn(async () =>
-                db.samples.map(({ id, barcode }) => ({ id, barcode })),
+                entity === User
+                  ? users.filter((user) => params.ids?.includes(user.id))
+                  : db.samples.map(({ id, barcode }) => ({ id, barcode })),
+              ),
+              getRawMany: jest.fn(async () =>
+                entity === Team ? projectTeams.map((id) => ({ id })) : [],
               ),
             };
             return qb;
@@ -271,6 +296,9 @@ describe('VisitService visit submission', () => {
           save: jest.fn(async (v: any) => {
             pending.visit = { ...v };
             return v;
+          }),
+          update: jest.fn(async (_entity: unknown, _id: string, patch: any) => {
+            pending.visit = { ...(pending.visit ?? db.visit), ...patch };
           }),
         };
         try {
@@ -309,7 +337,9 @@ describe('VisitService visit submission', () => {
       },
     );
 
-    const submission = (visitedBy: string, barcodes: string[]) =>
+    // `visitedBy` is a list, the submitter first, or one id as an app from
+    // before visits had several visitors sends it.
+    const submission = (visitedBy: string | string[], barcodes: string[]) =>
       ({
         visitData: {
           visitedBy,
@@ -317,13 +347,17 @@ describe('VisitService visit submission', () => {
           projectId: 'p1',
           teamId: 't1',
           isCompleted: true,
-          comment: `by ${visitedBy}`,
+          comment: `by ${[visitedBy].flat()[0]}`,
         },
         samples: barcodes.map((barcode) => ({ barcode })),
       }) as any;
 
-    const setup = (visit: any, samples: { id: string; barcode: string }[]) => {
-      const { db, transaction, locks } = makeDb(visit, samples);
+    const setup = (
+      visit: any,
+      samples: { id: string; barcode: string }[],
+      dbOptions?: Parameters<typeof makeDb>[2],
+    ) => {
+      const { db, transaction, locks } = makeDb(visit, samples, dbOptions);
       createSamples.mockClear();
       const { service, deps } = makeService({
         sampleService: {
@@ -376,6 +410,7 @@ describe('VisitService visit submission', () => {
       expect(db.visit.isCompleted).toBe(true);
       expect(db.visit.visitStatus).toBe(VisitStatus.COMPLETED);
       expect(db.visit.comment).toBe('by u1');
+      expect(db.visit.visitedByIds).toEqual(['u1', 'u2']);
     });
 
     it('adds a late offline submission’s new samples to the completed visit and keeps the visit’s details', async () => {
@@ -383,6 +418,7 @@ describe('VisitService visit submission', () => {
         isCompleted: true,
         visitStatus: VisitStatus.COMPLETED,
         comment: 'by u1',
+        visitedByIds: ['u1'],
       });
       const { service, db } = setup(completed, [{ id: 's1', barcode: 'B-1' }]);
 
@@ -398,13 +434,18 @@ describe('VisitService visit submission', () => {
         'B-9',
       ]);
       expect(db.visit.comment).toBe('by u1');
+      expect(db.visit.visitedByIds).toEqual(['u1', 'u2']);
     });
 
     it('adds nothing when a completed visit is sent again, even if visitStatus is stale', async () => {
       // The state a lost response leaves behind: samples committed, but the
       // status never promoted because the cron had marked the visit overdue.
       const { service, db } = setup(
-        makeVisit({ isCompleted: true, visitStatus: VisitStatus.OVERDUE }),
+        makeVisit({
+          isCompleted: true,
+          visitStatus: VisitStatus.OVERDUE,
+          visitedByIds: ['u1'],
+        }),
         [{ id: 's1', barcode: 'B-1' }],
       );
 
@@ -412,11 +453,16 @@ describe('VisitService visit submission', () => {
 
       expect(createSamples).not.toHaveBeenCalled();
       expect(db.samples).toHaveLength(1);
+      expect(db.visit.visitedByIds).toEqual(['u1']);
     });
 
     it('refuses, rather than drops, late samples it cannot add', async () => {
       const { service, db } = setup(
-        makeVisit({ isCompleted: true, visitStatus: VisitStatus.COMPLETED }),
+        makeVisit({
+          isCompleted: true,
+          visitStatus: VisitStatus.COMPLETED,
+          visitedByIds: ['u1'],
+        }),
         [{ id: 's1', barcode: 'B-1' }],
       );
       createSamples.mockRejectedValueOnce(
@@ -429,6 +475,7 @@ describe('VisitService visit submission', () => {
         service.submitVisit('v1', submission('u2', ['B-7'])),
       ).rejects.toBeInstanceOf(BadRequestException);
       expect(db.samples.map((sample) => sample.barcode)).toEqual(['B-1']);
+      expect(db.visit.visitedByIds).toEqual(['u1']);
     });
 
     it('still submits a visit that has no samples yet', async () => {
@@ -442,6 +489,55 @@ describe('VisitService visit submission', () => {
       expect(createSamples).toHaveBeenCalledTimes(1);
       expect(db.visit.visitStatus).toBe(VisitStatus.COMPLETED);
       expect(db.samples.map((sample) => sample.barcode)).toEqual(['B-1']);
+      // A single id, as a submission queued by an older app sends it.
+      expect(db.visit.visitedByIds).toEqual(['u1']);
+    });
+
+    it('records everyone ticked who is in a team of the project, the submitter first', async () => {
+      const { service, db } = setup(makeVisit(), [], {
+        projectTeams: ['t1'],
+        users: [
+          { id: 'u2', team: { id: 't1' }, roles: [] },
+          // In the project through a role, not their own team.
+          {
+            id: 'u3',
+            team: null,
+            roles: [{ status: StatusType.ACTIVE, project: 'p1', team: 't1' }],
+          },
+          // A team outside the project.
+          { id: 'u4', team: { id: 't9' }, roles: [] },
+        ],
+      });
+
+      await service.submitVisit(
+        'v1',
+        submission(['u1', 'u4', 'u2', 'gone', 'u3', 'u2'], ['B-1']),
+      );
+
+      expect(db.visit.visitedByIds).toEqual(['u1', 'u2', 'u3']);
+      // The samples are still the submitter's.
+      const [, , , , , collectedBy] = createSamples.mock.calls[0];
+      expect(collectedBy).toBe('u1');
+    });
+
+    it('keeps the submitter first even when the list names them later', async () => {
+      const { service, db } = setup(makeVisit(), [], {
+        projectTeams: ['t1'],
+        users: [{ id: 'u2', team: { id: 't1' }, roles: [] }],
+      });
+
+      await service.submitVisit('v1', submission(['u1', 'u2', 'u1'], ['B-1']));
+
+      expect(db.visit.visitedByIds).toEqual(['u1', 'u2']);
+    });
+
+    it('refuses a submission that names nobody', async () => {
+      const { service } = setup(makeVisit(), []);
+
+      await expect(
+        service.submitVisit('v1', submission([], ['B-1'])),
+      ).rejects.toThrow('User not found');
+      expect(createSamples).not.toHaveBeenCalled();
     });
 
     it("returns 404 for a visit outside the route's project", async () => {

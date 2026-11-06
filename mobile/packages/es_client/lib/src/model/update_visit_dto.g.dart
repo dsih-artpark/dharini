@@ -18,7 +18,7 @@ class _$UpdateVisitDto extends UpdateVisitDto {
   @override
   final String? comment;
   @override
-  final String? visitedBy;
+  final BuiltList<String>? visitedBy;
   @override
   final BuiltList<String>? suspectDiseaseData;
   @override
@@ -146,9 +146,11 @@ class UpdateVisitDtoBuilder
   String? get comment => _$this._comment;
   set comment(String? comment) => _$this._comment = comment;
 
-  String? _visitedBy;
-  String? get visitedBy => _$this._visitedBy;
-  set visitedBy(String? visitedBy) => _$this._visitedBy = visitedBy;
+  ListBuilder<String>? _visitedBy;
+  ListBuilder<String> get visitedBy =>
+      _$this._visitedBy ??= ListBuilder<String>();
+  set visitedBy(ListBuilder<String>? visitedBy) =>
+      _$this._visitedBy = visitedBy;
 
   ListBuilder<String>? _suspectDiseaseData;
   ListBuilder<String> get suspectDiseaseData =>
@@ -196,7 +198,7 @@ class UpdateVisitDtoBuilder
       _siteId = $v.siteId;
       _photos = $v.photos?.toBuilder();
       _comment = $v.comment;
-      _visitedBy = $v.visitedBy;
+      _visitedBy = $v.visitedBy?.toBuilder();
       _suspectDiseaseData = $v.suspectDiseaseData?.toBuilder();
       _diseaseQuestionnaireData = $v.diseaseQuestionnaireData;
       _environmentalQuestionnaireData = $v.environmentalQuestionnaireData;
@@ -233,7 +235,7 @@ class UpdateVisitDtoBuilder
             siteId: siteId,
             photos: _photos?.build(),
             comment: comment,
-            visitedBy: visitedBy,
+            visitedBy: _visitedBy?.build(),
             suspectDiseaseData: _suspectDiseaseData?.build(),
             diseaseQuestionnaireData: diseaseQuestionnaireData,
             environmentalQuestionnaireData: environmentalQuestionnaireData,
@@ -248,6 +250,9 @@ class UpdateVisitDtoBuilder
       try {
         _$failedField = 'photos';
         _photos?.build();
+
+        _$failedField = 'visitedBy';
+        _visitedBy?.build();
 
         _$failedField = 'suspectDiseaseData';
         _suspectDiseaseData?.build();

@@ -2,6 +2,7 @@ import { Fragment } from "react";
 import Image from "next/image";
 import { Sample, SubtypeKitDetail } from "@/src/types/sample";
 import {
+  collectorName,
   collectorNames,
   formatDate,
   formatTime,
@@ -67,9 +68,10 @@ export default function SampleAccessionDetails({
                 Completed By
               </p>
               <p className="text-grey-80 text-base leading-normal">
-                {sampleDetail?.visit?.visitedBy
-                  ? `${sampleDetail.visit.visitedBy.firstName} ${sampleDetail.visit.visitedBy.lastName}`
-                  : "-"}
+                {(sampleDetail?.visit?.visitedBy ?? [])
+                  .map(collectorName)
+                  .filter(Boolean)
+                  .join(", ") || "-"}
               </p>
             </div>
             <div className="justify-start items-center gap-2 inline-flex">
