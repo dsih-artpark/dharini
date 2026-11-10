@@ -3,6 +3,12 @@ import { toast } from "react-toastify";
 import { CheckCircle2, FileSpreadsheet, X } from "lucide-react";
 
 import SectionToggle from "@/src/components/project-onboarding/upload-data/section-toggle";
+import ImportFilePreview from "@/src/components/project-onboarding/upload-data/import-file-preview";
+import ImportErrorSummary from "@/src/components/project-onboarding/upload-data/import-error-summary";
+import {
+  DISEASE_GROUPS,
+  SECTION_LABELS,
+} from "@/src/components/project-onboarding/upload-data/import-options";
 import { formatFileSize } from "@/src/components/sequencing/submission-file-picker";
 import {
   downloadDataImportTemplate,
@@ -21,16 +27,6 @@ type UploadDataPanelProps = {
   onDone?: (result: ImportResult) => void;
   // Lets a container lock controls that would change `projectId` mid-upload.
   onUploadingChange?: (uploading: boolean) => void;
-};
-
-const DISEASE_GROUPS: { id: DiseaseGroup; label: string }[] = [
-  { id: "FMD_LSD", label: "FMD / LSD" },
-  { id: "AI", label: "Avian Influenza (AI)" },
-];
-
-const SECTION_LABELS: Record<ImportSection, string> = {
-  collection: "Collection Data",
-  lab: "Lab Data",
 };
 
 export default function UploadDataPanel({
@@ -235,35 +231,41 @@ export default function UploadDataPanel({
         <>
           {file && (
             <div
-              className={`self-stretch flex items-center justify-between gap-3 rounded-lg border bg-white px-3 py-2.5 ${result && !result.success ? "border-red-200" : "border-grey-20"
+              className={`self-stretch flex flex-col overflow-hidden rounded-lg border bg-white ${result && !result.success ? "border-red-200" : "border-grey-20"
                 }`}
             >
-              <div className="min-w-0 flex items-center gap-2">
-                <FileSpreadsheet
-                  className="h-4 w-4 shrink-0 text-blue-40"
-                  aria-hidden="true"
-                />
-                <div className="min-w-0">
-                  <p className="text-grey-90 text-sm truncate">{file.name}</p>
-                  <p className="text-grey-70 text-xs">
-                    {formatFileSize(file.size)}
-                    {uploading ? " · Uploading..." : ""}
-                  </p>
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0 flex items-center gap-2">
+                  <FileSpreadsheet
+                    className="h-4 w-4 shrink-0 text-blue-40"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-grey-90 text-sm truncate">{file.name}</p>
+                    <p className="text-grey-70 text-xs">
+                      {formatFileSize(file.size)}
+                      {uploading ? " · Uploading..." : ""}
+                    </p>
+                  </div>
                 </div>
+                {!uploading && (
+                  <button
+                    type="button"
+                    className="w-6 h-6 flex items-center justify-center shrink-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-40"
+                    aria-label={`Remove ${file.name}`}
+                    onClick={() => {
+                      setFile(null);
+                      setResult(null);
+                    }}
+                  >
+                    <X className="h-4 w-4 text-grey-70" />
+                  </button>
+                )}
               </div>
-              {!uploading && (
-                <button
-                  type="button"
-                  className="w-6 h-6 flex items-center justify-center shrink-0 rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-40"
-                  aria-label={`Remove ${file.name}`}
-                  onClick={() => {
-                    setFile(null);
-                    setResult(null);
-                  }}
-                >
-                  <X className="h-4 w-4 text-grey-70" />
-                </button>
-              )}
+              <ImportFilePreview
+                file={file}
+                errors={result && !result.success ? result.errors : undefined}
+              />
             </div>
           )}
 
@@ -308,18 +310,18 @@ export default function UploadDataPanel({
           </div>
 
           {result && !result.success && (
-            <div className="self-stretch max-h-64 overflow-y-auto flex-col gap-2 flex bg-red-50 border border-red-200 rounded p-4">
-              <p className="text-red-600 font-semibold text-sm">
-                {result.errors.length} issue(s) found — nothing was imported.
-                Fix these in the file and re-upload.
-              </p>
-              {result.errors.map((err, i) => (
-                <p key={i} className="text-red-600 text-sm">
-                  Row {err.row}
-                  {err.column ? ` — ${err.column}` : ""}: {err.message}
-                </p>
-              ))}
-            </div>
+            <ImportErrorSummary
+              errors={result.errors}
+              selected={{ diseaseGroup, section }}
+              onSwitchTemplate={(template) => {
+                // The file stays selected, so Upload sends it again as the
+                // template it was detected to be.
+                setSection(template.section);
+                setDiseaseGroup(template.diseaseGroup);
+                setResult(null);
+                setUploadedFile(null);
+              }}
+            />
           )}
         </>
       )}

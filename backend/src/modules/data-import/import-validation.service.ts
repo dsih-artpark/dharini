@@ -111,6 +111,37 @@ function buildFriendlyMessage(
     .join('; ');
 }
 
+// The template columns a row DTO reads (template headers are these keys).
+function dtoFields(dtoClass: { new (): object }): string[] {
+  return [
+    ...new Set(
+      getMetadataStorage()
+        .getTargetValidationMetadatas(dtoClass, '', false, false)
+        .map((metadata) => metadata.propertyName),
+    ),
+  ];
+}
+
+function normalizeColumnName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Errors name their column either by template key ("instituteSampleId") or
+// by label ("Tested By", "Sample ID"). Each one also gets the template key,
+// so the upload page can mark the exact cell whichever form was used.
+function withTemplateFields(errors: RowError[], fields: string[]): RowError[] {
+  const fieldByColumn = new Map<string, string>();
+  for (const field of fields) {
+    fieldByColumn.set(normalizeColumnName(field), field);
+    fieldByColumn.set(normalizeColumnName(humanizeField(field)), field);
+  }
+  return errors.map((error) => {
+    if (error.field || !error.column) return error;
+    const field = fieldByColumn.get(normalizeColumnName(error.column));
+    return field ? { ...error, field } : error;
+  });
+}
+
 // One lab result per (sample, disease): a row naming "FMD & LSD" claims both
 // pairs. Retest on the Lab page is the only way to add a second result.
 function labResultKey(sampleKey: string, disease: string): string {
@@ -149,9 +180,7 @@ export class ImportValidationService {
     const dtoClass = (
       diseaseGroup === 'AI' ? AiCollectionRowDto : FmdLsdCollectionRowDto
     ) as { new (): CollectionRowDto };
-    const errors: RowError[] = [
-      ...this.checkForUnexpectedColumns(rawRows, dtoClass),
-    ];
+    const errors: RowError[] = [];
     const rows: CollectionRowDto[] = [];
     const seenInstituteSampleIds = new Set<string>();
     // The (barcode, project) unique index still backstops this at insert
@@ -202,7 +231,11 @@ export class ImportValidationService {
       rows.push(dto);
     }
 
-    return { isValid: errors.length === 0, errors, rows };
+    return {
+      isValid: errors.length === 0,
+      errors: withTemplateFields(errors, dtoFields(dtoClass)),
+      rows,
+    };
   }
 
   async validateLabRows(
@@ -213,9 +246,7 @@ export class ImportValidationService {
     const dtoClass = (
       diseaseGroup === 'AI' ? AiLabRowDto : FmdLsdLabRowDto
     ) as { new (): LabRowDto };
-    const errors: RowError[] = [
-      ...this.checkForUnexpectedColumns(rawRows, dtoClass),
-    ];
+    const errors: RowError[] = [];
     const rows: LabRowDto[] = [];
     const samplesByBarcode = await this.findSamplesByBarcode(
       projectId,
@@ -299,7 +330,11 @@ export class ImportValidationService {
       rows.push(dto);
     }
 
-    return { isValid: errors.length === 0, errors, rows };
+    return {
+      isValid: errors.length === 0,
+      errors: withTemplateFields(errors, dtoFields(dtoClass)),
+      rows,
+    };
   }
 
   private async runClassValidation(
@@ -313,46 +348,12 @@ export class ImportValidationService {
     return violations.map((violation) => ({
       row,
       column: humanizeField(violation.property),
+      field: violation.property,
       message: buildFriendlyMessage(
         violation.property,
         violation.constraints ?? {},
       ),
     }));
-  }
-
-  // Header names are identical across every row of a parsed sheet
-  // (`XlsxParserService` writes one key per template column onto every row
-  // object), so checking the first row is enough to catch a file with
-  // extra/renamed/misspelled columns — surfaced once, at the file level,
-  // rather than as per-row noise.
-  private checkForUnexpectedColumns(
-    rawRows: Record<string, any>[],
-    dtoClass: { new (): object },
-  ): RowError[] {
-    if (rawRows.length === 0) return [];
-    const knownFields = new Set(
-      getMetadataStorage()
-        .getTargetValidationMetadatas(dtoClass, '', false, false)
-        .map((metadata) => metadata.propertyName),
-    );
-    const actualColumns = Object.keys(rawRows[0]).filter(
-      (key) => key !== '__row',
-    );
-    const unexpectedColumns = actualColumns.filter(
-      (column) => !knownFields.has(column),
-    );
-    if (unexpectedColumns.length === 0) return [];
-
-    return [
-      {
-        row: 0,
-        message: `Unexpected column(s): ${unexpectedColumns
-          .map(humanizeField)
-          .join(
-            ', ',
-          )}. Please use the provided template without adding extra columns.`,
-      },
-    ];
   }
 
   private async validateCollectionBusinessRules(

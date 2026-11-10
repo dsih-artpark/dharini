@@ -187,6 +187,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 4,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message:
             'Duplicate FMD lab result for instituteSampleId "S-1" in this file (also on row 3)',
         },
@@ -253,6 +254,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message:
             'Lab result for FMD already exists for instituteSampleId "S-1". To record another result, use Retest on the Lab page.',
         },
@@ -336,6 +338,34 @@ describe('ImportValidationService duplicate checks', () => {
       expect(labTestRepository.find).not.toHaveBeenCalled();
     });
 
+    it('names the template column of every error, whether keyed or labelled', async () => {
+      const result = await service.validateLabRows(
+        [
+          {
+            ...fmdLsdLabRow(3, { instituteSampleId: 'UNKNOWN' }),
+            testedBy: undefined,
+          },
+        ],
+        'FMD_LSD',
+        PROJECT_ID,
+      );
+
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            row: 3,
+            column: 'Tested By',
+            field: 'testedBy',
+          }),
+          expect.objectContaining({
+            row: 3,
+            column: 'instituteSampleId',
+            field: 'instituteSampleId',
+          }),
+        ]),
+      );
+    });
+
     it('looks up samples and existing results once per file, not per row', async () => {
       await service.validateLabRows(
         [
@@ -379,6 +409,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message: 'instituteSampleId "S-1" already exists in this project',
         },
       ]);
@@ -435,6 +466,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'State',
+          field: 'state',
           message:
             'State "TamilNadu" is not recognised. Check the spelling against the official state name. Configured for this project: Karnataka.',
         },
@@ -448,6 +480,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'State',
+          field: 'state',
           message:
             'State "Tamil Nadu" is not configured for this project. Add it under Edit Project Details on the project page, then re-upload. Configured for this project: Karnataka.',
         },
@@ -461,6 +494,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'District',
+          field: 'district',
           message:
             'District "Chennai" was not found in Karnataka. Check the spelling against the official district name. Configured for Karnataka: Bengaluru Urban.',
         },
@@ -474,6 +508,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'District',
+          field: 'district',
           message:
             'District "Mysuru" is not configured for this project. Add it under Edit Project Details on the project page, then re-upload. Configured for Karnataka: Bengaluru Urban.',
         },
@@ -492,6 +527,7 @@ describe('ImportValidationService duplicate checks', () => {
         expect.objectContaining({
           row: 4,
           column: 'District',
+          field: 'district',
           message: expect.stringContaining(
             'District "Aurangabad" is not configured for this project',
           ),
@@ -515,10 +551,12 @@ describe('ImportValidationService duplicate checks', () => {
       expect(locationErrors(result.errors)).toEqual([
         expect.objectContaining({
           column: 'State',
+          field: 'state',
           message: 'State is required',
         }),
         expect.objectContaining({
           column: 'District',
+          field: 'district',
           message: 'District is required',
         }),
       ]);

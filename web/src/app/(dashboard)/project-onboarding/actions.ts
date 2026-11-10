@@ -90,10 +90,20 @@ export const invitePartners = async (
 export type DiseaseGroup = "AI" | "FMD_LSD";
 export type ImportSection = "collection" | "lab";
 
+export interface ImportTemplate {
+  diseaseGroup: DiseaseGroup;
+  section: ImportSection;
+}
+
 export interface RowError {
+  // Spreadsheet row number; 0 for a problem with the whole file.
   row: number;
   column?: string;
+  // Template column key (the header in the file), e.g. "testedBy".
+  field?: string;
   message: string;
+  // Set when the file's columns belong to a different template.
+  detectedTemplate?: ImportTemplate;
 }
 
 export interface ImportResult {
