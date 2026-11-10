@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 **site** | [**VisitSiteData**](VisitSiteData.md) |  | 
 **samples** | [**BuiltList&lt;VisitSampleData&gt;**](VisitSampleData.md) |  | 
 **collector** | [**User**](User.md) |  | [optional] 
-**visitedBy** | [**User**](User.md) |  | [optional] 
+**visitedBy** | [**BuiltList&lt;User&gt;**](User.md) |  | [optional] 
 **id** | **String** |  | 
 **visitedAt** | [**DateTime**](DateTime.md) |  | [optional] 
 **visitScheduledAt** | [**DateTime**](DateTime.md) |  | 

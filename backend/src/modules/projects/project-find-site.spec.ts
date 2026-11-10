@@ -22,7 +22,18 @@ describe('ProjectsController.findSite', () => {
 
   const makeSiteService = () => {
     const repos = {
-      siteRepository: { findOne: jest.fn() },
+      siteRepository: {
+        findOne: jest.fn(),
+        manager: {
+          find: jest.fn(async (_entity: unknown, options: any) =>
+            options.where.id.value.map((id: string) => ({
+              id,
+              firstName: 'First',
+              lastName: 'Last',
+            })),
+          ),
+        },
+      },
       visitRepository: { find: jest.fn().mockResolvedValue([]) },
       sampleRepository: { find: jest.fn().mockResolvedValue([]) },
       mediaRepository: {
@@ -124,7 +135,7 @@ describe('ProjectsController.findSite', () => {
       photos: ['m1'],
       project: { id: PROJECT_ID, name: 'Project' },
       diseases: [{ id: 'd1', name: 'Avian Influenza', index: 0 }],
-      collectionCollector: user('u-col'),
+      collectorIds: ['u-col', 'u-col2'],
       createdBy: user('u-cre', {
         id: 't1',
         teamName: 'Team',
@@ -168,7 +179,7 @@ describe('ProjectsController.findSite', () => {
         'photos',
         'project',
         'diseases',
-        'collectionCollector',
+        'collectionCollectors',
         'createdBy',
         'location',
         'visits',
@@ -184,6 +195,11 @@ describe('ProjectsController.findSite', () => {
       samples: [sample],
     });
     expect(data.samples).toEqual([sample]);
+    // The collectors as users, primary first; their raw ids stay internal.
+    expect(data.collectionCollectors.map((u) => u.id)).toEqual([
+      'u-col',
+      'u-col2',
+    ]);
     expect(data.createdBy.team.id).toBe('t1');
     expect(data.createdBy.team.members).toHaveLength(2);
     expect(data.location.region.parentRegion.id).toBe('r0');

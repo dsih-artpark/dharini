@@ -12,7 +12,6 @@ import { DateTime } from 'luxon';
 import { NearbySiteResponseData } from 'src/common/dto/response/site.response';
 import { Scope } from 'src/common/enums/scope.enum';
 import { TestResultType } from 'src/common/enums/test-result.enum';
-import { getUserScope } from 'src/common/functions/get-user-role';
 import { applyProjectScope } from 'src/common/functions/tenant-scope';
 import { CreateCollectionPlanObj } from 'src/common/types/create-collectionplan-obj.type';
 import { CreateSiteObj } from 'src/common/types/create-site-obj.type';
@@ -22,6 +21,7 @@ import { Media } from 'src/entities/media.entity';
 import { Project } from 'src/entities/project.entity';
 import { Sample } from 'src/entities/sample.entity';
 import { Site } from 'src/entities/site.entity';
+import { Team } from 'src/entities/team.entity';
 import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { Brackets, EntityManager, In, Repository } from 'typeorm';
@@ -45,13 +45,21 @@ import {
   startTooFarBackError,
   upcomingCollectionDates,
 } from './collection-plan-edit';
+import {
+  attachCollectionCollectors,
+  loadProjectCollector,
+  primaryCollectorId,
+  sameCollectorIds,
+  validateSiteCollectors,
+} from './site-collectors';
 
 // A plan edit replaces only the future visits nobody has touched, which
 // mirrors VisitService's hasNoVisitData. Anything recorded on a visit or
 // pointing at it keeps it: samples and lab tests would block the delete, and
 // animal metadata would be deleted along with it.
 const UNTOUCHED_VISIT_SQL = `
-  "visitStartedAt" IS NULL AND "visitedAt" IS NULL AND "visitedById" IS NULL
+  "visitStartedAt" IS NULL AND "visitedAt" IS NULL
+  AND COALESCE(cardinality("visitedById"), 0) = 0
   AND COALESCE("comment", '') = ''
   AND COALESCE(cardinality("photos"), 0) = 0
   AND COALESCE("suspectedPositives", '[]'::jsonb) = '[]'::jsonb
@@ -113,8 +121,6 @@ export class SitesService {
       .leftJoinAndSelect('site.location', 'location')
       .leftJoinAndSelect('location.region', 'region')
       .leftJoinAndSelect('region.parentRegion', 'parentRegion')
-      .leftJoinAndSelect('site.collectionCollector', 'collectionCollector')
-      .leftJoinAndSelect('collectionCollector.team', 'collectionCollectorTeam')
       .leftJoinAndSelect('site.createdBy', 'createdBy')
       .leftJoinAndSelect('createdBy.team', 'createdByTeam')
       .andWhere('site.status = :status', { status: StatusType.ACTIVE });
@@ -236,6 +242,7 @@ export class SitesService {
         );
       }),
     );
+    await attachCollectionCollectors(this.siteRepository.manager, resultSites);
 
     return resultSites;
   }
@@ -313,7 +320,6 @@ export class SitesService {
       relations: [
         'project',
         'diseases',
-        'collectionCollector',
         'createdBy',
         'createdBy.team',
         'location',
@@ -324,6 +330,7 @@ export class SitesService {
     if (!site) {
       throw new NotFoundException(`Site with query ${query.id} not found`);
     }
+    await attachCollectionCollectors(this.siteRepository.manager, [site]);
 
     // The one-to-many trees get their own queries. Joined into the query
     // above they multiplied each other (visits x their samples x site samples
@@ -448,11 +455,6 @@ export class SitesService {
         .select(['site', 'location']) // Select site and location data
         .leftJoinAndSelect('site.project', 'project')
         .leftJoinAndSelect('project.createdBy', 'projectCreatedBy')
-        .leftJoinAndSelect('site.collectionCollector', 'collectionCollector')
-        .leftJoinAndSelect(
-          'collectionCollector.team',
-          'collectionCollectorTeam',
-        )
         .leftJoinAndSelect('site.createdBy', 'createdBy')
         .leftJoinAndSelect('site.updatedBy', 'updatedBy')
         .addSelect([
@@ -477,9 +479,15 @@ export class SitesService {
       const tenant = await this.tenantScopeService.forUser(userData);
       // Super-admins (System scope) can see all projects - no filter needed
       if (assignedTo && tenant.scope === Scope.Team && userData?.team?.id) {
-        baseQuery.andWhere('collectionCollector.team.id = :teamId', {
-          teamId: userData.team.id,
-        });
+        // Sites with a collector from the caller's team.
+        baseQuery.andWhere(
+          `EXISTS (
+            SELECT 1 FROM "users" "siteCollector"
+            WHERE "siteCollector"."id" = ANY (site.collectorIds)
+              AND "siteCollector"."teamId" = :teamId
+          )`,
+          { teamId: userData.team.id },
+        );
       } else {
         // Was `if (userData?.project?.id)` - a legacy single-project FK
         // that's null for workspace-admins, so the predicate was silently
@@ -518,6 +526,7 @@ export class SitesService {
 
       const sites = await baseQuery.orderBy('distance', 'ASC').getMany();
       const rawResults = await baseQuery.getRawMany();
+      await attachCollectionCollectors(this.siteRepository.manager, sites);
 
       // Attach the computed distance to the site objects
       const nearbySites: NearbySiteResponseData[] = sites.map(
@@ -574,19 +583,20 @@ export class SitesService {
     },
   ): Promise<void> {
     let fullSite = site;
-    if (!site.collectionCollector || !site.project) {
+    if (!site.collectorIds || !site.project) {
       fullSite = await this.siteRepository.findOne({
         where: { id: site.id },
-        relations: ['collectionCollector', 'project', 'location', 'diseases'],
+        relations: ['project', 'location', 'diseases'],
       });
       if (!fullSite) return;
     }
 
+    const collectorId = primaryCollectorId(fullSite);
     if (
       !fullSite.collectionStartDate ||
       fullSite.collectionFrequencyInterval === null ||
       fullSite.collectionFrequencyInterval === undefined ||
-      !fullSite.collectionCollector
+      !collectorId
     ) {
       return;
     }
@@ -606,12 +616,26 @@ export class SitesService {
     // Reads go through the same manager as the writes, so a caller's delete
     // in the same transaction is already visible.
     const schedule = async (manager: EntityManager) => {
-      // Fetch collector's team once
-      const collectorUser = await manager.findOne(User, {
-        where: { id: fullSite.collectionCollector.id },
-        relations: ['team'],
-      });
-      const teamData = collectorUser?.team;
+      // Plan visits go to the primary collector and their team in this
+      // project; the site's other collectors, whatever their team, see the
+      // same visits.
+      const collector = await loadProjectCollector(
+        manager,
+        collectorId,
+        fullSite.project.id,
+      );
+      // The id has no foreign key behind it any more.
+      if (!collector) return;
+      if (!collector.teamId) {
+        // A visit needs a team. A primary checked by validateSiteCollectors
+        // always has one; one kept from before may have left the project.
+        console.warn(
+          `[generateAllVisitsForSite] Site ${fullSite.id}: collector ${collectorId} is in none of project ${fullSite.project.id}'s teams; no visits scheduled.`,
+        );
+        return;
+      }
+      const collectorUser = collector.user;
+      const teamData = { id: collector.teamId } as Team;
 
       // Fetch all existing visits for this site to prevent duplicate dates
       const existingVisits = await manager.find(Visit, {
@@ -649,7 +673,7 @@ export class SitesService {
           visitsToCreate.push(
             this.visitRepository.create({
               site: fullSite,
-              collector: fullSite.collectionCollector,
+              collector: collectorUser,
               team: teamData,
               project: fullSite.project,
               questionSetId: 'qs-1',
@@ -729,7 +753,6 @@ export class SitesService {
         const existingSite = await this.siteRepository.findOne({
           where: { id: duplicateSite.id },
           relations: [
-            'collectionCollector',
             'diseases',
             'location',
             'project',
@@ -739,6 +762,9 @@ export class SitesService {
         });
 
         if (existingSite) {
+          await attachCollectionCollectors(this.siteRepository.manager, [
+            existingSite,
+          ]);
           return existingSite;
         }
       }
@@ -747,6 +773,20 @@ export class SitesService {
         `A site named "${createSiteObj.name}" already exists in this project.`,
       );
     }
+
+    // Checked before anything is written. A collector who can't be one any
+    // more - the site may have been created offline days ago - is left out
+    // rather than refusing the site (see validateSiteCollectors).
+    const collectors = await validateSiteCollectors(
+      this.siteRepository.manager,
+      collectionObj.collectorIds ?? [],
+      {
+        projectId: projectData.id,
+        dropInvalid: true,
+        fallbackId: createdBy?.id,
+      },
+    );
+    collectionObj.collectorIds = collectors.map((collector) => collector.id);
 
     const location = await this.locationService.create({
       regionId: createSiteObj.regionId,
@@ -802,42 +842,15 @@ export class SitesService {
         .add(diseasesData.map((disease) => disease.id)); // Add the disease IDs
     }
 
-    // ✅ Maintain relation for collectionCollector
-    console.log(collectionObj.collectionCollector);
-    const user = collectionObj.collectionCollector;
-    const userData = await this.userRepository.findOne({
-      where: { id: user?.id },
-      relations: [
-        'team',
-        'project',
-        'roles',
-        'roles.role',
-        'roles.role.permissions',
-      ],
-    });
-
-    const userScope = await getUserScope(userData);
-
-    if (collectionObj.collectionCollector && userScope === Scope.System) {
-      throw new Error('super-admin can not be collector');
-    }
-    if (user) {
-      await queryBuilder
-        .relation(Site, 'collectionCollector') // Specify the relation
-        .of(siteData.id) // Specify the site ID
-        .set(user.id); // Add the single user ID
-    }
-
     const createdSite = await this.siteRepository.findOne({
       where: { id: siteData.id },
       relations: [
-        'collectionCollector',
         'diseases',
         'location',
         'project',
         'location.region',
         'location.region.parentRegion',
-      ], // Include related users & diseases
+      ], // Include related diseases
     });
 
     if (!createdSite) {
@@ -848,10 +861,13 @@ export class SitesService {
       createdSite.collectionStartDate &&
       createdSite.collectionFrequencyInterval !== null &&
       createdSite.collectionFrequencyInterval !== undefined &&
-      createdSite.collectionCollector
+      primaryCollectorId(createdSite)
     ) {
       await this.generateAllVisitsForSite(createdSite);
     }
+    await attachCollectionCollectors(this.siteRepository.manager, [
+      createdSite,
+    ]);
     return createdSite;
   }
 
@@ -860,9 +876,11 @@ export class SitesService {
   // supplied, the lookup is bound to it so a caller who belongs to project A
   // cannot mutate a site id that actually belongs to project B. See
   // FINDINGS.md §21a.
+  // `collectorIds` replaces the site's collectors, primary first; left out
+  // (undefined) it keeps them.
   async update(
     id: string,
-    collector: any, // Single collector instead of array
+    collectorIds: string[] | undefined,
     updateSiteDto: any,
     collectionObj: CreateCollectionPlanObj,
     updatedBy: User,
@@ -876,12 +894,30 @@ export class SitesService {
 
     const existingSite = await this.siteRepository.findOne({
       where: projectId ? { id, project: { id: projectId } } : { id },
-      relations: ['project', 'diseases', 'collectionCollector', 'location'],
+      relations: ['project', 'diseases', 'location'],
     });
 
     if (!existingSite) {
       throw new NotFoundException(`Site with ID ${id} not found`);
     }
+
+    // A save that sends the site's collectors unchanged (the apps send them
+    // with every edit) neither checks them again nor touches the visits.
+    const collectorsChanged =
+      !!collectorIds &&
+      !sameCollectorIds(collectorIds, existingSite.collectorIds);
+    const collectors = collectorsChanged
+      ? await validateSiteCollectors(
+          this.siteRepository.manager,
+          collectorIds,
+          {
+            projectId: existingSite.project.id,
+            existingIds: existingSite.collectorIds,
+          },
+        )
+      : [];
+    const primaryChanged =
+      collectorsChanged && collectorIds[0] !== primaryCollectorId(existingSite);
 
     const duplicateSite = await this.siteRepository
       .createQueryBuilder('site')
@@ -935,7 +971,7 @@ export class SitesService {
     }
     if (
       planEdit.changed &&
-      (collector ?? existingSite.collectionCollector) &&
+      (collectorIds ?? existingSite.collectorIds)?.length &&
       planEdit.schedule.collectionStartDate &&
       planEdit.schedule.collectionFrequencyInterval != null &&
       upcomingCollectionDates(planEdit.schedule).length === 0 &&
@@ -988,6 +1024,9 @@ export class SitesService {
     delete updateSiteDto.latitude;
     delete updateSiteDto.longitude;
     delete updateSiteDto.regionId;
+    // Collectors are set from `collectorIds` alone, once checked.
+    delete updateSiteDto.collectorIds;
+    delete collectionObj.collectorIds;
     // delete updateSiteDto.state;
     // Only allow keys that map to real Site columns/relations — unknown
     // client-side fields (e.g. UI-only helpers) must not reach the SQL
@@ -1043,6 +1082,9 @@ export class SitesService {
     if (updatedBy) {
       setObject.updatedBy = updatedBy;
     }
+    if (collectorsChanged) {
+      setObject.collectorIds = collectorIds;
+    }
     // The null filters above can't clear a column, so a plan turned one-time
     // drops its old expiry here.
     if (planEdit.clearsExpiry) {
@@ -1064,77 +1106,116 @@ export class SitesService {
       if (!siteData) {
         throw new Error('Failed to update site');
       }
-      // Handle collector (single user)
-      if (collector) {
-        await manager
-          .createQueryBuilder()
-          .relation(Site, 'collectionCollector')
-          .of(id)
-          .set(null); // Remove previous collectors
-
-        await manager
-          .createQueryBuilder()
-          .relation(Site, 'collectionCollector')
-          .of(id)
-          .set(collector); // Add the single collector
-      }
-
       // Fetch updated site with relations
       const updatedSite = await manager.findOne(Site, {
         where: { id: siteData.id },
-        relations: ['collectionCollector', 'project'],
+        relations: ['project'],
       });
 
       if (!updatedSite) {
         throw new Error('Failed to retrieve the updated site with collector');
       }
 
-      // Trigger visit creation if collection dates/plan are updated OR if a collector is being assigned
-      if (
-        updateFields.collectionStartDate ||
-        updateFields.collectionLastScheduleDate ||
+      // The apps send the whole plan with every save, so a plan being sent
+      // doesn't mean it changed.
+      const planSent =
+        !!updateFields.collectionStartDate ||
+        !!updateFields.collectionLastScheduleDate ||
         updateFields.collectionFrequencyInterval !== undefined ||
-        updateFields.collectionDuration ||
-        updateFields.collectionDayOfWeek ||
-        collector
-      ) {
+        !!updateFields.collectionDuration ||
+        !!updateFields.collectionDayOfWeek;
+      // A site getting its first collectors has no plan visits yet.
+      const firstCollectors =
+        collectorsChanged && !primaryCollectorId(existingSite);
+
+      if ((planSent && planEdit.changed) || firstCollectors) {
+        // New dates: the untouched visits are made again from the plan, for
+        // the primary collector. The kept overdue ones would stay with the
+        // old one, so they are handed over below.
+        //
+        // Their replacements need the primary's team in the project. A
+        // primary kept from before may have left its teams since; the edit is
+        // refused, and rolled back, rather than deleting the visits with
+        // nothing in their place.
+        const primaryId = primaryCollectorId(updatedSite);
+        if (primaryId) {
+          const primary = await loadProjectCollector(
+            manager,
+            primaryId,
+            existingSite.project.id,
+          );
+          if (!primary?.teamId) {
+            throw new BadRequestException(
+              'The first collector of this site is no longer in any of the project’s teams, so its visits cannot be scheduled. Make another collector the first, then save the plan again.',
+            );
+          }
+        }
         await this.replaceUpcomingVisits(
           manager,
           updatedSite,
           planEdit.changed,
           isFirstPlan,
         );
+        if (primaryChanged) {
+          await this.reassignOpenVisits(
+            manager,
+            id,
+            collectors[0].id,
+            existingSite.project.id,
+          );
+        }
+      } else if (planSent || primaryChanged) {
+        // The same dates: the visits stay, and their ids with them - a phone
+        // may hold one offline and submit to it later. A new primary takes
+        // the open ones over in place. Only a future date with no visit (one
+        // deleted, say) gets one.
+        if (primaryChanged) {
+          await this.reassignOpenVisits(
+            manager,
+            id,
+            collectors[0].id,
+            existingSite.project.id,
+          );
+        }
+        await this.generateAllVisitsForSite(updatedSite, {
+          onlyFuture: true,
+          manager,
+        });
       }
 
-      // The visits made again above go to the new collector, but the kept
-      // overdue ones would stay with the old one.
-      if (collector && collector.id !== existingSite.collectionCollector?.id) {
-        await this.reassignOpenVisits(manager, id, collector);
-      }
-
+      await attachCollectionCollectors(manager, [updatedSite]);
       return updatedSite;
     });
   }
 
   // Hands a site's open visits nobody has touched, overdue ones included, to
-  // its new collector and their team. Rescheduled visits and any with
-  // something recorded on them stay with the collector who has them, as the
-  // plan replacement keeps them.
+  // its new primary collector and their team in the project, in place, so
+  // their ids - which phones may hold offline - stay. Rescheduled visits and
+  // any with something recorded on them stay with the collector who has
+  // them, as the plan replacement keeps them.
   private async reassignOpenVisits(
     manager: EntityManager,
     siteId: string,
-    collector: User,
+    collectorId: string,
+    projectId: string,
   ): Promise<void> {
-    const collectorUser = await manager.findOne(User, {
-      where: { id: collector.id },
-      relations: ['team'],
-    });
-    const team = collectorUser?.team;
+    const collector = await loadProjectCollector(
+      manager,
+      collectorId,
+      projectId,
+    );
+    if (!collector) return;
+    const visitCollector = { id: collectorId } as User;
+    const team = collector.teamId ? ({ id: collector.teamId } as Team) : null;
 
     await manager
       .createQueryBuilder()
       .update(Visit)
-      .set(team ? { collector, team } : { collector })
+      .set(
+        team
+          ? { collector: visitCollector, team }
+          : { collector: visitCollector },
+      )
       .where('"siteId" = :siteId', { siteId })
       .andWhere('"visitStatus" IN (:...statuses)', {
         statuses: [VisitStatus.UPCOMING, VisitStatus.OVERDUE],
@@ -1162,7 +1243,7 @@ export class SitesService {
       !site.collectionStartDate ||
       site.collectionFrequencyInterval === null ||
       site.collectionFrequencyInterval === undefined ||
-      !site.collectionCollector
+      !primaryCollectorId(site)
     ) {
       return;
     }

@@ -19,7 +19,7 @@ part 'update_visit_on_submit_dto.g.dart';
 /// * [siteId] - site id
 /// * [projectId] - project id
 /// * [teamId] - team id
-/// * [visitedBy] - team member id
+/// * [visitedBy] - IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.
 /// * [photos] - file path
 /// * [comment] - comment
 /// * [suspectDiseaseData] - This data is updating result of test result for disease
@@ -50,9 +50,9 @@ abstract class UpdateVisitOnSubmitDto implements Built<UpdateVisitOnSubmitDto, U
   @BuiltValueField(wireName: r'teamId')
   String? get teamId;
 
-  /// team member id
+  /// IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.
   @BuiltValueField(wireName: r'visitedBy')
-  String? get visitedBy;
+  BuiltList<String>? get visitedBy;
 
   /// file path
   @BuiltValueField(wireName: r'photos')
@@ -144,7 +144,7 @@ class _$UpdateVisitOnSubmitDtoSerializer implements PrimitiveSerializer<UpdateVi
       yield r'visitedBy';
       yield serializers.serialize(
         object.visitedBy,
-        specifiedType: const FullType(String),
+        specifiedType: const FullType(BuiltList, [FullType(String)]),
       );
     }
     if (object.photos != null) {
@@ -266,10 +266,10 @@ class _$UpdateVisitOnSubmitDtoSerializer implements PrimitiveSerializer<UpdateVi
         case r'visitedBy':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(String),
-          ) as String?;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>?;
           if (valueDes == null) continue;
-          result.visitedBy = valueDes;
+          result.visitedBy.replace(valueDes);
           break;
         case r'photos':
           final valueDes = serializers.deserialize(

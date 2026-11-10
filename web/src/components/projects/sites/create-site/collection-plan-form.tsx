@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 import { updateSiteApi } from "@/src/app/(dashboard)/projects/[id]/create-site/actions";
@@ -9,6 +9,7 @@ import { getSiteDetailApi } from "@/src/app/(dashboard)/projects/[id]/sites/load
 import Select from "@/src/components/ui/select";
 import { siteAtom } from "@/src/store/siteAtom";
 import { User } from "@/src/types/global";
+import { collectorName, siteCollectors } from "@/src/utils";
 
 // Semantic frequency type — no magic numbers in UI logic
 type FrequencyType =
@@ -58,7 +59,8 @@ interface CollectionPlan {
   collectionFrequency: number;
   collectionTime: string;
   collectionDuration: string;
-  collectionCollector: string;
+  // Primary first, in the order they were picked.
+  collectionCollectors: string[];
   collectionStartDate: string;
 }
 
@@ -80,6 +82,7 @@ export default function CollectionPlanForm({
   const [site, setSite] = useAtom(siteAtom);
 
   const [projectMembers, setProjectMembers] = useState<User[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
   const [dayOfWeek, setDayOfWeek] = useState<(typeof WEEK_DAYS)[number][]>([]);
   const currentUTCTime = () => {
     const iso = new Date().toISOString();
@@ -122,11 +125,11 @@ export default function CollectionPlanForm({
     collectionFrequency: 1,
     collectionTime: currentUTCTime(),
     collectionDuration: "0",
-    collectionCollector: "",
+    collectionCollectors: [],
     collectionStartDate: getTodayDate(),
   });
   const [errors, setErrors] = useState({
-    collectionCollector: "",
+    collectionCollectors: "",
     collectionFrequency: "",
     collectionFrequencyInterval: "",
     dayOfWeek: "",
@@ -142,19 +145,51 @@ export default function CollectionPlanForm({
       setProjectMembers(data);
     } catch (e) {
       console.log((e as Error).message);
+    } finally {
+      setMembersLoaded(true);
     }
   };
 
+  // The site's collectors the project no longer lists (one who has left its
+  // teams, say). They stay in the picker, marked, so they stay picked - and
+  // the first stays first - until removed on purpose; the picker otherwise
+  // drops anyone it has no option for on its next change.
+  const departedCollectors = useMemo(() => {
+    if (!membersLoaded || !site || site.id !== siteId) return [];
+    const listed = new Set(projectMembers.map((member) => member.id));
+    return siteCollectors(site).filter(
+      (collector) => !listed.has(collector.id),
+    );
+  }, [membersLoaded, projectMembers, site, siteId]);
+
+  const collectorOptions = useMemo(
+    () => [
+      ...projectMembers.map((member) => ({
+        value: member.id,
+        label:
+          member.firstName && member.lastName
+            ? `${member.firstName} ${member.lastName}`
+            : member.email,
+      })),
+      ...departedCollectors.map((collector) => ({
+        value: collector.id,
+        label: `${collectorName(collector) || collector.id} (not in project)`,
+      })),
+    ],
+    [projectMembers, departedCollectors],
+  );
+
   useEffect(() => {
     if (site?.id) {
-      const collectionCollector = site.collectionCollector as User;
       const interval = site.collectionFrequencyInterval ?? 7;
       setCollectionPlanData({
         frequencyType: INTERVAL_TO_FREQUENCY[interval] ?? "weekly",
         collectionFrequency: site.collectionFrequency ?? 1,
         collectionTime: site.collectionTime ?? currentUTCTime(),
         collectionDuration: ((site.collectionDuration ?? 0) / 30)?.toString(),
-        collectionCollector: collectionCollector?.id ?? "",
+        collectionCollectors: siteCollectors(site).map(
+          (collector) => collector.id,
+        ),
         collectionStartDate: site.collectionStartDate
           ? new Date(site.collectionStartDate).toISOString().split("T")[0]
           : getTodayDate(),
@@ -221,6 +256,20 @@ export default function CollectionPlanForm({
     setErrors((prev) => ({ ...prev, [name]: "" }));
   };
 
+  // The multi-select reports its picks in list order; keep them in the order
+  // they were picked instead, so the first stays the primary until removed.
+  const handleCollectorsChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const picked = (e.target.value as unknown as string[]) ?? [];
+    setCollectionPlanData((prev) => ({
+      ...prev,
+      collectionCollectors: [
+        ...prev.collectionCollectors.filter((id) => picked.includes(id)),
+        ...picked.filter((id) => !prev.collectionCollectors.includes(id)),
+      ],
+    }));
+    setErrors((prev) => ({ ...prev, collectionCollectors: "" }));
+  };
+
   const collectionDayClick = (day: (typeof WEEK_DAYS)[number]) => {
     const isOnce = collectionPlanData.frequencyType === "once";
     const isDaily = collectionPlanData.frequencyType === "daily";
@@ -234,7 +283,7 @@ export default function CollectionPlanForm({
 
   const validate = () => {
     const newErrors: typeof errors = {
-      collectionCollector: "",
+      collectionCollectors: "",
       collectionFrequency: "",
       collectionFrequencyInterval: "",
       dayOfWeek: "",
@@ -243,8 +292,8 @@ export default function CollectionPlanForm({
       collectionStartDate: "",
     };
 
-    if (!collectionPlanData.collectionCollector) {
-      newErrors.collectionCollector = "Need to assign any 1 collector";
+    if (!collectionPlanData.collectionCollectors.length) {
+      newErrors.collectionCollectors = "Need to assign at least 1 collector";
     }
     if (!collectionPlanData.collectionFrequency) {
       newErrors.collectionFrequency = "Frequency is required.";
@@ -289,7 +338,7 @@ export default function CollectionPlanForm({
           // Build the payload explicitly — `frequencyType` is UI-only and
           // must not be sent to the API (Site has no such column).
           const { success, message, data } = await updateSiteApi(id, siteId, {
-            collectionCollector: collectionPlanData.collectionCollector,
+            collectionCollectors: collectionPlanData.collectionCollectors,
             collectionFrequency: Number(collectionPlanData.collectionFrequency),
             // Convert semantic type to API number only at submission boundary
             collectionFrequencyInterval:
@@ -347,22 +396,31 @@ export default function CollectionPlanForm({
                 Collector Name <span className="text-red-500">*</span>
               </label>
               <Select
-                name="collectionCollector"
+                name="collectionCollectors"
                 className="w-full self-stretch"
-                options={projectMembers?.map((member) => ({
-                  value: member.id,
-                  label:
-                    member.firstName && member.lastName
-                      ? `${member.firstName} ${member.lastName}`
-                      : member.email,
-                }))}
-                onChange={handleChange}
-                defaultValue={collectionPlanData.collectionCollector}
+                isMulti
+                options={collectorOptions}
+                onChange={handleCollectorsChange}
+                defaultValue={collectionPlanData.collectionCollectors}
                 placeholder=""
               />
-              {errors.collectionCollector && (
+              {collectionPlanData.collectionCollectors.length > 0 && (
+                <p className="text-grey-70 text-xs leading-[18px]">
+                  {collectionPlanData.collectionCollectors
+                    .map((collectorId) => {
+                      const member = [
+                        ...projectMembers,
+                        ...departedCollectors,
+                      ].find((m) => m.id === collectorId);
+                      return member ? collectorName(member) : "";
+                    })
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              )}
+              {errors.collectionCollectors && (
                 <p className="text-red-500 text-sm">
-                  {errors.collectionCollector}
+                  {errors.collectionCollectors}
                 </p>
               )}
             </div>

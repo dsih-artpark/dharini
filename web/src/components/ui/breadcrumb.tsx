@@ -21,9 +21,12 @@ export default function Breadcrumb({
   const router = useRouter();
   const isSuperAdmin = useIsSuperAdmin();
 
-  const paths = isSuperAdmin
-    ? [{ name: "Projects", href: "/manage" }, ...path]
-    : path;
+  // Don't prepend Projects when the page's own trail already starts at the
+  // Projects page (/manage), or it shows twice.
+  const paths =
+    isSuperAdmin && path[0]?.href !== "/manage"
+      ? [{ name: "Projects", href: "/manage" }, ...path]
+      : path;
 
   return (
     <div

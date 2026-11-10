@@ -14,7 +14,7 @@ import { projectAtom } from "@/src/store/projectAtom";
 import { siteAtom } from "@/src/store/siteAtom";
 import { getProjectDetailApi } from "@/src/app/(dashboard)/projects/[id]/loader";
 import { getSiteDetailApi } from "@/src/app/(dashboard)/projects/[id]/sites/loader";
-import { User } from "@/src/types/global";
+import { siteCollectors } from "@/src/utils";
 import { useHasPermission } from "@/src/hooks/check-permission";
 import Spinner from "@/src/components/ui/spinner";
 
@@ -153,7 +153,7 @@ export default function SiteDetails() {
     ?.split(" ")
     .map((c) => c.charAt(0))
     .join("");
-  const collector = siteDetail.collectionCollector as User | undefined;
+  const collectors = siteCollectors(siteDetail);
 
   return (
     <div className="grid w-full grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_345px]">
@@ -446,22 +446,27 @@ export default function SiteDetails() {
               <h3 className="text-sm font-semibold text-grey-90">
                 Assigned Collectors
               </h3>
-              {collector ? (
-                <div className="flex items-center gap-3 border-t border-grey-20 pt-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-10 text-xs font-medium uppercase text-grey-90">
-                    {collector?.firstName?.charAt(0) ??
-                      collector?.email?.charAt(0)}
-                    {collector?.lastName?.charAt(0)}
+              {collectors.length ? (
+                collectors.map((collector) => (
+                  <div
+                    key={collector.id}
+                    className="flex items-center gap-3 border-t border-grey-20 pt-3"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-10 text-xs font-medium uppercase text-grey-90">
+                      {collector?.firstName?.charAt(0) ??
+                        collector?.email?.charAt(0)}
+                      {collector?.lastName?.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-grey-90">
+                        {collector?.firstName} {collector?.lastName}
+                      </p>
+                      <p className="truncate text-xs text-grey-60">
+                        {collector?.email}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-grey-90">
-                      {collector?.firstName} {collector?.lastName}
-                    </p>
-                    <p className="truncate text-xs text-grey-60">
-                      {collector?.email}
-                    </p>
-                  </div>
-                </div>
+                ))
               ) : (
                 <EmptyBadge />
               )}

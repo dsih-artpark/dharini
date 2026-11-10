@@ -184,9 +184,10 @@ export class Visit extends PickType(VisitEntity, [
   'createdAt',
   'updatedAt',
 ] as const) {
+  // Everyone who was at the visit, its submitter first.
   @Expose()
   @Type(() => User)
-  visitedBy?: User;
+  visitedBy?: User[];
 
   @Expose()
   @Type(() => User)

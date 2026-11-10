@@ -27,12 +27,14 @@ import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import {
   And,
+  ArrayContains,
   Between,
   EntityManager,
   In,
   LessThan,
   LessThanOrEqual,
   MoreThanOrEqual,
+  Raw,
   Repository,
 } from 'typeorm';
 import { MulterConfigService } from '../media/media.service';
@@ -42,6 +44,12 @@ import { CreateVisitDto } from './dto/create-visit.dto';
 import { RescheduleVisitDto } from './dto/reschedule-visit.dto';
 import { SubmitVisitDto } from './dto/submit-visit.dto';
 import { UpdateVisitDto } from './dto/update-visit.dto';
+import {
+  attachVisitedBy,
+  mergeVisitedByIds,
+  normalizeVisitedByIds,
+  resolveVisitedByIds,
+} from './visit-visited-by';
 
 configDotenv();
 
@@ -55,7 +63,7 @@ const hasNoVisitData = (visit: Visit) =>
   visit.status === StatusType.ACTIVE &&
   !visit.visitStartedAt &&
   !visit.visitedAt &&
-  !visit.visitedBy &&
+  !visit.visitedByIds?.length &&
   !visit.rescheduledFrom &&
   !visit.comment &&
   !visit.photos?.length &&
@@ -198,7 +206,7 @@ export class VisitService implements OnModuleInit {
         isCompleted: false,
         visitScheduledAt: Between(day.toJSDate(), day.endOf('day').toJSDate()),
       },
-      relations: ['site', 'collector', 'team', 'project', 'visitedBy'],
+      relations: ['site', 'collector', 'team', 'project'],
       order: { visitScheduledAt: 'ASC', id: 'ASC' },
     });
 
@@ -286,7 +294,33 @@ export class VisitService implements OnModuleInit {
       }
       console.log('visitWhereCondition ---> ', visitWhereCondition);
 
-      const individualVisitWhereCondition: any = { collector: { id: userId } };
+      // The caller's own visits: those they lead, and every visit of a site
+      // they are one of the collectors of (any of them can submit it). Each
+      // entry is ORed.
+      const individualVisitWhereConditions: any[] = [
+        { collector: { id: userId } },
+        { site: { collectorIds: ArrayContains([userId]) } },
+      ];
+      const individualVisitsWhere = (where: any) =>
+        individualVisitWhereConditions.map((condition) => ({
+          ...condition,
+          ...where,
+        }));
+      // The visits the caller was at: those that list them among who was
+      // there, and - recorded before visits listed that - those they led.
+      // Not every visit of their sites: another collector may have done it.
+      const attendedVisitWhereConditions: any[] = [
+        { visitedByIds: ArrayContains([userId]) },
+        {
+          collector: { id: userId },
+          visitedByIds: Raw((alias) => `cardinality(${alias}) = 0`),
+        },
+      ];
+      const attendedVisitsWhere = (where: any) =>
+        attendedVisitWhereConditions.map((condition) => ({
+          ...condition,
+          ...where,
+        }));
 
       const [
         overdueVisits,
@@ -347,8 +381,7 @@ export class VisitService implements OnModuleInit {
                 }),
             // Same as pendingVisits, scoped to this collector instead of team/project
             this.visitRepository.count({
-              where: {
-                ...individualVisitWhereCondition,
+              where: individualVisitsWhere({
                 visitStatus: VisitStatus.UPCOMING,
                 isCompleted: false,
                 visitScheduledAt: And(
@@ -356,27 +389,26 @@ export class VisitService implements OnModuleInit {
                   MoreThanOrEqual(startDateObj),
                   LessThanOrEqual(endDateObj),
                 ),
-              },
+              }),
             }),
-            // Same as completedVisits, scoped to this collector instead of team/project
+            // Same as completedVisits, scoped to the visits this collector was
+            // at instead of team/project
             this.visitRepository.count({
-              where: {
-                ...individualVisitWhereCondition,
+              where: attendedVisitsWhere({
                 isCompleted: true,
                 visitStatus: VisitStatus.COMPLETED,
                 visitedAt: Between(startDateObj, endDateObj),
-              },
+              }),
             }),
-            // Count of samples (not visits) collected by this user, on visits led by
-            // this collector, whose visitedAt falls within [startDate, endDate]
+            // Count of samples (not visits) collected by this user, on this
+            // collector's visits, whose visitedAt falls within [startDate, endDate]
             this.entityManager.count(Sample, {
-              where: {
+              where: individualVisitsWhere({
+                visitedAt: Between(startDateObj, endDateObj),
+              }).map((visit) => ({
                 collectedBy: { id: userId },
-                visit: {
-                  ...individualVisitWhereCondition,
-                  visitedAt: Between(startDateObj, endDateObj),
-                },
-              },
+                visit,
+              })),
             }),
           ])
         : [0, 0, 0, 0, 0, 0];
@@ -405,6 +437,7 @@ export class VisitService implements OnModuleInit {
         .leftJoinAndSelect('visit.team', 'team')
         .leftJoinAndSelect('visit.collector', 'collector')
         .leftJoinAndSelect('samples.sampleType', 'sampleType')
+        .leftJoinAndSelect('samples.collectedBy', 'sampleCollectedBy')
         .leftJoinAndSelect('site.project', 'project')
         .leftJoinAndSelect('project.createdBy', 'projectCreatedBy')
         .leftJoinAndSelect('site.diseases', 'disease')
@@ -435,6 +468,8 @@ export class VisitService implements OnModuleInit {
           totalPages: cusLimit > 0 ? Math.ceil(total / cusLimit) : 0,
         };
       }
+
+      await attachVisitedBy(this.visitRepository.manager, visits);
 
       const siteIds = [
         ...new Set(visits.filter((v) => v.site).map((v) => v.site.id)),
@@ -653,6 +688,7 @@ export class VisitService implements OnModuleInit {
     if (!visit) {
       throw new NotFoundException(`Visit with ID ${id} not found.`);
     }
+    await attachVisitedBy(this.visitRepository.manager, [visit]);
     // Transform samples to include originalSampleId
     if (visit.samples) {
       visit.samples = visit.samples.map((sample) => ({
@@ -667,8 +703,8 @@ export class VisitService implements OnModuleInit {
     const visits = await this.visitRepository
       .createQueryBuilder('visit')
       .leftJoinAndSelect('visit.site', 'site') // Join the site
-      .leftJoinAndSelect('site.collectionCollector', 'collector') // Join the collector associated with the site
-      .where('collector.id = :userId', { userId }) // Filter by collector ID at the site level
+      // Filter by collector ID at the site level
+      .where('site.collectorIds @> ARRAY[:userId]::uuid[]', { userId })
       .getOneOrFail();
     return visits;
   }
@@ -683,11 +719,11 @@ export class VisitService implements OnModuleInit {
       where: projectId ? { id, project: { id: projectId } } : { id },
       relations: ['site', 'project'],
     });
-    let user = null;
     if (!visit) {
       throw new NotFoundException(`Visit with ID ${id} not found.`);
     }
-    const { isCompleted, ...otherFields } = updateVisitDto;
+    // visitedBy names users; it is recorded as their ids below.
+    const { isCompleted, visitedBy, ...otherFields } = updateVisitDto;
 
     // Assign only the allowed fields
     Object.assign(visit, otherFields);
@@ -718,13 +754,23 @@ export class VisitService implements OnModuleInit {
         throw Error("This visit can't be skipped");
       }
     } else if (updateVisitDto && isCompleted) {
-      if (!updateVisitDto.visitedBy) {
+      const [submitterId, ...others] = normalizeVisitedByIds(visitedBy);
+      if (!submitterId) {
         throw new Error('Visited by should not be empty');
-      } else {
-        user = await this.collectorRepository.findOne({
-          where: { id: updateVisitDto.visitedBy },
-        });
-        visit.visitedBy = user;
+      }
+      const submitter = await this.collectorRepository.findOne({
+        where: { id: submitterId },
+      });
+      if (submitter) {
+        visit.visitedByIds = mergeVisitedByIds(
+          visit.visitedByIds,
+          await resolveVisitedByIds(
+            this.visitRepository.manager,
+            submitter.id,
+            others,
+            visit.project?.id,
+          ),
+        );
       }
       if (isCompleted === true && visit.isCompleted === false) {
         visit.visitedAt = new Date();
@@ -800,52 +846,85 @@ export class VisitService implements OnModuleInit {
     submitVisit: SubmitVisitDto,
     projectId?: string,
   ) {
-    const userData = await this.collectorRepository.findOne({
-      where: { id: submitVisit.visitData.visitedBy },
-      relations: ['team', 'project'],
-    });
+    // The submitter comes first; the rest are the others who were there.
+    const [submitterId] = normalizeVisitedByIds(
+      submitVisit.visitData.visitedBy,
+    );
+    // Without an id, findOne would match whichever user comes first.
+    const userData = submitterId
+      ? await this.collectorRepository.findOne({
+          where: { id: submitterId },
+          relations: ['team', 'project'],
+        })
+      : null;
     if (!userData) {
-      throw new Error(
-        `User not found for visitedBy=${submitVisit.visitData.visitedBy}`,
-      );
+      throw new Error(`User not found for visitedBy=${submitterId}`);
     }
-    submitVisit.visitData.visitedBy = userData.id;
     submitVisit.visitData.teamId =
       userData.team?.id ?? submitVisit.visitData.teamId;
     if (!submitVisit.visitData.teamId) {
       throw new Error(`Team not found for user ${userData.id}`);
     }
 
-    const existingVisit = await this.visitRepository.findOne({
-      where: projectId ? { id, project: { id: projectId } } : { id },
-      relations: ['samples'],
-    });
-    if (projectId && !existingVisit) {
-      throw new NotFoundException(`Visit with ID ${id} not found.`);
-    }
-    // Deliberately does NOT require `visitStatus === COMPLETED`. The client
-    // retries whenever a response is lost, and "this visit is already completed
-    // and already has its samples" is the whole signal we need. Requiring the
-    // status too meant any visit left with a stale status (see the promotion fix
-    // in executeSubmissionOfCompleteVisit) fell through to sample creation and
-    // failed forever on the duplicate-barcode check, permanently wedging the
-    // submission in the phone's offline sync queue. Keeping the looser check
-    // also heals rows already written in that state.
-    if (
-      existingVisit &&
-      existingVisit.isCompleted &&
-      existingVisit.samples &&
-      existingVisit.samples.length > 0
-    ) {
-      console.log(
-        `[submitVisit] Visit ${id} is already completed with ${existingVisit.samples.length} samples (status=${existingVisit.visitStatus}). Returning success (idempotent).`,
-      );
-      return;
-    }
-
     return this.entityManager.transaction(
       async (transactionalEntityManager) => {
         try {
+          // On the transaction's own connection, like every other query here.
+          submitVisit.visitData.visitedBy = await resolveVisitedByIds(
+            transactionalEntityManager,
+            userData.id,
+            submitVisit.visitData.visitedBy,
+            projectId ?? submitVisit.visitData.projectId,
+          );
+
+          // A site's collectors share its visits, so two of them can submit
+          // the same visit at once, and a phone resends a submission whose
+          // response it lost. Locking the row runs those one after another:
+          // each sees what the one before it committed.
+          const lockQuery = transactionalEntityManager
+            .createQueryBuilder(Visit, 'visit')
+            .setLock('pessimistic_write')
+            .where('visit.id = :id', { id });
+          if (projectId) {
+            lockQuery.andWhere('visit.project = :projectId', { projectId });
+          }
+          const existingVisit = await lockQuery.getOne();
+          if (projectId && !existingVisit) {
+            throw new NotFoundException(`Visit with ID ${id} not found.`);
+          }
+
+          // Deliberately does NOT require `visitStatus === COMPLETED`. "This
+          // visit is already completed and already has its samples" is the
+          // whole signal we need. Requiring the status too meant any visit
+          // left with a stale status (see the promotion fix in
+          // executeSubmissionOfCompleteVisit) fell through to sample creation
+          // and failed forever on the duplicate-barcode check, permanently
+          // wedging the submission in the phone's offline sync queue.
+          if (existingVisit?.isCompleted) {
+            const committedSamples = await transactionalEntityManager
+              .createQueryBuilder(Sample, 'sample')
+              .leftJoin('sample.collectedBy', 'collectedBy')
+              .leftJoin('sample.originalSample', 'originalSample')
+              .select([
+                'sample.id',
+                'sample.barcode',
+                'collectedBy.id',
+                'originalSample.id',
+              ])
+              .where('sample.visit = :id', { id })
+              .getMany();
+            if (committedSamples.length > 0) {
+              await this.addSamplesToCompletedVisit(
+                id,
+                submitVisit,
+                committedSamples,
+                existingVisit,
+                transactionalEntityManager,
+              );
+              return;
+            }
+          }
+
           console.log(
             `[submitVisit Service] Step 1: Creating samples for visitId=${id}`,
           );
@@ -855,7 +934,7 @@ export class VisitService implements OnModuleInit {
             submitVisit.visitData.siteId,
             submitVisit.visitData.projectId,
             submitVisit.visitData.teamId,
-            submitVisit.visitData.visitedBy,
+            userData.id,
             transactionalEntityManager,
           );
           console.log(
@@ -909,6 +988,86 @@ export class VisitService implements OnModuleInit {
     );
   }
 
+  // A visit is completed once, by its first submission. A later one from
+  // another collector who worked offline adds only the samples the visit
+  // doesn't have yet, matched by barcode, rather than being dropped, and
+  // anyone it says was there whom the visit doesn't list yet. The visit's
+  // other details (when it was visited, photos, comment, answers) stay the
+  // first submission's. A barcode another visit already has is refused by
+  // createMultipleSamples, as on a first submission.
+  //
+  // A later one from the visit's first submitter, or from anyone it already
+  // has samples from, is their submission resent - its response was lost -
+  // and adds nothing. Its samples can't be matched by barcode: the lab may
+  // have corrected one since, and the resend would add it again.
+  private async addSamplesToCompletedVisit(
+    id: string,
+    submitVisit: SubmitVisitDto,
+    committedSamples: Pick<
+      Sample,
+      'id' | 'barcode' | 'collectedBy' | 'originalSample'
+    >[],
+    existingVisit: Visit,
+    transactionalEntityManager: EntityManager,
+  ): Promise<void> {
+    // Resolved by submitVisit: the submitter, then the others.
+    const [submitterId] = submitVisit.visitData.visitedBy;
+
+    const isResend =
+      existingVisit.visitedByIds?.[0] === submitterId ||
+      committedSamples.some((sample) => sample.collectedBy?.id === submitterId);
+    if (isResend) {
+      console.log(
+        `[submitVisit] Visit ${id} is already completed with ${committedSamples.length} samples (status=${existingVisit.visitStatus}), ${submitterId}'s submission resent. Returning success (idempotent).`,
+      );
+      return;
+    }
+
+    const visitedByIds = mergeVisitedByIds(
+      existingVisit.visitedByIds,
+      submitVisit.visitData.visitedBy,
+    );
+    if (visitedByIds.length !== (existingVisit.visitedByIds ?? []).length) {
+      await transactionalEntityManager.update(Visit, id, { visitedByIds });
+    }
+
+    const onVisit = new Set(committedSamples.map((sample) => sample.barcode));
+    const newSamples = (submitVisit.samples ?? []).filter(
+      (sample) => !sample.barcode || !onVisit.has(sample.barcode),
+    );
+    if (newSamples.length === 0) {
+      console.log(
+        `[submitVisit] Visit ${id} is already completed with ${committedSamples.length} samples (status=${existingVisit.visitStatus}), all of them resent. Returning success (idempotent).`,
+      );
+      return;
+    }
+
+    console.log(
+      `[submitVisit] Visit ${id} is already completed; adding ${newSamples.length} new sample(s) submitted by ${submitterId}.`,
+    );
+    // A new replicate may be of an original the visit already has, which
+    // this submission no longer carries.
+    const committedOriginals = committedSamples.filter(
+      (sample) => !sample.originalSample?.id,
+    );
+    const samples = await this.sampleService.createMultipleSamples(
+      { ...submitVisit, samples: newSamples },
+      id,
+      submitVisit.visitData.siteId,
+      submitVisit.visitData.projectId,
+      submitVisit.visitData.teamId,
+      submitterId,
+      transactionalEntityManager,
+      committedOriginals as Sample[],
+    );
+    if (samples.length !== newSamples.length) {
+      console.log(
+        `[submitVisit Service] ❌ Sample count mismatch: expected=${newSamples.length}, got=${samples.length}`,
+      );
+      throw Error('Something went wrong');
+    }
+  }
+
   async executeSubmissionOfCompleteVisit(
     id: string,
     updateVisitDto: UpdateVisitDto,
@@ -923,14 +1082,17 @@ export class VisitService implements OnModuleInit {
       throw new NotFoundException(`Visit with ID ${id} not found.`);
     }
 
-    let user = null;
-
+    // Suspected positives are set on this transaction's copy of the visit and
+    // written by the single save below. Writing them through visitRepository
+    // (updateSuspectedPositives) used another pooled connection, whose UPDATE
+    // waited on the row lock submitVisit holds until the statement timeout
+    // failed the whole submission.
     if (
       updateVisitDto.suspectDiseaseData &&
       updateVisitDto.suspectDiseaseData.length > 0
     ) {
-      const updatePromises = updateVisitDto.suspectDiseaseData.map((data) => {
-        let parsedData = data;
+      const entries = updateVisitDto.suspectDiseaseData.map((data) => {
+        let parsedData: any = data;
         if (typeof data === 'string') {
           try {
             parsedData = JSON.parse(data);
@@ -938,18 +1100,50 @@ export class VisitService implements OnModuleInit {
             console.error('Error parsing suspectDiseaseData string', e);
           }
         }
-        return this.updateSuspectedPositives(
-          id,
-          parsedData.diseaseId,
-          parsedData.sampleCount,
-          parsedData.isSuspectedPositive,
-        );
+        return parsedData;
       });
 
-      await Promise.all(updatePromises);
+      const diseaseIds = entries
+        .map((entry) => entry?.diseaseId)
+        .filter((diseaseId): diseaseId is string => !!diseaseId);
+      const diseases = diseaseIds.length
+        ? await transactionalEntityManager.find(Disease, {
+            where: { id: In(diseaseIds) },
+          })
+        : [];
+      const diseasesById = new Map(
+        diseases.map((disease) => [disease.id, disease]),
+      );
+
+      const suspectedPositives = [...(visit.suspectedPositives ?? [])];
+      for (const entry of entries) {
+        const disease = diseasesById.get(entry?.diseaseId);
+        if (!disease) {
+          throw new Error('Disease not found');
+        }
+        const existingEntryIndex = suspectedPositives.findIndex(
+          (suspected) => suspected.disease?.id === disease.id,
+        );
+        if (existingEntryIndex !== -1) {
+          suspectedPositives[existingEntryIndex] = {
+            ...suspectedPositives[existingEntryIndex],
+            sampleCount: entry.sampleCount,
+            isSuspectedPositive: entry.isSuspectedPositive,
+          };
+        } else {
+          suspectedPositives.push({
+            disease,
+            sampleCount: entry.sampleCount,
+            isSuspectedPositive: entry.isSuspectedPositive,
+          });
+        }
+      }
+      visit.suspectedPositives = suspectedPositives;
     }
 
-    const { isCompleted, latitude, longitude, ...otherFields } = updateVisitDto;
+    // visitedBy names users; it is recorded as their ids below.
+    const { isCompleted, latitude, longitude, visitedBy, ...otherFields } =
+      updateVisitDto;
 
     // Convert latitude/longitude to PostGIS Point if both are provided
     if (latitude != null && longitude != null) {
@@ -977,14 +1171,15 @@ export class VisitService implements OnModuleInit {
       visit.photos = photoIds;
     }
     if (isCompleted) {
-      if (!updateVisitDto.visitedBy) {
+      // Already resolved by submitVisit: the submitter, then the others
+      // who are members of the project's teams.
+      const visitedByIds = normalizeVisitedByIds(visitedBy);
+      if (!visitedByIds.length) {
         throw new Error('Visited by should not be empty');
-      } else {
-        user = await transactionalEntityManager.findOne(User, {
-          where: { id: updateVisitDto.visitedBy },
-        });
-        visit.visitedBy = user;
       }
+      // Added to, not replaced: a visit completed without samples can be
+      // submitted again, and keeps whoever was recorded first.
+      visit.visitedByIds = mergeVisitedByIds(visit.visitedByIds, visitedByIds);
 
       if (isCompleted === true && visit.isCompleted === false) {
         visit.visitedAt = new Date();

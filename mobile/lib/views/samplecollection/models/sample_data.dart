@@ -63,7 +63,8 @@ class SampleData {
 
 class VisitSubmitData {
   final String siteId;
-  final String visitedBy;
+  // Everyone who was at the visit, the submitter first.
+  final List<String> visitedBy;
   final String projectId;
   final String teamId;
   final bool isCompleted;

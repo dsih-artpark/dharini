@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/colors.dart';
 import '../theme/spacing.dart';
@@ -28,6 +29,7 @@ class AppTextField extends StatefulWidget {
     this.minLines,
     this.textInputAction = TextInputAction.newline,
     this.keyboardType = TextInputType.text, // Added keyboard type parameter
+    this.inputFormatters,
   });
 
   final String? label;
@@ -47,6 +49,9 @@ class AppTextField extends StatefulWidget {
   final int? minLines;
   final TextInputAction textInputAction;
   final TextInputType keyboardType; // New field for keyboard type
+  // keyboardType only picks the on-screen keyboard; use this to actually
+  // restrict what can be typed or pasted (e.g. digits only).
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -176,6 +181,7 @@ class _AppTextFieldState extends State<AppTextField> {
                   minLines: widget.minLines,
                   textInputAction: widget.textInputAction,
                   keyboardType: widget.keyboardType, // Added keyboard type
+                  inputFormatters: widget.inputFormatters,
                   decoration: InputDecoration(
                     hintText: widget.placeholder,
                     hintStyle: textStyle.copyWith(

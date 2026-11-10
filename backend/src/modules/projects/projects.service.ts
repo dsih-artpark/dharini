@@ -51,6 +51,7 @@ import { MulterConfigService } from '../media/media.service';
 import { calculateExpiryDateFlexible } from '../sites/calExpiryDate';
 import { calculateStartDate } from '../sites/calStartDate';
 import { UpdateSiteDto } from '../sites/dto/update-site.dto';
+import { normalizeCollectorIds } from '../sites/site-collectors';
 import { SitesService } from '../sites/sites.service';
 import { UserService } from '../users/users.service';
 import { SubmitVisitDto } from '../visits/dto/submit-visit.dto';
@@ -2645,7 +2646,9 @@ export class ProjectsService {
         siteMap.set(key, {
           createPayload: payload,
           updatePayload: {
-            collectionCollector: site['Collector ID*'],
+            collectionCollectors: site['Collector ID*']
+              ? [String(site['Collector ID*']).trim()]
+              : [],
             collectionFrequencyInterval: 1,
             collectionFrequency: 1,
             collectionDayOfWeek: ['Wednesday', 'Friday'],
@@ -2735,7 +2738,7 @@ export class ProjectsService {
             siteId: visit['Site ID*'],
             teamId: teamId,
             visitedAt: visit['Visit Date*'],
-            visitedBy: visit['Collector ID*'],
+            visitedBy: [visit['Collector ID*']],
           },
           samples: samplesByVisitId[visitId] || [],
         };
@@ -2758,13 +2761,14 @@ export class ProjectsService {
         const {
           project,
           photos,
-          collectionCollector,
+          collectionCollectors,
           collectionTime,
           ...createSiteObj
         } = site.createPayload;
 
+        // SitesService.create checks the collectors.
         const collectionObj: CreateCollectionPlanObj = {
-          collectionCollector: null,
+          collectorIds: normalizeCollectorIds(collectionCollectors) ?? [],
           collectionStartDate: null,
           collectionExpiryDate: null,
           collectionTime: collectionTime || null,
@@ -2781,17 +2785,6 @@ export class ProjectsService {
         const diseasesData = projectData.diseases;
         if (!diseasesData) {
           throw new HttpException('Disease not found', HttpStatus.NOT_FOUND);
-        }
-        let collector = null;
-        if (collectionCollector) {
-          collector = await this.userRepository.findOne({
-            where: { id: collectionCollector },
-          });
-          collectionObj.collectionCollector = collector;
-        }
-
-        if (collectionCollector && !collector) {
-          throw new HttpException('Collector not found', HttpStatus.NOT_FOUND);
         }
 
         let createdBy: User = null;
@@ -2842,7 +2835,7 @@ export class ProjectsService {
             ...site.updatePayload,
           };
           const {
-            collectionCollector,
+            collectionCollectors,
             photos,
             collectionTime,
             ...createSiteObj
@@ -2853,19 +2846,6 @@ export class ProjectsService {
             collectionExpiryDate: null,
             collectionTime: collectionTime || null,
           };
-
-          let collector = null;
-          if (collectionCollector) {
-            collector = await this.userRepository.findOne({
-              where: { id: collectionCollector },
-            });
-          }
-          if (!collector && collectionCollector) {
-            throw new HttpException(
-              'Collector not found',
-              HttpStatus.NOT_FOUND,
-            );
-          }
 
           let updatedBy: User = null;
           if (user && user.id) {
@@ -2900,9 +2880,10 @@ export class ProjectsService {
             ).toFormat('yyyy-MM-dd HH:mm:ss') as unknown as Date;
           }
 
+          // SitesService.update checks the collectors.
           const updatedSite = await this.siteService.update(
             createdSite.id,
-            collector,
+            normalizeCollectorIds(collectionCollectors),
             createSiteObj,
             collectionObj,
             updatedBy,

@@ -26,7 +26,7 @@ class _$CreateSiteDto extends CreateSiteDto {
   @override
   final num longitude;
   @override
-  final String collectionCollector;
+  final BuiltList<String>? collectionCollectors;
   @override
   final String? collectionConsent;
   @override
@@ -73,7 +73,7 @@ class _$CreateSiteDto extends CreateSiteDto {
       required this.regionId,
       required this.latitude,
       required this.longitude,
-      required this.collectionCollector,
+      this.collectionCollectors,
       this.collectionConsent,
       this.diseaseIds,
       required this.name,
@@ -111,7 +111,7 @@ class _$CreateSiteDto extends CreateSiteDto {
         regionId == other.regionId &&
         latitude == other.latitude &&
         longitude == other.longitude &&
-        collectionCollector == other.collectionCollector &&
+        collectionCollectors == other.collectionCollectors &&
         collectionConsent == other.collectionConsent &&
         diseaseIds == other.diseaseIds &&
         name == other.name &&
@@ -142,7 +142,7 @@ class _$CreateSiteDto extends CreateSiteDto {
     _$hash = $jc(_$hash, regionId.hashCode);
     _$hash = $jc(_$hash, latitude.hashCode);
     _$hash = $jc(_$hash, longitude.hashCode);
-    _$hash = $jc(_$hash, collectionCollector.hashCode);
+    _$hash = $jc(_$hash, collectionCollectors.hashCode);
     _$hash = $jc(_$hash, collectionConsent.hashCode);
     _$hash = $jc(_$hash, diseaseIds.hashCode);
     _$hash = $jc(_$hash, name.hashCode);
@@ -175,7 +175,7 @@ class _$CreateSiteDto extends CreateSiteDto {
           ..add('regionId', regionId)
           ..add('latitude', latitude)
           ..add('longitude', longitude)
-          ..add('collectionCollector', collectionCollector)
+          ..add('collectionCollectors', collectionCollectors)
           ..add('collectionConsent', collectionConsent)
           ..add('diseaseIds', diseaseIds)
           ..add('name', name)
@@ -239,10 +239,11 @@ class CreateSiteDtoBuilder
   num? get longitude => _$this._longitude;
   set longitude(num? longitude) => _$this._longitude = longitude;
 
-  String? _collectionCollector;
-  String? get collectionCollector => _$this._collectionCollector;
-  set collectionCollector(String? collectionCollector) =>
-      _$this._collectionCollector = collectionCollector;
+  ListBuilder<String>? _collectionCollectors;
+  ListBuilder<String> get collectionCollectors =>
+      _$this._collectionCollectors ??= ListBuilder<String>();
+  set collectionCollectors(ListBuilder<String>? collectionCollectors) =>
+      _$this._collectionCollectors = collectionCollectors;
 
   String? _collectionConsent;
   String? get collectionConsent => _$this._collectionConsent;
@@ -333,7 +334,7 @@ class CreateSiteDtoBuilder
       _regionId = $v.regionId;
       _latitude = $v.latitude;
       _longitude = $v.longitude;
-      _collectionCollector = $v.collectionCollector;
+      _collectionCollectors = $v.collectionCollectors?.toBuilder();
       _collectionConsent = $v.collectionConsent;
       _diseaseIds = $v.diseaseIds?.toBuilder();
       _name = $v.name;
@@ -385,8 +386,7 @@ class CreateSiteDtoBuilder
                 latitude, r'CreateSiteDto', 'latitude'),
             longitude: BuiltValueNullFieldError.checkNotNull(
                 longitude, r'CreateSiteDto', 'longitude'),
-            collectionCollector: BuiltValueNullFieldError.checkNotNull(
-                collectionCollector, r'CreateSiteDto', 'collectionCollector'),
+            collectionCollectors: _collectionCollectors?.build(),
             collectionConsent: collectionConsent,
             diseaseIds: _diseaseIds?.build(),
             name: BuiltValueNullFieldError.checkNotNull(
@@ -413,6 +413,9 @@ class CreateSiteDtoBuilder
 
         _$failedField = 'photos';
         photos.build();
+
+        _$failedField = 'collectionCollectors';
+        _collectionCollectors?.build();
 
         _$failedField = 'diseaseIds';
         _diseaseIds?.build();

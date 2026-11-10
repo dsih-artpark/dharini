@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 **siteSubType** | **String** | Sub-type of the farm/site (e.g. Broiler, Breeder, Layer, Backyard) | [optional] 
 **siteType** | [**SiteType**](SiteType.md) |  | [optional] 
 **diseases** | [**BuiltList&lt;Disease&gt;**](Disease.md) |  | 
-**collectionCollector** | [**User**](User.md) |  | [optional] 
+**collectionCollectors** | [**BuiltList&lt;User&gt;**](User.md) |  | [optional] 
 **createdBy** | [**UserWithTeamResponse**](UserWithTeamResponse.md) |  | [optional] 
 **location** | [**Location**](Location.md) |  | [optional] 
 **id** | **String** |  | 

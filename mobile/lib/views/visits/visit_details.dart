@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:design_system/design_system.dart';
 import 'package:es_client/es_client.dart';
 import 'package:es_platform_mobile/domain/extensions/model_extension.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 
@@ -18,6 +19,9 @@ class VisitDetailsScreen extends HookWidget {
     // Refetch visit details when the screen is mounted
 
     final visit = visitDetails;
+    // Everyone who was at the visit, its submitter first, falling back to
+    // the assignee for older visits recorded before visitedBy was populated.
+    final visitors = visitorsOf(visit);
 
     /// Counts the number of replicate samples
     /// A replicate sample has originalSampleId set to the parent's ID
@@ -530,25 +534,17 @@ class VisitDetailsScreen extends HookWidget {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    if (visit.collector != null)
-                      // buildVisitorCard(
-                      //   visit.collector?.lastName
-                      //           ?.substring(0, 2)
-                      //           .toUpperCase() ??
-                      //       'NA',
-                      //   '${visit.collector?.firstName ?? ''} ${visit.collector?.lastName ?? ''}',
-                      //   visit.collector?.email ?? 'No email',
-                      // ),
+                    for (final (index, visitor) in visitors.indexed) ...[
+                      if (index > 0) const SizedBox(height: 8),
                       buildVisitorCard(
-                        (visit.collector?.lastName != null &&
-                                visit.collector!.lastName!.length >= 2)
-                            ? visit.collector!.lastName!
-                                .substring(0, 2)
-                                .toUpperCase()
-                            : (visit.collector?.lastName ?? 'NA').toUpperCase(),
-                        '${visit.collector?.firstName ?? ''} ${visit.collector?.lastName ?? ''}',
-                        visit.collector?.email ?? 'No email',
+                        (visitor.lastName != null &&
+                                visitor.lastName!.length >= 2)
+                            ? visitor.lastName!.substring(0, 2).toUpperCase()
+                            : (visitor.lastName ?? 'NA').toUpperCase(),
+                        '${visitor.firstName ?? ''} ${visitor.lastName ?? ''}',
+                        visitor.email ?? 'No email',
                       ),
+                    ],
                   ],
                 ),
               ),

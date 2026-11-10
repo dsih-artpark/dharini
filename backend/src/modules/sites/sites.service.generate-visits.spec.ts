@@ -1,4 +1,6 @@
 import { Site } from 'src/entities/site.entity';
+import { Team } from 'src/entities/team.entity';
+import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { SitesService } from './sites.service';
 
@@ -10,10 +12,34 @@ import { SitesService } from './sites.service';
 describe('SitesService.generateAllVisitsForSite', () => {
   const SITE_ID = '4d60e8fc-604f-4c10-8da3-c79a65964832';
 
-  const makeService = (existingVisits: Partial<Visit>[] = []) => {
+  // `collector` answers loadProjectCollector's user query; the project's
+  // teams are `projectTeams`.
+  const makeService = (
+    existingVisits: Partial<Visit>[] = [],
+    {
+      collector = { id: 'u1', team: { id: 't1' }, roles: [] } as any,
+      projectTeams = ['t1'],
+    }: { collector?: any; projectTeams?: string[] } = {},
+  ) => {
+    const collectorQueries: any[] = [];
     const manager = {
       find: jest.fn().mockResolvedValue(existingVisits),
-      findOne: jest.fn().mockResolvedValue({ id: 'u1', team: { id: 't1' } }),
+      createQueryBuilder: jest.fn((entity: unknown) => {
+        const qb: any = {
+          leftJoinAndSelect: () => qb,
+          innerJoin: () => qb,
+          select: () => qb,
+          where: (_sql: string, params: any) => {
+            if (entity === User) collectorQueries.push(params);
+            return qb;
+          },
+          getOne: async () => collector,
+          getRawMany: async () =>
+            entity === Team ? projectTeams.map((id) => ({ id })) : [],
+        };
+        return qb;
+      }),
+      collectorQueries,
       save: jest.fn(),
       update: jest.fn(),
     };
@@ -62,7 +88,7 @@ describe('SitesService.generateAllVisitsForSite', () => {
       collectionFrequencyInterval: 7,
       collectionDuration: 30,
       collectionDayOfWeek: ['Monday'],
-      collectionCollector: { id: 'u1' },
+      collectorIds: ['u1'],
       project: { id: 'P4TOD6' },
     }) as unknown as Site;
 
@@ -87,6 +113,72 @@ describe('SitesService.generateAllVisitsForSite', () => {
     expect(manager.update).toHaveBeenCalledWith(Site, SITE_ID, {
       collectionLastScheduleDate: new Date('2026-11-09T00:00:00.000Z'),
     });
+  });
+
+  it('creates the visits under the primary collector and their team', async () => {
+    const { service, manager } = makeService();
+
+    await service.generateAllVisitsForSite({
+      ...saturdayStartSite(),
+      collectorIds: ['u1', 'u2'],
+    } as Site);
+
+    expect(manager.collectorQueries).toEqual([{ userId: 'u1' }]);
+    const visits: Visit[] = manager.save.mock.calls[0][1];
+    expect(visits.length).toBeGreaterThan(0);
+    for (const visit of visits) {
+      expect(visit.collector.id).toBe('u1');
+      expect(visit.team.id).toBe('t1');
+    }
+  });
+
+  it('files the visits under the collector’s team in this project, not their own team from another project', async () => {
+    const { service, manager } = makeService([], {
+      collector: {
+        id: 'u1',
+        team: { id: 't-other-project' },
+        roles: [{ status: 'active', team: 't2', project: 'P4TOD6' }],
+      },
+      projectTeams: ['t1', 't2'],
+    });
+
+    await service.generateAllVisitsForSite(saturdayStartSite());
+
+    const visits: Visit[] = manager.save.mock.calls[0][1];
+    expect(visits.length).toBeGreaterThan(0);
+    for (const visit of visits) {
+      expect(visit.team.id).toBe('t2');
+    }
+  });
+
+  it('schedules no visits, rather than failing, when the collector is in none of the project’s teams', async () => {
+    const { service, manager } = makeService([], {
+      collector: { id: 'u1', team: null, roles: [] },
+    });
+
+    await expect(
+      service.generateAllVisitsForSite(saturdayStartSite()),
+    ).resolves.toBeUndefined();
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('schedules no visits when the collector no longer exists', async () => {
+    const { service, manager } = makeService([], { collector: null });
+
+    await service.generateAllVisitsForSite(saturdayStartSite());
+
+    expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  it('creates no visits for a site without collectors', async () => {
+    const { service, manager } = makeService();
+
+    await service.generateAllVisitsForSite({
+      ...saturdayStartSite(),
+      collectorIds: [],
+    } as Site);
+
+    expect(manager.save).not.toHaveBeenCalled();
   });
 
   it('does not create a second visit when one already exists on the start date', async () => {
