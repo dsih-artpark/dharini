@@ -47,6 +47,7 @@ import {
 } from './collection-plan-edit';
 import {
   attachCollectionCollectors,
+  loadProjectCollector,
   primaryCollectorId,
   sameCollectorIds,
   validateSiteCollectors,
@@ -615,15 +616,26 @@ export class SitesService {
     // Reads go through the same manager as the writes, so a caller's delete
     // in the same transaction is already visible.
     const schedule = async (manager: EntityManager) => {
-      // Plan visits go to the primary collector and their team; the site's
-      // other collectors, whatever their team, see the same visits.
-      const collectorUser = await manager.findOne(User, {
-        where: { id: collectorId },
-        relations: ['team'],
-      });
+      // Plan visits go to the primary collector and their team in this
+      // project; the site's other collectors, whatever their team, see the
+      // same visits.
+      const collector = await loadProjectCollector(
+        manager,
+        collectorId,
+        fullSite.project.id,
+      );
       // The id has no foreign key behind it any more.
-      if (!collectorUser) return;
-      const teamData = collectorUser.team;
+      if (!collector) return;
+      if (!collector.teamId) {
+        // A visit needs a team. A primary checked by validateSiteCollectors
+        // always has one; one kept from before may have left the project.
+        console.warn(
+          `[generateAllVisitsForSite] Site ${fullSite.id}: collector ${collectorId} is in none of project ${fullSite.project.id}'s teams; no visits scheduled.`,
+        );
+        return;
+      }
+      const collectorUser = collector.user;
+      const teamData = { id: collector.teamId } as Team;
 
       // Fetch all existing visits for this site to prevent duplicate dates
       const existingVisits = await manager.find(Visit, {
@@ -762,14 +774,19 @@ export class SitesService {
       );
     }
 
-    // Checked before anything is written, so a refused collector leaves no
-    // site behind.
-    collectionObj.collectorIds = collectionObj.collectorIds ?? [];
-    await validateSiteCollectors(
+    // Checked before anything is written. A collector who can't be one any
+    // more - the site may have been created offline days ago - is left out
+    // rather than refusing the site (see validateSiteCollectors).
+    const collectors = await validateSiteCollectors(
       this.siteRepository.manager,
-      collectionObj.collectorIds,
-      { projectId: projectData.id },
+      collectionObj.collectorIds ?? [],
+      {
+        projectId: projectData.id,
+        dropInvalid: true,
+        fallbackId: createdBy?.id,
+      },
     );
+    collectionObj.collectorIds = collectors.map((collector) => collector.id);
 
     const location = await this.locationService.create({
       regionId: createSiteObj.regionId,
@@ -1099,30 +1116,71 @@ export class SitesService {
         throw new Error('Failed to retrieve the updated site with collector');
       }
 
-      // Trigger visit creation if collection dates/plan are updated OR if the
-      // primary collector changes. The visits are the primary's, so adding or
-      // removing another collector leaves them (and their ids, which phones
-      // may hold offline) alone.
-      if (
-        updateFields.collectionStartDate ||
-        updateFields.collectionLastScheduleDate ||
+      // The apps send the whole plan with every save, so a plan being sent
+      // doesn't mean it changed.
+      const planSent =
+        !!updateFields.collectionStartDate ||
+        !!updateFields.collectionLastScheduleDate ||
         updateFields.collectionFrequencyInterval !== undefined ||
-        updateFields.collectionDuration ||
-        updateFields.collectionDayOfWeek ||
-        primaryChanged
-      ) {
+        !!updateFields.collectionDuration ||
+        !!updateFields.collectionDayOfWeek;
+      // A site getting its first collectors has no plan visits yet.
+      const firstCollectors =
+        collectorsChanged && !primaryCollectorId(existingSite);
+
+      if ((planSent && planEdit.changed) || firstCollectors) {
+        // New dates: the untouched visits are made again from the plan, for
+        // the primary collector. The kept overdue ones would stay with the
+        // old one, so they are handed over below.
+        //
+        // Their replacements need the primary's team in the project. A
+        // primary kept from before may have left its teams since; the edit is
+        // refused, and rolled back, rather than deleting the visits with
+        // nothing in their place.
+        const primaryId = primaryCollectorId(updatedSite);
+        if (primaryId) {
+          const primary = await loadProjectCollector(
+            manager,
+            primaryId,
+            existingSite.project.id,
+          );
+          if (!primary?.teamId) {
+            throw new BadRequestException(
+              'The first collector of this site is no longer in any of the project’s teams, so its visits cannot be scheduled. Make another collector the first, then save the plan again.',
+            );
+          }
+        }
         await this.replaceUpcomingVisits(
           manager,
           updatedSite,
           planEdit.changed,
           isFirstPlan,
         );
-      }
-
-      // The visits made again above go to the new primary collector, but the
-      // kept overdue ones would stay with the old one.
-      if (primaryChanged) {
-        await this.reassignOpenVisits(manager, id, collectors[0]);
+        if (primaryChanged) {
+          await this.reassignOpenVisits(
+            manager,
+            id,
+            collectors[0].id,
+            existingSite.project.id,
+          );
+        }
+      } else if (planSent || primaryChanged) {
+        // The same dates: the visits stay, and their ids with them - a phone
+        // may hold one offline and submit to it later. A new primary takes
+        // the open ones over in place. Only a future date with no visit (one
+        // deleted, say) gets one.
+        if (primaryChanged) {
+          await this.reassignOpenVisits(
+            manager,
+            id,
+            collectors[0].id,
+            existingSite.project.id,
+          );
+        }
+        await this.generateAllVisitsForSite(updatedSite, {
+          onlyFuture: true,
+          manager,
+        });
       }
 
       await attachCollectionCollectors(manager, [updatedSite]);
@@ -1131,16 +1189,24 @@ export class SitesService {
   }
 
   // Hands a site's open visits nobody has touched, overdue ones included, to
-  // its new primary collector and their team. Rescheduled visits and any with
-  // something recorded on them stay with the collector who has them, as the
-  // plan replacement keeps them.
+  // its new primary collector and their team in the project, in place, so
+  // their ids - which phones may hold offline - stay. Rescheduled visits and
+  // any with something recorded on them stay with the collector who has
+  // them, as the plan replacement keeps them.
   private async reassignOpenVisits(
     manager: EntityManager,
     siteId: string,
-    collector: User,
+    collectorId: string,
+    projectId: string,
   ): Promise<void> {
-    const visitCollector = { id: collector.id } as User;
-    const team = collector.team ? ({ id: collector.team.id } as Team) : null;
+    const collector = await loadProjectCollector(
+      manager,
+      collectorId,
+      projectId,
+    );
+    if (!collector) return;
+    const visitCollector = { id: collectorId } as User;
+    const team = collector.teamId ? ({ id: collector.teamId } as Team) : null;
 
     await manager
       .createQueryBuilder()

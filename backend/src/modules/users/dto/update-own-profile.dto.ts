@@ -17,11 +17,12 @@ export class UpdateOwnProfileDto {
   @IsNotEmpty()
   firstName?: string;
 
+  // Not required to be non-empty: the first-run form asks only for a first
+  // name, and sends an empty last name when none is given.
   @ApiProperty({ required: false })
   @IsOptional()
   @Transform(trim)
   @IsString()
-  @IsNotEmpty()
   lastName?: string;
 
   @ApiProperty({ required: false })

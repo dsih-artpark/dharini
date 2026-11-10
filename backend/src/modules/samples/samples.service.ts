@@ -471,12 +471,20 @@ export class SamplesService {
     teamId: string,
     collectedBy: string,
     transactionalEntityManager?: EntityManager,
+    // Originals already saved on the visit, which a replicate in this request
+    // may name as its original (a later submission to a completed visit).
+    existingOriginals: Pick<Sample, 'id' | 'barcode'>[] = [],
   ): Promise<Sample[]> {
     try {
       const manager =
         transactionalEntityManager || this.sampleRepository.manager;
       const createdSamples: Sample[] = [];
       const originalSampleMap: Map<string, Sample> = new Map(); // Map to store original samples by barcode
+      for (const original of existingOriginals) {
+        if (original.barcode) {
+          originalSampleMap.set(original.barcode, original as Sample);
+        }
+      }
 
       // Cache to hold created/resolved AnimalMetadata records during this request
       const animalMetadataCache = new Map<string, AnimalMetadata>();

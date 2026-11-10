@@ -10,6 +10,7 @@ import { Site } from 'src/entities/site.entity';
 import { Team } from 'src/entities/team.entity';
 import { User } from 'src/entities/user.entity';
 import { calculateNextCollectionDate } from 'src/common/functions/site-collection';
+import { loadProjectCollector } from '../sites/site-collectors';
 configDotenv();
 @Processor(process.env.QUEUE)
 export class CronJobProcessor extends WorkerHost {
@@ -128,21 +129,40 @@ export class CronJobProcessor extends WorkerHost {
     }
   }
 
-  // The visit goes to the site's primary collector and their team; the other
-  // collectors, whatever their team, see it too.
+  // The visit goes to the site's primary collector and their team in the
+  // site's project; the other collectors, whatever their team, see it too.
+  // Throws, so the caller leaves the site's schedule where it is, rather than
+  // filing a visit under no one or another project's team.
   async createNewVisit(collectionPlan: Site, visitScheduleDateTime) {
     try {
-      const userData = await this.userRepository.findOne({
-        where: { id: collectionPlan?.collectorIds?.[0] },
-        relations: ['team'],
-      });
-      const teamData = await this.teamRepository.findOne({
-        where: { id: userData?.team?.id },
-      });
+      const collectorId = collectionPlan?.collectorIds?.[0];
+      const projectId = collectionPlan?.project?.id;
+      // findOne drops an undefined condition and would match any row.
+      if (!collectorId || !projectId) {
+        throw new Error(
+          `Site ${collectionPlan?.id} has no collector or project; no visit scheduled.`,
+        );
+      }
+      const collector = await loadProjectCollector(
+        this.userRepository.manager,
+        collectorId,
+        projectId,
+      );
+      // The collector ids have no foreign key behind them.
+      if (!collector) {
+        throw new Error(
+          `Site ${collectionPlan.id}: collector ${collectorId} no longer exists; no visit scheduled.`,
+        );
+      }
+      if (!collector.teamId) {
+        throw new Error(
+          `Site ${collectionPlan.id}: collector ${collectorId} is in none of project ${projectId}'s teams; no visit scheduled.`,
+        );
+      }
       const visit = this.visitRepository.create({
         site: collectionPlan,
-        collector: userData,
-        team: teamData,
+        collector: collector.user,
+        team: { id: collector.teamId } as Team,
         project: collectionPlan.project,
         questionSetId: 'qs-1',
         visitScheduledAt: DateTime.fromJSDate(visitScheduleDateTime, {

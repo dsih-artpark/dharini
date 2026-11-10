@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 
 import { userAtom } from "@/src/store/userAtom";
 import { labAllProjectsAtom } from "@/src/store/labAllProjectsAtom";
+import { labSwitchedFromProjectAtom } from "@/src/store/labSwitchedFromProjectAtom";
 import { getAllProjectsApi } from "@/src/app/(dashboard)/manage/loader";
 import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
 import Select from "@/src/components/ui/select";
@@ -18,7 +19,7 @@ import {
   resolveSuperAdminProject,
   storeSuperAdminProjectId,
 } from "@/src/lib/super-admin-lab-flow";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { useHasPermission } from "@/src/hooks/check-permission";
 
 export default function SuperAdminProjectPicker() {
@@ -30,6 +31,7 @@ export default function SuperAdminProjectPicker() {
   const [isLoading, setIsLoading] = useState(false);
   const currentWorkspace = useAtomValue(currentWorkspaceAtom);
   const hasPermission = useHasPermission();
+  const setSwitchedFrom = useSetAtom(labSwitchedFromProjectAtom);
 
   const isSuperAdmin = isUserSuperAdmin(user);
   // Show the picker for super-admins (via feature flag) OR for any user
@@ -77,6 +79,26 @@ export default function SuperAdminProjectPicker() {
           const projectStillInWorkspace = permitted.some(
             (project) => project.id === user?.project?.id,
           );
+          // A project still in the workspace that the user just can't work
+          // in the lab in is switched away from only while they are in the
+          // lab: LabProjectRestorer puts it back when they leave. One the new
+          // workspace doesn't have is replaced for good, as before.
+          const lacksLabAccess =
+            !projectStillInWorkspace &&
+            !!user?.project &&
+            response.data.some((project) => project.id === user.project?.id);
+          if (lacksLabAccess) {
+            const switchedFrom = user.project ?? null;
+            setSwitchedFrom((earlier) => earlier ?? switchedFrom);
+          } else {
+            // Forget a project to restore that this workspace doesn't have.
+            setSwitchedFrom((earlier) =>
+              earlier &&
+              response.data.some((project) => project.id === earlier.id)
+                ? earlier
+                : null,
+            );
+          }
           setUser((previous) =>
             previous
               ? {
@@ -151,6 +173,8 @@ export default function SuperAdminProjectPicker() {
     if (isSuperAdminFlow) {
       storeSuperAdminProjectId(nextProject.id);
     }
+    // The user's own choice stays when they leave the lab.
+    setSwitchedFrom(null);
     setIsAll(false);
     setUser((previous) =>
       previous

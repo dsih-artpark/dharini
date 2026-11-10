@@ -4,6 +4,7 @@ import { User } from 'src/entities/user.entity';
 import {
   attachCollectionCollectors,
   normalizeCollectorIds,
+  projectTeamIdOf,
   sameCollectorIds,
   validateSiteCollectors,
 } from './site-collectors';
@@ -124,7 +125,9 @@ describe('site collectors', () => {
       ]);
     });
 
-    it('refuses several collectors when the first has no team', async () => {
+    it('accepts a first collector who is in the project only through a user role', async () => {
+      // Their own team is null (or another project's): their visits go under
+      // the role's team, see projectTeamIdOf.
       const manager = managerWith([
         user('u1', {
           team: null,
@@ -137,7 +140,93 @@ describe('site collectors', () => {
         validateSiteCollectors(manager, ['u1', 'u2'], {
           projectId: PROJECT_ID,
         }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      ).resolves.toHaveLength(2);
+    });
+
+    it('checks a collector the site already has when they become the first', async () => {
+      // u2 has been deactivated since; moving them first would hand them the
+      // site's visits.
+      const manager = managerWith([
+        user('u1'),
+        user('u2', { status: 'inactive' }),
+      ]);
+
+      await expect(
+        validateSiteCollectors(manager, ['u2', 'u1'], {
+          projectId: PROJECT_ID,
+          existingIds: ['u1', 'u2'],
+        }),
+      ).rejects.toThrow(
+        new BadRequestException(
+          "U2 is not an active user and can't be a collector",
+        ),
+      );
+    });
+
+    describe('for a new site (dropInvalid)', () => {
+      it('leaves out collectors who cannot be one and keeps the rest in order', async () => {
+        const manager = managerWith([
+          user('u1', { status: 'inactive' }),
+          user('u2'),
+          user('u3', { team: { id: 't9' } }),
+          user('u4'),
+        ]);
+
+        const collectors = await validateSiteCollectors(
+          manager,
+          ['u1', 'ghost', 'u2', 'u3', 'u4'],
+          { projectId: PROJECT_ID, dropInvalid: true, fallbackId: 'u4' },
+        );
+
+        // u2 becomes the first.
+        expect(collectors.map((c) => c.id)).toEqual(['u2', 'u4']);
+      });
+
+      it('makes the user creating the site its collector when none of the chosen can be', async () => {
+        const manager = managerWith([
+          user('u1', { status: 'inactive' }),
+          user('creator'),
+        ]);
+
+        const collectors = await validateSiteCollectors(manager, ['u1'], {
+          projectId: PROJECT_ID,
+          dropInvalid: true,
+          fallbackId: 'creator',
+        });
+
+        expect(collectors.map((c) => c.id)).toEqual(['creator']);
+      });
+
+      it('refuses the site when neither the chosen nor its creator can collect', async () => {
+        const manager = managerWith([
+          user('u1', { status: 'inactive' }),
+          user('creator', { team: { id: 't9' } }),
+        ]);
+
+        await expect(
+          validateSiteCollectors(manager, ['u1'], {
+            projectId: PROJECT_ID,
+            dropInvalid: true,
+            fallbackId: 'creator',
+          }),
+        ).rejects.toThrow(
+          new BadRequestException(
+            'None of the chosen collectors can collect for this project',
+          ),
+        );
+      });
+
+      it('still saves a site without collectors', async () => {
+        const manager = managerWith([user('creator')]);
+
+        await expect(
+          validateSiteCollectors(manager, [], {
+            projectId: PROJECT_ID,
+            dropInvalid: true,
+            fallbackId: 'creator',
+          }),
+        ).resolves.toEqual([]);
+      });
     });
 
     it.each([
@@ -177,6 +266,49 @@ describe('site collectors', () => {
           existingIds: ['u1'],
         }),
       ).resolves.toHaveLength(1);
+    });
+  });
+
+  describe('projectTeamIdOf', () => {
+    const teams = new Set(['t1', 't2']);
+
+    it('is the user’s own team when it takes part in the project', () => {
+      expect(
+        projectTeamIdOf(
+          user('u1', {
+            roles: [{ status: 'active', team: 't2', project: PROJECT_ID }],
+          }) as unknown as User,
+          PROJECT_ID,
+          teams,
+        ),
+      ).toBe('t1');
+    });
+
+    it('is their active role’s team in the project when their own team is another project’s', () => {
+      expect(
+        projectTeamIdOf(
+          user('u1', {
+            team: { id: 't9' },
+            roles: [
+              { status: 'inactive', team: 't1', project: PROJECT_ID },
+              { status: 'active', team: 't8', project: 'p2' },
+              { status: 'active', team: 't2', project: PROJECT_ID },
+            ],
+          }) as unknown as User,
+          PROJECT_ID,
+          teams,
+        ),
+      ).toBe('t2');
+    });
+
+    it('is null for a user in none of the project’s teams', () => {
+      expect(
+        projectTeamIdOf(
+          user('u1', { team: null }) as unknown as User,
+          PROJECT_ID,
+          teams,
+        ),
+      ).toBeNull();
     });
   });
 

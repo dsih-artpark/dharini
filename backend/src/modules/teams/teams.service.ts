@@ -37,6 +37,7 @@ import {
 } from 'typeorm';
 import { MulterConfigService } from '../media/media.service';
 import { UserService } from '../users/users.service';
+import { wasAtVisit } from '../visits/visit-visited-by';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -91,10 +92,13 @@ export class TeamsService {
     );
     if (!userIds.length) return sitesByUser;
 
+    // Each visit's collector id comes along for wasAtVisit.
     const query = this.dataSource
       .getRepository(Site)
       .createQueryBuilder('site')
       .leftJoinAndSelect('site.visits', 'visit')
+      .leftJoin('visit.collector', 'visitCollector')
+      .addSelect('visitCollector.id')
       .where('site.collectorIds && ARRAY[:...userIds]::uuid[]', { userIds });
     if (withLocation) {
       query
@@ -257,11 +261,12 @@ export class TeamsService {
       const memberSites = sitesByMember.get(member.id) ?? [];
       const siteCount = memberSites.length;
 
-      // Find the most recent visit
+      // Find the most recent visit the member was at - not one another
+      // collector of the same site did.
       let lastVisitedVisit: Date | null = null;
       memberSites.forEach((site) => {
         site.visits.forEach((visit) => {
-          if (visit.visitedAt) {
+          if (visit.visitedAt && wasAtVisit(visit, member.id)) {
             if (!lastVisitedVisit || visit.visitedAt > lastVisitedVisit) {
               lastVisitedVisit = visit.visitedAt;
             }

@@ -3349,6 +3349,10 @@ Future<String> createLocalSite({
   required String regionId,
   // The site's collectors' user ids, primary first.
   required List<String> collectionCollectors,
+  // Users whose details are known - the collector list the ids were picked
+  // from - so the local site names its collectors until it syncs, as the
+  // visit review's "Visited by" list shows them.
+  List<User> knownCollectors = const [],
   required List<String> photoUrls,
   required double latitude,
   required double longitude,
@@ -3383,8 +3387,9 @@ Future<String> createLocalSite({
       ..photos.addAll(photoUrls)
       ..siteCode = siteCode
       ..diseases.addAll(diseases ?? [])
-      ..collectionCollectors
-          .addAll(collectionCollectors.map((id) => User((u) => u..id = id)));
+      ..collectionCollectors.addAll(collectionCollectors.map((id) =>
+          knownCollectors.firstWhere((user) => user.id == id,
+              orElse: () => User((u) => u..id = id))));
 
     b.location.replace(Location((l) => l
       ..id = DatabaseService.generateLocalId()

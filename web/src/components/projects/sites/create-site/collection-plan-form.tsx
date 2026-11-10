@@ -1,6 +1,6 @@
 import { useAtom } from "jotai";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 
 import { updateSiteApi } from "@/src/app/(dashboard)/projects/[id]/create-site/actions";
@@ -82,6 +82,7 @@ export default function CollectionPlanForm({
   const [site, setSite] = useAtom(siteAtom);
 
   const [projectMembers, setProjectMembers] = useState<User[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
   const [dayOfWeek, setDayOfWeek] = useState<(typeof WEEK_DAYS)[number][]>([]);
   const currentUTCTime = () => {
     const iso = new Date().toISOString();
@@ -144,8 +145,39 @@ export default function CollectionPlanForm({
       setProjectMembers(data);
     } catch (e) {
       console.log((e as Error).message);
+    } finally {
+      setMembersLoaded(true);
     }
   };
+
+  // The site's collectors the project no longer lists (one who has left its
+  // teams, say). They stay in the picker, marked, so they stay picked - and
+  // the first stays first - until removed on purpose; the picker otherwise
+  // drops anyone it has no option for on its next change.
+  const departedCollectors = useMemo(() => {
+    if (!membersLoaded || !site || site.id !== siteId) return [];
+    const listed = new Set(projectMembers.map((member) => member.id));
+    return siteCollectors(site).filter(
+      (collector) => !listed.has(collector.id),
+    );
+  }, [membersLoaded, projectMembers, site, siteId]);
+
+  const collectorOptions = useMemo(
+    () => [
+      ...projectMembers.map((member) => ({
+        value: member.id,
+        label:
+          member.firstName && member.lastName
+            ? `${member.firstName} ${member.lastName}`
+            : member.email,
+      })),
+      ...departedCollectors.map((collector) => ({
+        value: collector.id,
+        label: `${collectorName(collector) || collector.id} (not in project)`,
+      })),
+    ],
+    [projectMembers, departedCollectors],
+  );
 
   useEffect(() => {
     if (site?.id) {
@@ -367,13 +399,7 @@ export default function CollectionPlanForm({
                 name="collectionCollectors"
                 className="w-full self-stretch"
                 isMulti
-                options={projectMembers?.map((member) => ({
-                  value: member.id,
-                  label:
-                    member.firstName && member.lastName
-                      ? `${member.firstName} ${member.lastName}`
-                      : member.email,
-                }))}
+                options={collectorOptions}
                 onChange={handleCollectorsChange}
                 defaultValue={collectionPlanData.collectionCollectors}
                 placeholder=""
@@ -382,9 +408,10 @@ export default function CollectionPlanForm({
                 <p className="text-grey-70 text-xs leading-[18px]">
                   {collectionPlanData.collectionCollectors
                     .map((collectorId) => {
-                      const member = projectMembers.find(
-                        (m) => m.id === collectorId,
-                      );
+                      const member = [
+                        ...projectMembers,
+                        ...departedCollectors,
+                      ].find((m) => m.id === collectorId);
                       return member ? collectorName(member) : "";
                     })
                     .filter(Boolean)

@@ -34,6 +34,7 @@ import {
   LessThan,
   LessThanOrEqual,
   MoreThanOrEqual,
+  Raw,
   Repository,
 } from 'typeorm';
 import { MulterConfigService } from '../media/media.service';
@@ -305,6 +306,21 @@ export class VisitService implements OnModuleInit {
           ...condition,
           ...where,
         }));
+      // The visits the caller was at: those that list them among who was
+      // there, and - recorded before visits listed that - those they led.
+      // Not every visit of their sites: another collector may have done it.
+      const attendedVisitWhereConditions: any[] = [
+        { visitedByIds: ArrayContains([userId]) },
+        {
+          collector: { id: userId },
+          visitedByIds: Raw((alias) => `cardinality(${alias}) = 0`),
+        },
+      ];
+      const attendedVisitsWhere = (where: any) =>
+        attendedVisitWhereConditions.map((condition) => ({
+          ...condition,
+          ...where,
+        }));
 
       const [
         overdueVisits,
@@ -375,9 +391,10 @@ export class VisitService implements OnModuleInit {
                 ),
               }),
             }),
-            // Same as completedVisits, scoped to this collector instead of team/project
+            // Same as completedVisits, scoped to the visits this collector was
+            // at instead of team/project
             this.visitRepository.count({
-              where: individualVisitsWhere({
+              where: attendedVisitsWhere({
                 isCompleted: true,
                 visitStatus: VisitStatus.COMPLETED,
                 visitedAt: Between(startDateObj, endDateObj),
@@ -886,7 +903,14 @@ export class VisitService implements OnModuleInit {
           if (existingVisit?.isCompleted) {
             const committedSamples = await transactionalEntityManager
               .createQueryBuilder(Sample, 'sample')
-              .select(['sample.id', 'sample.barcode'])
+              .leftJoin('sample.collectedBy', 'collectedBy')
+              .leftJoin('sample.originalSample', 'originalSample')
+              .select([
+                'sample.id',
+                'sample.barcode',
+                'collectedBy.id',
+                'originalSample.id',
+              ])
               .where('sample.visit = :id', { id })
               .getMany();
             if (committedSamples.length > 0) {
@@ -964,22 +988,41 @@ export class VisitService implements OnModuleInit {
     );
   }
 
-  // A visit is completed once, by its first submission. A later one - that
-  // submission resent, or another collector's who worked offline - adds only
-  // the samples the visit doesn't have yet, matched by barcode, rather than
-  // being dropped, and anyone it says was there whom the visit doesn't list
-  // yet. The visit's other details (when it was visited, photos, comment,
-  // answers) stay the first submission's. A barcode another visit already
-  // has is refused by createMultipleSamples, as on a first submission.
+  // A visit is completed once, by its first submission. A later one from
+  // another collector who worked offline adds only the samples the visit
+  // doesn't have yet, matched by barcode, rather than being dropped, and
+  // anyone it says was there whom the visit doesn't list yet. The visit's
+  // other details (when it was visited, photos, comment, answers) stay the
+  // first submission's. A barcode another visit already has is refused by
+  // createMultipleSamples, as on a first submission.
+  //
+  // A later one from the visit's first submitter, or from anyone it already
+  // has samples from, is their submission resent - its response was lost -
+  // and adds nothing. Its samples can't be matched by barcode: the lab may
+  // have corrected one since, and the resend would add it again.
   private async addSamplesToCompletedVisit(
     id: string,
     submitVisit: SubmitVisitDto,
-    committedSamples: Pick<Sample, 'id' | 'barcode'>[],
+    committedSamples: Pick<
+      Sample,
+      'id' | 'barcode' | 'collectedBy' | 'originalSample'
+    >[],
     existingVisit: Visit,
     transactionalEntityManager: EntityManager,
   ): Promise<void> {
     // Resolved by submitVisit: the submitter, then the others.
     const [submitterId] = submitVisit.visitData.visitedBy;
+
+    const isResend =
+      existingVisit.visitedByIds?.[0] === submitterId ||
+      committedSamples.some((sample) => sample.collectedBy?.id === submitterId);
+    if (isResend) {
+      console.log(
+        `[submitVisit] Visit ${id} is already completed with ${committedSamples.length} samples (status=${existingVisit.visitStatus}), ${submitterId}'s submission resent. Returning success (idempotent).`,
+      );
+      return;
+    }
+
     const visitedByIds = mergeVisitedByIds(
       existingVisit.visitedByIds,
       submitVisit.visitData.visitedBy,
@@ -1002,6 +1045,11 @@ export class VisitService implements OnModuleInit {
     console.log(
       `[submitVisit] Visit ${id} is already completed; adding ${newSamples.length} new sample(s) submitted by ${submitterId}.`,
     );
+    // A new replicate may be of an original the visit already has, which
+    // this submission no longer carries.
+    const committedOriginals = committedSamples.filter(
+      (sample) => !sample.originalSample?.id,
+    );
     const samples = await this.sampleService.createMultipleSamples(
       { ...submitVisit, samples: newSamples },
       id,
@@ -1010,6 +1058,7 @@ export class VisitService implements OnModuleInit {
       submitVisit.visitData.teamId,
       submitterId,
       transactionalEntityManager,
+      committedOriginals as Sample[],
     );
     if (samples.length !== newSamples.length) {
       console.log(

@@ -230,11 +230,20 @@ describe('VisitService visit submission', () => {
    * both submissions read the visit as open and fails the concurrency test.
    */
   describe('submitVisit', () => {
+    // A sample already on the visit: who collected it, and the original it is
+    // a replicate of, by id.
+    type CommittedSample = {
+      id: string;
+      barcode: string;
+      collectedBy?: string;
+      originalSample?: string;
+    };
+
     // `users` and `projectTeams` answer resolveVisitedByIds' lookups of the
     // visitors a submission names and the project's teams.
     const makeDb = (
       visit: any,
-      samples: { id: string; barcode: string }[],
+      samples: CommittedSample[],
       {
         users = [] as any[],
         projectTeams = [] as string[],
@@ -266,6 +275,7 @@ describe('VisitService visit submission', () => {
               }),
               select: jest.fn(() => qb),
               leftJoinAndSelect: jest.fn(() => qb),
+              leftJoin: jest.fn(() => qb),
               innerJoin: jest.fn(() => qb),
               where: jest.fn((_sql: string, where?: any) => {
                 params = { ...params, ...where };
@@ -282,7 +292,16 @@ describe('VisitService visit submission', () => {
               getMany: jest.fn(async () =>
                 entity === User
                   ? users.filter((user) => params.ids?.includes(user.id))
-                  : db.samples.map(({ id, barcode }) => ({ id, barcode })),
+                  : db.samples.map(
+                      ({ id, barcode, collectedBy, originalSample }) => ({
+                        id,
+                        barcode,
+                        collectedBy: collectedBy ? { id: collectedBy } : null,
+                        originalSample: originalSample
+                          ? { id: originalSample }
+                          : null,
+                      }),
+                    ),
               ),
               getRawMany: jest.fn(async () =>
                 entity === Team ? projectTeams.map((id) => ({ id })) : [],
@@ -354,7 +373,7 @@ describe('VisitService visit submission', () => {
 
     const setup = (
       visit: any,
-      samples: { id: string; barcode: string }[],
+      samples: CommittedSample[],
       dbOptions?: Parameters<typeof makeDb>[2],
     ) => {
       const { db, transaction, locks } = makeDb(visit, samples, dbOptions);
@@ -454,6 +473,81 @@ describe('VisitService visit submission', () => {
       expect(createSamples).not.toHaveBeenCalled();
       expect(db.samples).toHaveLength(1);
       expect(db.visit.visitedByIds).toEqual(['u1']);
+    });
+
+    it('adds nothing when the first submitter resends after the lab corrected a barcode', async () => {
+      // The response to u1's submission was lost; meanwhile the lab renamed
+      // B-1 to B-1A. The resent B-1 is no longer on the visit by barcode.
+      const { service, db } = setup(
+        makeVisit({
+          isCompleted: true,
+          visitStatus: VisitStatus.COMPLETED,
+          visitedByIds: ['u1'],
+        }),
+        [{ id: 's1', barcode: 'B-1A', collectedBy: 'u1' }],
+      );
+
+      await service.submitVisit('v1', submission('u1', ['B-1']));
+
+      expect(createSamples).not.toHaveBeenCalled();
+      expect(db.samples.map((sample) => sample.barcode)).toEqual(['B-1A']);
+    });
+
+    it('adds nothing when a later collector resends the samples they already added', async () => {
+      const { service, db } = setup(
+        makeVisit({
+          isCompleted: true,
+          visitStatus: VisitStatus.COMPLETED,
+          visitedByIds: ['u1', 'u2'],
+        }),
+        [
+          { id: 's1', barcode: 'B-1', collectedBy: 'u1' },
+          { id: 's9', barcode: 'B-9A', collectedBy: 'u2' },
+        ],
+      );
+
+      await service.submitVisit('v1', submission('u2', ['B-9']));
+
+      expect(createSamples).not.toHaveBeenCalled();
+      expect(db.samples).toHaveLength(2);
+    });
+
+    it('links a late replicate to its original already on the visit', async () => {
+      const { service } = setup(
+        makeVisit({
+          isCompleted: true,
+          visitStatus: VisitStatus.COMPLETED,
+          visitedByIds: ['u1'],
+        }),
+        [
+          { id: 's1', barcode: 'B-1', collectedBy: 'u1' },
+          {
+            id: 's2',
+            barcode: 'B-1-R1',
+            collectedBy: 'u1',
+            originalSample: 's1',
+          },
+        ],
+      );
+      const late = submission('u2', []);
+      late.samples = [
+        { barcode: 'B-1' },
+        { barcode: 'B-1-R2', originalSampleBarcode: 'B-1' },
+      ];
+
+      await service.submitVisit('v1', late);
+
+      expect(createSamples).toHaveBeenCalledTimes(1);
+      const [dto, , , , , collectedBy, , existingOriginals] = createSamples.mock
+        .calls[0] as any[];
+      expect(collectedBy).toBe('u2');
+      expect(dto.samples).toEqual([
+        { barcode: 'B-1-R2', originalSampleBarcode: 'B-1' },
+      ]);
+      // Only originals: a replicate isn't offered as one.
+      expect(
+        existingOriginals.map((sample: any) => [sample.id, sample.barcode]),
+      ).toEqual([['s1', 'B-1']]);
     });
 
     it('refuses, rather than drops, late samples it cannot add', async () => {

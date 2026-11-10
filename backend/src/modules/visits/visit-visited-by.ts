@@ -34,6 +34,20 @@ export const normalizeVisitedByIds = (value: unknown): string[] => {
   ];
 };
 
+// Whether a user was at a visit: one of who it lists was there, or - for a
+// visit recorded before visits listed that - its collector. Needs the
+// visit's `visitedByIds` and its `collector`'s id.
+export const wasAtVisit = (
+  visit: {
+    visitedByIds?: string[] | null;
+    collector?: Pick<User, 'id'> | null;
+  },
+  userId: string,
+): boolean =>
+  visit.visitedByIds?.length
+    ? visit.visitedByIds.includes(userId)
+    : visit.collector?.id === userId;
+
 // The visitors a visit already has, then the ones a later submission adds.
 export const mergeVisitedByIds = (
   existing: string[] | null | undefined,

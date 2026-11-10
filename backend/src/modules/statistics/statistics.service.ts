@@ -124,6 +124,8 @@ export class StatisticsService {
     return windows;
   }
 
+  // One row per user per activity. A completed visit counts for everyone it
+  // lists was there, or - recorded before visits listed that - its collector.
   private getUserActivityUnionSql(
     startParam?: string,
     endParam?: string,
@@ -154,7 +156,7 @@ export class StatisticsService {
       FROM samples sample
       WHERE sample.status = '${StatusType.ACTIVE}' AND sample."reportGeneratedById" IS NOT NULL AND sample."reportGeneratedAt" IS NOT NULL ${dateFilter('sample', 'reportGeneratedAt')}
       UNION ALL
-      SELECT visit."collectorId" AS "userId", visit."projectId" AS "projectId", visit."visitedAt" AS "activityAt"
+      SELECT unnest(CASE WHEN cardinality(visit."visitedById") > 0 THEN visit."visitedById" ELSE ARRAY[visit."collectorId"] END) AS "userId", visit."projectId" AS "projectId", visit."visitedAt" AS "activityAt"
       FROM visits visit
       WHERE visit.status = '${StatusType.ACTIVE}' AND visit."collectorId" IS NOT NULL AND visit."visitedAt" IS NOT NULL AND visit."isCompleted" = true ${dateFilter('visit', 'visitedAt')}
     `;

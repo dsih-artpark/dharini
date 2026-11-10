@@ -1131,6 +1131,7 @@ class CreateSite extends HookWidget {
           regionId: selectedDistrictId.value ?? '',
           photoUrls: uploadedPhotoUrls.value,
           collectionCollectors: selectedCollectors.value,
+          knownCollectors: collectorCollectors.data ?? const [],
           latitude: latitude,
           longitude: longitude,
           collectionStartDate: selectedStartDate.value?.toDate(),

@@ -15,6 +15,8 @@ describe('TeamsService - a member’s sites', () => {
   const build = (sites: unknown[]) => {
     const siteQuery: any = {
       leftJoinAndSelect: jest.fn(() => siteQuery),
+      leftJoin: jest.fn(() => siteQuery),
+      addSelect: jest.fn(() => siteQuery),
       where: jest.fn(() => siteQuery),
       getMany: jest.fn().mockResolvedValue(sites),
     };
@@ -57,12 +59,22 @@ describe('TeamsService - a member’s sites', () => {
       {
         id: 'shared',
         collectorIds: ['u1', 'u2'],
-        visits: [{ visitedAt: new Date('2026-10-01T00:00:00Z') }],
+        visits: [
+          {
+            visitedAt: new Date('2026-10-01T00:00:00Z'),
+            visitedByIds: ['u1', 'u2'],
+          },
+        ],
       },
       {
         id: 'own',
         collectorIds: ['u2'],
-        visits: [{ visitedAt: new Date('2026-10-05T00:00:00Z') }],
+        visits: [
+          {
+            visitedAt: new Date('2026-10-05T00:00:00Z'),
+            visitedByIds: ['u2'],
+          },
+        ],
       },
     ]);
 
@@ -84,6 +96,41 @@ describe('TeamsService - a member’s sites', () => {
     ).toEqual([
       ['u1', 1, new Date('2026-10-01T00:00:00Z')],
       ['u2', 2, new Date('2026-10-05T00:00:00Z')],
+    ]);
+  });
+
+  it('gives a member the last visit they were at, not one another collector of the site did', async () => {
+    const { service } = build([
+      {
+        id: 'shared',
+        collectorIds: ['u1', 'u2'],
+        visits: [
+          // u2 alone did the latest visit.
+          {
+            visitedAt: new Date('2026-10-09T00:00:00Z'),
+            visitedByIds: ['u2'],
+            collector: { id: 'u1' },
+          },
+          // Recorded before visits listed who was there: its collector's.
+          {
+            visitedAt: new Date('2026-09-20T00:00:00Z'),
+            visitedByIds: [],
+            collector: { id: 'u1' },
+          },
+        ],
+      },
+    ]);
+
+    const result = await service.getTeamMembersFieldView({
+      team: 'team-1',
+      projectId: 'p1',
+    });
+
+    expect(
+      result.docs.map((member) => [member.id, member.lastVisitedVisit]),
+    ).toEqual([
+      ['u1', new Date('2026-09-20T00:00:00Z')],
+      ['u2', new Date('2026-10-09T00:00:00Z')],
     ]);
   });
 });
