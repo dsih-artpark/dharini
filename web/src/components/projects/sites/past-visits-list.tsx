@@ -17,7 +17,11 @@ import Loader from "@/src/components/ui/loader";
 import Select from "@/src/components/ui/select";
 import { useHasPermission } from "@/src/hooks/check-permission";
 
-export default function PastVisitsList() {
+export default function PastVisitsList({
+  onCountChange,
+}: {
+  onCountChange?: (count: number) => void;
+} = {}) {
   const { id, siteId } = useParams<{ id: string; siteId: string }>();
   const [diseases, setDiseases] = useAtom(diseaseAtom);
 
@@ -73,6 +77,11 @@ export default function PastVisitsList() {
         setVisits(data.data);
         setPage(Number(data.page));
         setTotalPages(data.totalPages);
+        // Keep the tab count in step with the list; a filtered total is not
+        // the site's past-visit count, so only report the unfiltered one.
+        if (!filter.disease && !filter.startDate && !filter.endDate) {
+          onCountChange?.(data.total);
+        }
       }
     } catch (e) {
       toast.error((e as Error)?.message ?? "Error fetching data");

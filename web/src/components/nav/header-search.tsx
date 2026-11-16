@@ -107,7 +107,7 @@ export default function HeaderSearch({ darkMode }: { darkMode: boolean }) {
             } text-sm font-normal leading-[21px]`}
             type="text"
             value={search}
-            placeholder="Search sites, samples, projects..."
+            placeholder="Search sites, projects..."
             onFocus={handleInputFocus}
             onChange={handleSearch}
           />

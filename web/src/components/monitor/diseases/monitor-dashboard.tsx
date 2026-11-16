@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { userAtom } from "@/src/store/userAtom";
-import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
+import { useHydratedWorkspace } from "@/src/hooks/use-hydrated-workspace";
 import { useCurrentProjectResolver } from "@/src/hooks/use-current-project";
 import Select from "@/src/components/ui/select";
 import StatCard from "@/src/components/ui/stat-card";
@@ -78,7 +78,7 @@ const asArray = (value: string | string[]): string[] =>
 
 export default function MonitorDashboard() {
   const user = useAtomValue(userAtom);
-  const currentWorkspace = useAtomValue(currentWorkspaceAtom);
+  const { workspaceId, ready: workspaceReady } = useHydratedWorkspace();
   const { resolveProjectId, workspaceProjects } = useCurrentProjectResolver();
   const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState<MonitorDashboardData>();
@@ -130,7 +130,9 @@ export default function MonitorDashboard() {
       : filters.diseaseId === aiDiseaseId);
 
   useEffect(() => {
-    if (!user) return; // wait until user is loaded
+    if (!user || !workspaceReady) return; // wait until user + workspace are loaded
+    // Ignore a response that lands after a newer request has started.
+    let ignore = false;
 
     const fetchFilters = async () => {
       const [regionsResponse, sampleTypeResponse, projectsResponse] =
@@ -142,8 +144,9 @@ export default function MonitorDashboard() {
           // - Regular users get only the projects they are members of
           // B11: also scope to the currently selected workspace so the
           // switcher actually affects this page.
-          getAllProjectsApi({ limit: 1000, workspaceId: currentWorkspace?.id }),
+          getAllProjectsApi({ limit: 1000, workspaceId }),
         ]);
+      if (ignore) return;
 
       if (regionsResponse.success) {
         setStates(regionsResponse.data || []);
@@ -180,7 +183,10 @@ export default function MonitorDashboard() {
     fetchFilters().catch((error) =>
       console.error("Error fetching filters", error),
     );
-  }, [user, currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [user, workspaceId, workspaceReady]);
 
   useEffect(() => {
     const isSuperAdmin = user?.roles?.[0]?.role?.scope === "system";
@@ -348,11 +354,14 @@ export default function MonitorDashboard() {
   }, [selectedProjectId, allProjects, allDiseases]);
 
   useEffect(() => {
+    if (!workspaceReady) return;
+    let ignore = false;
+
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
         const { data } = await getMonitorDashboardStatsApi({
-          workspaceId: currentWorkspace?.id,
+          workspaceId,
           projectId: filters.projectId || undefined,
           diseaseId: filters.diseaseId || undefined,
           siteId: filters.siteId || undefined,
@@ -370,16 +379,19 @@ export default function MonitorDashboard() {
           stateId: filters.stateId || undefined,
           districtId: filters.districtId || undefined,
         });
-        setDashboardData(data);
+        if (!ignore) setDashboardData(data);
       } catch (error) {
         console.error("Error fetching dashboard data", error);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchDashboardData();
-  }, [filters, currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [filters, workspaceId, workspaceReady]);
 
   const summary = dashboardData?.summary;
 
@@ -834,11 +846,14 @@ export default function MonitorDashboard() {
           )}
         </div>
 
-        <ExploreSites filters={filters} workspaceId={currentWorkspace?.id} />
-        <DataAnalysisTable
-          filters={filters}
-          workspaceId={currentWorkspace?.id}
-        />
+        {/* Both fetch on mount with the workspaceId prop - hold them back
+            until the saved workspace has loaded. */}
+        {workspaceReady && (
+          <>
+            <ExploreSites filters={filters} workspaceId={workspaceId} />
+            <DataAnalysisTable filters={filters} workspaceId={workspaceId} />
+          </>
+        )}
         {/* <PositiveSitesStat filters={filters} /> */}
       </div>
     </div>

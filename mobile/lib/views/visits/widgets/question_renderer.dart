@@ -227,7 +227,8 @@ class _QuestionField extends HookWidget {
                   context: context,
                   initialDate: now,
                   firstDate: DateTime(now.year - 5),
-                  lastDate: DateTime(now.year + 1),
+                  lastDate: now, // no future dates
+
                 );
                 if (picked != null) {
                   final formatted =

@@ -11,7 +11,6 @@ import PastVisitsList from "@/src/components/projects/sites/past-visits-list";
 import ScheduledVisitsList from "@/src/components/projects/sites/scheduled-visits-list";
 import { projectAtom } from "@/src/store/projectAtom";
 import { siteAtom } from "@/src/store/siteAtom";
-import { getScheduledVisitsApi } from "@/src/app/(dashboard)/projects/[id]/sites/[siteId]/loader";
 
 export default function SiteDetailsPage() {
   const { id, siteId } = useParams<{ id: string; siteId: string }>();
@@ -20,60 +19,16 @@ export default function SiteDetailsPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "scheduled" | "past-visits">(
     "overview",
   );
-  const [scheduledCount, setScheduledCount] = useState<number>(() => {
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    return (
-      siteDetail?.visits?.filter(
-        (v) =>
-          !v.isCompleted &&
-          v.visitStatus !== "completed" &&
-          v.visitStatus !== "skipped" &&
-          new Date(v.visitScheduledAt).getTime() >= todayStart.getTime(),
-      ).length ?? 0
-    );
-  });
-
-  // Sync scheduled count whenever siteDetail visits load or update
+  // From the site's visits, then from the Past Visits list whenever it loads,
+  // so the tab count matches the list without a manual refresh.
+  const [pastVisitsCount, setPastVisitsCount] = useState<number>(
+    () => siteDetail?.visits?.filter((v) => v.isCompleted).length ?? 0,
+  );
   useEffect(() => {
     if (siteDetail?.visits) {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const count = siteDetail.visits.filter(
-        (v) =>
-          !v.isCompleted &&
-          v.visitStatus !== "completed" &&
-          v.visitStatus !== "skipped" &&
-          new Date(v.visitScheduledAt).getTime() >= todayStart.getTime(),
-      ).length;
-      setScheduledCount(count);
+      setPastVisitsCount(siteDetail.visits.filter((v) => v.isCompleted).length);
     }
   }, [siteDetail?.visits]);
-
-  // Fetch upcoming scheduled visits count on mount so the count is immediately
-  // accurate, and again whenever the site's visits are read back, e.g. after
-  // its collection plan changes.
-  useEffect(() => {
-    if (!id || !siteId) return;
-    getScheduledVisitsApi(id, {
-      siteId,
-      visitStatus: "upcoming",
-      assignedTo: true,
-    })
-      .then((res) => {
-        if (res?.success) {
-          const count =
-            res.total ?? (Array.isArray(res.data) ? res.data.length : 0);
-          setScheduledCount(count);
-        }
-      })
-      .catch((err) => {
-        console.error("Failed to fetch initial scheduled count:", err);
-      });
-  }, [id, siteId, siteDetail?.visits]);
-
-  const pastVisitsCount =
-    siteDetail?.visits?.filter((v) => v.isCompleted).length ?? 0;
 
   return (
     <div className="dashboard-page-shell flex flex-col gap-6 bg-subtle">
@@ -142,7 +97,7 @@ export default function SiteDetailsPage() {
               <line x1="8" x2="8" y1="2" y2="6" />
               <line x1="3" x2="21" y1="10" y2="10" />
             </svg>
-            Schedule ({scheduledCount})
+            Schedule
           </button>
           <button
             onClick={() => setActiveTab("past-visits")}
@@ -174,13 +129,12 @@ export default function SiteDetailsPage() {
 
         {activeTab === "overview" && <SiteDetails />}
         {activeTab === "scheduled" && (
-          <ScheduledVisitsList
-            siteId={siteId}
-            onCountChange={setScheduledCount}
-          />
+          <ScheduledVisitsList siteId={siteId} />
         )}
       </div>
-      {activeTab === "past-visits" && <PastVisitsList />}
+      {activeTab === "past-visits" && (
+        <PastVisitsList onCountChange={setPastVisitsCount} />
+      )}
     </div>
   );
 }

@@ -99,11 +99,11 @@ export function SwitchLine({
   onClick: () => void;
 }) {
   return (
-    <p className="mt-5 text-center text-[13.5px] text-landing-purple">
+    <p className="mt-5 text-center text-[13.5px] text-black">
       {prompt}{" "}
       <button
         type="button"
-        className={`hover:underline ${FOCUS_RING}`}
+        className={`text-landing-purple hover:underline ${FOCUS_RING}`}
         onClick={onClick}
       >
         {action}

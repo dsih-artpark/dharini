@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAtomValue } from "jotai";
 
-import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
+import { useHydratedWorkspace } from "@/src/hooks/use-hydrated-workspace";
 import { userAtom } from "@/src/store/userAtom";
 import Select from "@/src/components/ui/select";
 import Loader from "@/src/components/ui/loader";
@@ -36,7 +36,7 @@ type Option = { id: string; name: string };
 export default function SampleTypeComparison() {
   const user = useAtomValue(userAtom);
   const isSuperAdmin = useIsSuperAdmin();
-  const currentWorkspace = useAtomValue(currentWorkspaceAtom);
+  const { workspaceId, ready: workspaceReady } = useHydratedWorkspace();
   const { resolveProjectId } = useCurrentProjectResolver();
 
   const [allProjects, setAllProjects] = useState<Option[]>([]);
@@ -63,15 +63,18 @@ export default function SampleTypeComparison() {
 
   // Load filter options once.
   useEffect(() => {
-    if (!user) return;
+    if (!user || !workspaceReady) return;
+    // Ignore a response that lands after a newer request has started.
+    let ignore = false;
     Promise.all([
       getProjectSampleTypesApi(),
       fetchProjectRegions(),
       isSuperAdmin
-        ? getAllProjectsApi({ limit: 1000, workspaceId: currentWorkspace?.id })
+        ? getAllProjectsApi({ limit: 1000, workspaceId })
         : Promise.resolve(null),
     ])
       .then(([typesRes, regionsRes, projectsRes]) => {
+        if (ignore) return;
         if (typesRes.success) setSampleTypes(typesRes.data || []);
         if (regionsRes.success) setStates(regionsRes.data || []);
         if (projectsRes && projectsRes.success) {
@@ -86,7 +89,10 @@ export default function SampleTypeComparison() {
     setProjectId("");
     setSiteId([]);
     setData(undefined);
-  }, [user, isSuperAdmin, currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [user, isSuperAdmin, workspaceId, workspaceReady]);
 
   // Default to the first two sample types for an immediate view.
   useEffect(() => {
@@ -124,15 +130,19 @@ export default function SampleTypeComparison() {
 
   // Fetch once both sample types are chosen.
   useEffect(() => {
+    if (!workspaceReady) return;
     if (!type1Id || !type2Id) {
       setData(undefined);
       return;
     }
+    let ignore = false;
     const fetchData = async () => {
       setLoading(true);
       try {
         const hasRange = !!(startDate && endDate);
         const { data: payload } = await getSampleTypeComparisonApi({
+          // Was never sent, so "All Projects" covered every workspace.
+          workspaceId,
           projectId: isSuperAdmin && projectId ? projectId : undefined,
           sampleType1Id: type1Id,
           sampleType2Id: type2Id,
@@ -141,14 +151,17 @@ export default function SampleTypeComparison() {
           startDate: hasRange ? toStartOfDayISO(startDate) : undefined,
           endDate: hasRange ? toEndOfDayISO(endDate) : undefined,
         });
-        setData(payload);
+        if (!ignore) setData(payload);
       } catch (e) {
         console.error("Error fetching sample comparison", e);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      ignore = true;
+    };
   }, [
     projectId,
     type1Id,
@@ -158,6 +171,8 @@ export default function SampleTypeComparison() {
     startDate,
     endDate,
     isSuperAdmin,
+    workspaceId,
+    workspaceReady,
   ]);
 
   const nameOf = (id: string) =>

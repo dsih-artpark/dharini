@@ -132,6 +132,12 @@ class TeamProgressScreen extends HookWidget {
     // Use state for expansion map
     final expansionState = useState<Map<String, bool>>({});
 
+    // Manage tab name search. Declared here, above the loading/error returns,
+    // so the hook order never changes; the controller keeps the text when
+    // switching tabs, and listening to it rebuilds the list as the user types.
+    final memberSearch = useTextEditingController();
+    useValueListenable(memberSearch);
+
     // --- Data Fetching Hooks ---
     final profile = useProfile();
     final projectId = useCurrentProjectId();
@@ -331,8 +337,8 @@ class TeamProgressScreen extends HookWidget {
             teamMemberActivity.data,
           ),
           if (canViewTeamMembers)
-            _buildManageTab(context, teamMembersFieldView.data, isDeleteMode,
-                selectedMemberIds),
+            _buildManageTab(context, teamMembersFieldView.data, memberSearch,
+                isDeleteMode, selectedMemberIds),
         ],
       ),
       // Removed bottom navigation bar as it's handled by AppShell
@@ -968,27 +974,26 @@ class TeamProgressScreen extends HookWidget {
   Widget _buildManageTab(
     BuildContext context,
     PaginatedTeamMemberResponse? data, // Correct response type
+    TextEditingController memberSearch,
     ValueNotifier<bool> isDeleteMode,
     ValueNotifier<Set<String>> selectedMemberIds,
   ) {
     // Safely access members and pagination meta, provide defaults
-    final members = data?.data ?? BuiltList<TeamMembersCollectorListType>();
-    final totalMembers = data?.total ?? members.length;
+    final allMembers = data?.data ?? BuiltList<TeamMembersCollectorListType>();
+    final totalMembers = data?.total ?? allMembers.length;
     final currentPage = data?.page ?? 1;
+
+    // Members whose name matches the search (case-insensitive).
+    final query = memberSearch.text.trim().toLowerCase();
+    final members = query.isEmpty
+        ? allMembers.toList()
+        : allMembers
+            .where((m) =>
+                '${m.firstName} ${m.lastName}'.toLowerCase().contains(query))
+            .toList();
 
     // TODO: Implement state and logic for actual pagination
     useState(currentPage);
-
-    // Style for Filter/Sort buttons
-    OutlinedButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      side: const BorderSide(color: AppColors.strokeWeak),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      textStyle: AppTypography.textTheme.bodyB3Regular,
-      foregroundColor: AppColors.textStrong,
-      minimumSize: Size.zero,
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
 
     return Container(
       color: AppColors.white,
@@ -1041,7 +1046,7 @@ class TeamProgressScreen extends HookWidget {
             ),
           ),
 
-          // All Members Title & Filter/Sort
+          // All Members Title & Search
           Row(
             children: [
               Padding(
@@ -1062,48 +1067,29 @@ class TeamProgressScreen extends HookWidget {
             color: Color(0xFFF8F9FA),
             child: Padding(
               padding: const EdgeInsets.all(12.0),
-              child: Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      // TODO: Add filter logic
-                    },
-                    icon: const Icon(Icons.filter_alt_outlined, size: 16),
-                    label: const Text('Filter'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      side: const BorderSide(color: AppColors.strokeWeak),
-                      textStyle: AppTypography.textTheme.bodyB3Regular,
-                      foregroundColor: AppColors.textStrong,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
+              child: TextField(
+                controller: memberSearch,
+                decoration: InputDecoration(
+                  hintText: 'Search',
+                  prefixIcon:
+                      const Icon(Icons.search, color: AppColors.textWeak),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  filled: true,
+                  fillColor: AppColors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.strokeWeak),
                   ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      // TODO: Add sort logic
-                    },
-                    icon: const Icon(Icons.sort, size: 16),
-                    label: const Text('Sort by'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      side: const BorderSide(color: AppColors.strokeWeak),
-                      textStyle: AppTypography.textTheme.bodyB3Regular,
-                      foregroundColor: AppColors.textStrong,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.strokeWeak),
                   ),
-                ],
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: AppColors.primaryLight),
+                  ),
+                ),
               ),
             ),
           ),
@@ -1223,14 +1209,23 @@ class TeamProgressScreen extends HookWidget {
                     itemBuilder: (context, index) {
                       // Assume member is TeamMemberResponseData based on BuiltList type
                       final member = members[index];
-                      final memberName = member.firstName;
-                      final memberInitials = member.firstName.isNotEmpty == true
-                          ? member.firstName.substring(
-                              0,
-                              member.firstName.length >= 2
-                                  ? 2
-                                  : member.firstName.length)
-                          : '??';
+                      // Full name: many accounts share a first name (e.g.
+                      // "Collector"), so the first name alone can't tell
+                      // members apart.
+                      final firstName = member.firstName.trim();
+                      final lastName = member.lastName.trim();
+                      final memberName = '$firstName $lastName'.trim();
+                      // "Collector Member DPG" -> "CM"; with only one name,
+                      // its first two letters.
+                      final memberInitials = memberName.isEmpty
+                          ? '??'
+                          : firstName.isNotEmpty && lastName.isNotEmpty
+                              ? '${firstName[0]}${lastName[0]}'.toUpperCase()
+                              : memberName.substring(
+                                  0,
+                                  memberName.length >= 2
+                                      ? 2
+                                      : memberName.length);
                       // Safely access sitesCount, default to 0
                       final siteCount = member.siteCount;
                       // Safely access createdAt, handle null

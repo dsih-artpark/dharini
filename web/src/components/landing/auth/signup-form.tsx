@@ -55,10 +55,12 @@ export default function SignupForm({
         workspaceName: workspaceName.trim(),
       }),
     onVerified: () => {
-      // Route through the workspace picker rather than /home directly - it
+      // Route through the workspace picker rather than /manage directly - it
       // auto-selects/redirects immediately since a brand-new signup user
-      // belongs to exactly one workspace (the one just created).
-      router.replace("/workspaces");
+      // belongs to exactly one workspace (the one just created). New users
+      // land on the Projects tab (/manage) so they can create their first
+      // project; they are workspace admins, so it is always visible to them.
+      router.replace("/workspaces?redirectTo=/manage");
     },
     verifiedMessage: "Workspace created successfully!",
   });
@@ -168,7 +170,7 @@ export default function SignupForm({
       </SubmitButton>
 
       <SwitchLine
-        prompt="Already have a workspace?"
+        prompt="Already have account?"
         action="Log in"
         onClick={onSwitchToLogin}
       />

@@ -18,6 +18,7 @@ describe('TeamsService - a member’s sites', () => {
       leftJoin: jest.fn(() => siteQuery),
       addSelect: jest.fn(() => siteQuery),
       where: jest.fn(() => siteQuery),
+      andWhere: jest.fn(() => siteQuery),
       getMany: jest.fn().mockResolvedValue(sites),
     };
     const dataSource = {
@@ -78,12 +79,15 @@ describe('TeamsService - a member’s sites', () => {
       },
     ]);
 
-    const result = await service.getTeamMembersFieldView({
-      team: 'team-1',
+    const result = await service.getTeamMembersFieldView(
+      { team: 'team-1' },
+      'p1',
+    );
+
+    expect(siteQuery.where).toHaveBeenCalledWith('site.project = :projectId', {
       projectId: 'p1',
     });
-
-    expect(siteQuery.where).toHaveBeenCalledWith(
+    expect(siteQuery.andWhere).toHaveBeenCalledWith(
       'site.collectorIds && ARRAY[:...userIds]::uuid[]',
       { userIds: ['u1', 'u2'] },
     );
@@ -121,10 +125,10 @@ describe('TeamsService - a member’s sites', () => {
       },
     ]);
 
-    const result = await service.getTeamMembersFieldView({
-      team: 'team-1',
-      projectId: 'p1',
-    });
+    const result = await service.getTeamMembersFieldView(
+      { team: 'team-1' },
+      'p1',
+    );
 
     expect(
       result.docs.map((member) => [member.id, member.lastVisitedVisit]),

@@ -46,10 +46,8 @@ export interface ScheduleItem {
 
 export default function ScheduledVisitsList({
   siteId,
-  onCountChange,
 }: {
   siteId?: string;
-  onCountChange?: (count: number) => void;
 }) {
   const { id: projectIdParam, siteId: siteIdParam } = useParams<{
     id: string;
@@ -110,10 +108,6 @@ export default function ScheduledVisitsList({
               ? skippedResponse.data
               : [];
           setApiVisits([...response.data, ...skippedVisits]);
-          if (onCountChange && filterType === "upcoming") {
-            const count = response.total ?? response.data.length;
-            onCountChange(count);
-          }
         }
       }
     } catch (e) {
@@ -125,11 +119,45 @@ export default function ScheduledVisitsList({
         setLoading(false);
       }
     }
-  }, [projectId, targetSiteId, filterType, onCountChange]);
+  }, [projectId, targetSiteId, filterType]);
 
   useEffect(() => {
     fetchScheduledVisits();
   }, [fetchScheduledVisits]);
+
+  // Count for each filter pill: the server total of the same query that pill
+  // lists (past = completed + skipped), so the numbers always match the lists.
+  // `assignedTo` is left out on purpose - it only turns paging off - so
+  // `limit: 1` returns the total without the visits themselves.
+  const [counts, setCounts] = useState<Record<
+    "upcoming" | "past" | "all",
+    number
+  > | null>(null);
+
+  const fetchCounts = useCallback(async () => {
+    if (!projectId) return;
+    const base: Parameters<typeof getScheduledVisitsApi>[1] = { limit: 1 };
+    if (targetSiteId) base.siteId = targetSiteId;
+    try {
+      const [upcoming, completed, skipped, all] = await Promise.all([
+        getScheduledVisitsApi(projectId, { ...base, visitStatus: "upcoming" }),
+        getScheduledVisitsApi(projectId, { ...base, isCompleted: true }),
+        getScheduledVisitsApi(projectId, { ...base, visitStatus: "skipped" }),
+        getScheduledVisitsApi(projectId, base),
+      ]);
+      setCounts({
+        upcoming: upcoming.total ?? 0,
+        past: (completed.total ?? 0) + (skipped.total ?? 0),
+        all: all.total ?? 0,
+      });
+    } catch (e) {
+      console.error("Error fetching scheduled visit counts:", e);
+    }
+  }, [projectId, targetSiteId]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
 
   // Derive plan title and subtext from siteDetail if available
   const planTitle = useMemo(() => {
@@ -347,7 +375,7 @@ export default function ScheduledVisitsList({
       );
 
       // Re-fetch scheduled visits from API to ensure sync
-      await fetchScheduledVisits();
+      await Promise.all([fetchScheduledVisits(), fetchCounts()]);
     } catch (err) {
       toast.error(
         (err instanceof Error && err.message) || "Failed to reschedule visit",
@@ -424,7 +452,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          Upcoming
+          Upcoming{counts && ` (${counts.upcoming})`}
         </button>
         <button
           type="button"
@@ -434,7 +462,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          Past
+          Past{counts && ` (${counts.past})`}
         </button>
         <button
           type="button"
@@ -444,7 +472,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          All
+          All{counts && ` (${counts.all})`}
         </button>
       </div>
 
@@ -597,6 +625,7 @@ export default function ScheduledVisitsList({
         onClose={() => {
           setIsPlanModalOpen(false);
           fetchScheduledVisits();
+          fetchCounts();
         }}
         siteId={targetSiteId || siteDetail?.id}
       />

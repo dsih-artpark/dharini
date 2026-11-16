@@ -56,6 +56,20 @@ function scopeUserRolesToProject(user: User, projectId?: string): User {
   };
 }
 
+// One entry per team member, carrying only their roles in this project. A
+// user holds a separate `user_roles` row per role (team-admin +
+// collector-admin + ...), so mapping rows straight to users listed the same
+// person once per row; and a role they hold in some other project must not
+// decide whether they count as a collector here.
+function projectMembersOf(memberRoles: UserRole[], projectId: string): User[] {
+  return memberRoles
+    .map((userRole) => scopeUserRolesToProject(userRole.user, projectId))
+    .filter(
+      (member, index, arr) =>
+        !!member && arr.findIndex((u) => u.id === member.id) === index,
+    );
+}
+
 @Injectable()
 export class TeamsService {
   constructor(
@@ -80,10 +94,14 @@ export class TeamsService {
     private readonly cacheService: RedisCacheService,
   ) {}
 
-  // The sites each user collects for (one of `sites.collector_id`), with
-  // their visits. That column is a uuid[], so this stands in for the
-  // `user.sites` relation it used to back.
-  private async sitesByCollector(
+  // The sites each user collects for *in this project* (one of
+  // `sites.collector_id`), with their visits. That column is a uuid[], so
+  // this stands in for the `user.sites` relation it used to back - which
+  // held every site the user collects for in any project or workspace, so a
+  // collector who was also added to another workspace's project had that
+  // project's sites and visits counted on this project's Team Progress.
+  private async projectSitesByCollector(
+    projectId: string,
     userIds: string[],
     { withLocation = false }: { withLocation?: boolean } = {},
   ): Promise<Map<string, Site[]>> {
@@ -99,7 +117,8 @@ export class TeamsService {
       .leftJoinAndSelect('site.visits', 'visit')
       .leftJoin('visit.collector', 'visitCollector')
       .addSelect('visitCollector.id')
-      .where('site.collectorIds && ARRAY[:...userIds]::uuid[]', { userIds });
+      .where('site.project = :projectId', { projectId })
+      .andWhere('site.collectorIds && ARRAY[:...userIds]::uuid[]', { userIds });
     if (withLocation) {
       query
         .leftJoinAndSelect('site.location', 'location')
@@ -212,10 +231,10 @@ export class TeamsService {
       .reverse();
   }
 
-  // A9: optional trailing `projectId` - when the caller (once wired) passes
-  // the route's `:projectId`, the team lookup is bound to it so a teamId
-  // from a foreign project can't be used to read another project's member
-  // activity. Optional so nothing breaks before the controller threads it.
+  // Everything here is read for the route's `:projectId`: the team must
+  // belong to it, and members' roles and sites are only the ones in it. A
+  // call without a project is "team not found" rather than a read across
+  // every project (the unrouted TeamsController copy never passes one).
   async getTeamMembersFieldView(
     query: any,
     projectId?: string,
@@ -223,28 +242,21 @@ export class TeamsService {
     const { page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 
-    const team = await this.teamRepository.findOne({
-      where: projectId
-        ? { id: query.team, projects: { id: projectId } }
-        : { id: query.team },
-    });
+    const team = projectId
+      ? await this.teamRepository.findOne({
+          where: { id: query.team, projects: { id: projectId } },
+        })
+      : null;
 
     if (!team) {
       throw new Error('Team not found');
     }
 
     const members = await this.userRoleRepository.find({
-      where: { team: team.id },
+      where: { team: team.id, project: projectId },
       relations: ['user', 'user.roles', 'user.roles.role'],
     });
-    const teamMembers = members
-      .map((userRole) =>
-        scopeUserRolesToProject(userRole.user, query.projectId),
-      )
-      .filter(
-        (member, index, arr) =>
-          !!member && arr.findIndex((u) => u.id === member.id) === index,
-      );
+    const teamMembers = projectMembersOf(members, projectId);
 
     const collectors = teamMembers.filter((member) =>
       member.roles.some((role) => role.role.name === 'collector'),
@@ -252,7 +264,8 @@ export class TeamsService {
 
     const total = collectors.length;
     const paginatedCollectors = collectors.slice(skip, skip + limit);
-    const sitesByMember = await this.sitesByCollector(
+    const sitesByMember = await this.projectSitesByCollector(
+      projectId,
       paginatedCollectors.map((member) => member.id),
     );
 
@@ -292,20 +305,22 @@ export class TeamsService {
     };
   }
 
-  // A9: optional trailing `projectId` - see getTeamMembersFieldView above.
+  // Scoped to the route's `:projectId` - see getTeamMembersFieldView above.
   async getTeamActivityOverview(
     query: any,
     teamId: string,
     projectId?: string,
   ): Promise<TeamProgressActivityOverviewResponseData> {
     const { startDate, endDate } = query;
-    const team = await this.teamRepository.findOne({
-      where: {
-        id: teamId,
-        status: StatusType.ACTIVE,
-        ...(projectId ? { projects: { id: projectId } } : {}),
-      },
-    });
+    const team = projectId
+      ? await this.teamRepository.findOne({
+          where: {
+            id: teamId,
+            status: StatusType.ACTIVE,
+            projects: { id: projectId },
+          },
+        })
+      : null;
     // Was `if (team) { ... }` with `team.members.length` read
     // unconditionally below - a not-found team (including one that fails
     // the new project check above) would crash with a null deref instead
@@ -314,7 +329,7 @@ export class TeamsService {
       throw new NotFoundException(`Team not found`);
     }
     const members = await this.userRoleRepository.find({
-      where: { team: teamId },
+      where: { team: teamId, project: projectId },
       relations: [
         'user',
         'user.roles',
@@ -322,16 +337,15 @@ export class TeamsService {
         'user.roles.role.permissions',
       ],
     });
-    team.members = members
-      .map((userRole) => userRole.user)
-      .filter((member) =>
-        checkUserPermissions(member, {
-          subject: Resource.Sample,
-          action: Action.Create,
-        }),
-      );
+    team.members = projectMembersOf(members, projectId).filter((member) =>
+      checkUserPermissions(member, {
+        subject: Resource.Sample,
+        action: Action.Create,
+      }),
+    );
     const whereCondition: any = {
       team: { id: teamId },
+      project: { id: projectId },
     };
     if (startDate && endDate) {
       whereCondition.collectedAt = Between(startDate, endDate);
@@ -343,7 +357,9 @@ export class TeamsService {
     };
   }
 
-  // A9: optional trailing `projectId` - see getTeamMembersFieldView above.
+  // Scoped to the route's `:projectId` - see getTeamMembersFieldView above.
+  // A collector who also works in another project, possibly in another
+  // workspace, must show only this project's sites and visits here.
   async getTeamMembersVisitActivity(
     query: any,
     teamId: string,
@@ -354,16 +370,16 @@ export class TeamsService {
       const currentDate = new Date();
       currentDate.setHours(0, 0, 0, 0);
 
-      const teamWithMembers = await this.teamRepository.findOne({
-        where: projectId
-          ? { id: teamId, projects: { id: projectId } }
-          : { id: teamId },
-      });
+      const teamWithMembers = projectId
+        ? await this.teamRepository.findOne({
+            where: { id: teamId, projects: { id: projectId } },
+          })
+        : null;
       if (!teamWithMembers) {
         throw new NotFoundException(`Team not found`);
       }
       const memberRoles = await this.userRoleRepository.find({
-        where: { team: teamId },
+        where: { team: teamId, project: projectId },
         relations: [
           'user',
           'user.roles',
@@ -371,11 +387,10 @@ export class TeamsService {
           'user.roles.role.permissions',
         ],
       });
-      teamWithMembers.members = memberRoles.map((userRole) =>
-        scopeUserRolesToProject(userRole.user, undefined),
-      );
-      const sitesByMember = await this.sitesByCollector(
-        teamWithMembers.members.filter(Boolean).map((member) => member.id),
+      teamWithMembers.members = projectMembersOf(memberRoles, projectId);
+      const sitesByMember = await this.projectSitesByCollector(
+        projectId,
+        teamWithMembers.members.map((member) => member.id),
         { withLocation: true },
       );
       const members: MembersActivityDataType[] = [];

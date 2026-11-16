@@ -194,7 +194,6 @@ export class ProjectsService {
           .leftJoinAndSelect('project.regions', 'region') // Join regions
           .leftJoinAndSelect('region.parentRegion', 'parentRegion')
           .leftJoinAndSelect('project.surveillanceTypes', 'surveillanceType') // Join surveillanceTypes
-          .leftJoinAndSelect('project.projectAdmins', 'projectAdmin') // Join projectAdmins
           .loadRelationCountAndMap('project.totalSiteCount', 'project.sites')
           // AndSelect: clients need the owning workspace to group a
           // multi-workspace user's projects - ManyToOne, so this cannot
@@ -256,6 +255,7 @@ export class ProjectsService {
           project.diseases.sort((a, b) => a.index - b.index);
           return project;
         });
+        await this.attachCurrentProjectAdmins(data);
 
         return {
           docs: data,
@@ -279,7 +279,6 @@ export class ProjectsService {
           .leftJoinAndSelect('project.diseases', 'disease')
           .leftJoinAndSelect('project.regions', 'region') // Join regions
           .leftJoinAndSelect('project.surveillanceTypes', 'surveillanceType')
-          .leftJoinAndSelect('project.projectAdmins', 'projectAdmin')
           .loadRelationCountAndMap('project.totalSiteCount', 'project.sites')
           // AndSelect: clients need the owning workspace to group a
           // multi-workspace user's projects - ManyToOne, so this cannot
@@ -349,6 +348,7 @@ export class ProjectsService {
           project.diseases.sort((a, b) => a.index - b.index);
           return project;
         });
+        await this.attachCurrentProjectAdmins(data);
         return {
           docs: data,
           total,
@@ -360,6 +360,43 @@ export class ProjectsService {
     } catch (error) {
       console.log('Get projects error', error);
       throw error;
+    }
+  }
+
+  // The project card's lead names used to come from `project_admins`, which
+  // is written only at project creation / invite acceptance and never cleaned
+  // up when a lead is removed from the team or their account is deleted - so
+  // a removed lead kept showing. Derive them from live `user_roles` instead:
+  // every active team-admin of a "project viewer" team in the project.
+  private async attachCurrentProjectAdmins(projects: Project[]): Promise<void> {
+    if (!projects.length) return;
+
+    const userRoles = await this.userRoleRepository
+      .createQueryBuilder('userRole')
+      .innerJoin('userRole.role', 'role')
+      .innerJoinAndSelect('userRole.user', 'user')
+      .innerJoin(Team, 'team', 'CAST(team.id AS text) = userRole.team')
+      .where('userRole.project IN (:...projectIds)', {
+        projectIds: projects.map((project) => project.id),
+      })
+      .andWhere('role.name = :teamAdmin', { teamAdmin: RoleType.TEAM_ADMIN })
+      .andWhere('team.isProjectViewer = true')
+      .andWhere('userRole.status = :active', { active: StatusType.ACTIVE })
+      .andWhere('user.status != :deleted', { deleted: StatusType.DELETED })
+      .orderBy('user.firstName', 'ASC')
+      .getMany();
+
+    const adminsByProject = new Map<string, Map<string, User>>();
+    for (const userRole of userRoles) {
+      const admins = adminsByProject.get(userRole.project) ?? new Map();
+      admins.set(userRole.user.id, userRole.user);
+      adminsByProject.set(userRole.project, admins);
+    }
+
+    for (const project of projects) {
+      project.projectAdmins = Array.from(
+        adminsByProject.get(project.id)?.values() ?? [],
+      );
     }
   }
 
@@ -491,7 +528,6 @@ export class ProjectsService {
           'regions.parentRegion',
           'diseases',
           'surveillanceTypes',
-          'projectAdmins',
           'createdBy',
           'workspace',
         ],
@@ -499,6 +535,7 @@ export class ProjectsService {
       if (!project) {
         throw new NotFoundException(`Project with ID ${query.id} not found`);
       }
+      await this.attachCurrentProjectAdmins([project]);
 
       // Sort the diseases array in-place
       if (project.diseases.length > 0) {
@@ -2349,19 +2386,27 @@ export class ProjectsService {
             Number(stat.count) || 0;
         }
 
-        // 3. Completed: visits the member actually did - `visitedBy`, falling
-        // back to the assigned collector when it was not recorded.
-        const doneBy = 'COALESCE(visit.visitedById, visit.collectorId)';
+        // 3. Completed: visits the member was at - everyone in `visitedBy`,
+        // falling back to the assigned collector when nobody was recorded (as
+        // wasAtVisit). A visit with several visitors counts for each of them.
+        // Column names are quoted by hand: TypeORM does not rewrite
+        // `visit.collectorId` inside `ARRAY[...]`.
+        const doneBy = '"doneBy"."memberId"';
         const completedQuery = onlyDiseaseSites(
           this.visitRepository
             .createQueryBuilder('visit')
             .innerJoin('visit.site', 'site')
+            .innerJoin(
+              '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+              'doneBy',
+              `${doneBy} = ANY (CASE WHEN cardinality("visit"."visitedById") > 0 THEN "visit"."visitedById" ELSE ARRAY["visit"."collectorId"] END)`,
+              { memberIds },
+            )
             .select(doneBy, 'memberId')
             .addSelect('site.id', 'siteId')
             .addSelect('site.name', 'siteName')
             .where('visit.projectId = :projectId', { projectId })
-            .andWhere(`visit.visitStatus = '${VisitStatus.COMPLETED}'`)
-            .andWhere(`${doneBy} IN (:...memberIds)`, { memberIds }),
+            .andWhere(`visit.visitStatus = '${VisitStatus.COMPLETED}'`),
         );
         if (diseaseId) {
           // A visit only counts as completed for a disease if it collected a

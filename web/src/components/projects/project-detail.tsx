@@ -179,7 +179,7 @@ export default function ProjectDetail() {
 
           {/* Project admins */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-grey-60">
+            <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-grey-60 sm:h-6 sm:w-40">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"
@@ -214,7 +214,7 @@ export default function ProjectDetail() {
 
           {/* Locations */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-            <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-grey-60">
+            <div className="flex shrink-0 items-center gap-2 text-sm font-medium text-grey-60 sm:h-6 sm:w-40">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 width="20"

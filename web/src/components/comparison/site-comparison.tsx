@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAtomValue } from "jotai";
 import { ArrowUp, ArrowDown, Minus, FlaskConical } from "lucide-react";
 
-import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
+import { useHydratedWorkspace } from "@/src/hooks/use-hydrated-workspace";
 import { userAtom } from "@/src/store/userAtom";
 import Select from "@/src/components/ui/select";
 import Loader from "@/src/components/ui/loader";
@@ -32,7 +32,7 @@ type SiteOption = { id: string; name: string };
 export default function SiteComparison() {
   const user = useAtomValue(userAtom);
   const isSuperAdmin = useIsSuperAdmin();
-  const currentWorkspace = useAtomValue(currentWorkspaceAtom);
+  const { workspaceId, ready: workspaceReady } = useHydratedWorkspace();
   const { resolveProjectId, workspaceProjects } = useCurrentProjectResolver();
 
   const [allProjects, setAllProjects] = useState<SiteOption[]>([]);
@@ -53,11 +53,13 @@ export default function SiteComparison() {
   // (falling back, per 4.4, to the current workspace's first project for
   // workspace-admins with no fixed user.project).
   useEffect(() => {
-    if (!user) return;
+    if (!user || !workspaceReady) return;
+    // Ignore a response that lands after a newer request has started.
+    let ignore = false;
     if (isSuperAdmin) {
-      getAllProjectsApi({ limit: 1000, workspaceId: currentWorkspace?.id })
+      getAllProjectsApi({ limit: 1000, workspaceId })
         .then((res) => {
-          if (res.success) {
+          if (!ignore && res.success) {
             const projects = res.data.map((p) => ({ id: p.id, name: p.name }));
             setAllProjects(projects);
             const defaultProjectId = resolveProjectId() || projects[0]?.id || "";
@@ -71,7 +73,10 @@ export default function SiteComparison() {
     setSite1Id("");
     setSite2Id("");
     setData(undefined);
-  }, [user, isSuperAdmin, workspaceProjects, currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [user, isSuperAdmin, workspaceProjects, workspaceId, workspaceReady]);
 
   // Load sample types for the "Sample Type" filter (all by default).
   useEffect(() => {

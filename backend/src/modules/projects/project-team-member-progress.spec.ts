@@ -121,7 +121,14 @@ describe('ProjectsService.teamMemberProgress', () => {
       const { result, completedQb } = run({ diseaseId: DISEASE_ID });
       await result;
 
-      const doneBy = 'COALESCE(visit.visitedById, visit.collectorId)';
+      const doneBy = '"doneBy"."memberId"';
+      expect(completedQb.innerJoin).toHaveBeenCalledWith(
+        '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+        'doneBy',
+        `${doneBy} = ANY (CASE WHEN cardinality("visit"."visitedById") > 0 THEN "visit"."visitedById" ELSE ARRAY["visit"."collectorId"] END)`,
+        // Name order: Amit Lab, Team Lead, Zara Collector.
+        { memberIds: [amit.id, lead.id, zara.id] },
+      );
       expect(completedQb.select).toHaveBeenCalledWith(doneBy, 'memberId');
       expect(completedQb.groupBy).toHaveBeenCalledWith(doneBy);
     });
