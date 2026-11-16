@@ -518,9 +518,11 @@ Future<List<VisitResponseData>> getScheduledVisits(
 //   }
 // }
 
-/// The ApiCache key [getSiteVisits] keeps a site's visits under.
+/// The ApiCache key [getSiteVisits] keeps a site's completed visits under.
+/// Distinct from the old 'siteVisits_' key, which held every visit status,
+/// so a stale cache can't put upcoming rounds back into Recent Visits.
 String siteVisitsCacheKey(String projectId, String siteId) =>
-    'siteVisits_${projectId}_$siteId';
+    'siteVisits_completed_${projectId}_$siteId';
 
 Future<List<VisitResponseData>> getSiteVisits(
   EsClient client,
@@ -544,11 +546,15 @@ Future<List<VisitResponseData>> getSiteVisits(
     print("Failed to load cached site visits: $e");
   }
 
-  // 2. Define network fetch
+  // 2. Define network fetch. Only completed visits, which the backend returns
+  // most recently visited first; without a status it returns the whole
+  // schedule, upcoming rounds included.
   Future<List<VisitResponseData>> fetchFromNetwork() async {
-    final response = await client
-        .getProjectsApi()
-        .projectsControllerGetVisits(projectId: projectId, siteId: siteId);
+    final response = await client.getProjectsApi().projectsControllerGetVisits(
+          projectId: projectId,
+          siteId: siteId,
+          visitStatus: 'completed',
+        );
     final data = response.data?.data.toList() ?? [];
     final serialized = data
         .map((e) =>
@@ -2403,8 +2409,8 @@ void _removeFromOfflineCache(String? siteId) {
 //   );
 // }
 
-UseMutationResult<UserResponse, dynamic, UpdateUserDto> useUpdateProfile({
-  required String userId,
+UseMutationResult<UserProfileResponse, dynamic, UpdateOwnProfileDto>
+    useUpdateProfile({
   void Function()? onSuccess,
   void Function(String errorMessage)? onError,
 }) {
@@ -2412,29 +2418,46 @@ UseMutationResult<UserResponse, dynamic, UpdateUserDto> useUpdateProfile({
   final queryClient = useQueryClient();
 
   return useMutation(
-    (UpdateUserDto request) async {
-      // TODO(multi-tenancy): switch to `userControllerUpdateProfile`
-      // (PATCH /users/profile) once es_client is regenerated —
-      // `mobile/scripts/gen-client.sh`, do not hand-edit the package.
-      //
-      // This calls PATCH /users/{id}, which is the ADMIN endpoint: it
-      // requires `manage all`, i.e. System scope, so it already returns 403
-      // for every ordinary user editing their own profile. The backend has a
-      // self-service PATCH /users/profile that always targets req.user.id and
-      // needs only `update user`, which every seeded role holds — but it
-      // post-dates the last client generation, so there is no method for it
-      // yet.
-      final response = await api.getUserApi().userControllerUpdate(
-            id: userId,
-            updateUserDto: request,
+    (UpdateOwnProfileDto request) async {
+      // PATCH /users/profile is the self-service endpoint: it always targets
+      // req.user.id and needs only `update user`, which every seeded role
+      // holds. Not PATCH /users/{id} - that is the admin endpoint, requires
+      // `manage all` (System scope) and 403s for everyone else.
+      final response = await api.getUserApi().userControllerUpdateProfile(
+            updateOwnProfileDto: request,
           );
       return response.data!;
     },
-    onSuccess: (data, variables, context) {
+    onSuccess: (data, variables, context) async {
+      // getProfile answers from its persisted cache first, so a plain
+      // invalidate would refetch the stale copy and the old name would show
+      // until the next restart. Re-fetch past the cache (which also rewrites
+      // it) and seed the query with the result.
+      try {
+        final fresh = await getProfile(api, forceRefresh: true);
+        queryClient.setQueryData<UserProfileResponseData>(
+          QueryKeys.profile,
+          (_) => fresh,
+        );
+      } catch (e) {
+        print('[useUpdateProfile] Profile refresh failed: $e');
+        queryClient.invalidateQueries(QueryKeys.profile);
+      }
       queryClient.invalidateQueries(QueryKeys.visits(null));
       onSuccess?.call();
     },
-    onError: (error, variables, context) => onError?.call(error.toString()),
+    onError: (error, variables, context) {
+      String errorMessage = 'Failed to update profile';
+      if (error is DioException) {
+        final responseData = error.response?.data;
+        errorMessage = (responseData is Map
+                ? responseData['message']?.toString()
+                : null) ??
+            error.message ??
+            errorMessage;
+      }
+      onError?.call(errorMessage);
+    },
   );
 }
 
@@ -3324,7 +3347,12 @@ Future<String> createLocalSite({
   required int frequencyInterval,
   required List<String> selectedDays,
   required String regionId,
-  required String collectionCollector,
+  // The site's collectors' user ids, primary first.
+  required List<String> collectionCollectors,
+  // Users whose details are known - the collector list the ids were picked
+  // from - so the local site names its collectors until it syncs, as the
+  // visit review's "Visited by" list shows them.
+  List<User> knownCollectors = const [],
   required List<String> photoUrls,
   required double latitude,
   required double longitude,
@@ -3359,7 +3387,9 @@ Future<String> createLocalSite({
       ..photos.addAll(photoUrls)
       ..siteCode = siteCode
       ..diseases.addAll(diseases ?? [])
-      ..collectionCollector = (UserBuilder()..id = collectionCollector);
+      ..collectionCollectors.addAll(collectionCollectors.map((id) =>
+          knownCollectors.firstWhere((user) => user.id == id,
+              orElse: () => User((u) => u..id = id))));
 
     b.location.replace(Location((l) => l
       ..id = DatabaseService.generateLocalId()
@@ -3381,7 +3411,7 @@ Future<String> createLocalSite({
     'regionId': regionId,
     'latitude': latitude,
     'longitude': longitude,
-    'collectionCollector': collectionCollector,
+    'collectionCollectors': collectionCollectors,
   });
 
   // Add to sync queue
@@ -3412,7 +3442,8 @@ Future<String> createLocalSite({
     ..regionId = regionId
     ..latitude = latitude
     ..longitude = longitude
-    ..collectionCollector = collectionCollector
+    ..collectionCollectors =
+        collectionCollectors.isEmpty ? null : ListBuilder(collectionCollectors)
     ..diseaseIds =
         diseases != null ? ListBuilder(diseases.map((d) => d.id)) : null
     // Convert Date to UTC DateTime for serialization
@@ -3587,6 +3618,28 @@ Future<void> syncNetworkSitesToHive(List<SiteResponseData> networkSites) async {
       '[HiveSync] ✅ Sync complete. Success: $successCount, Failed: $failureCount');
 }
 
+// Collector ids as a queued site holds them: a list since sites have several
+// collectors, a single id (possibly empty) when an older build queued it.
+List<String> collectorIdsFromQueued(Object? value) {
+  final ids = value is String ? [value] : (value is List ? value : const []);
+  return ids.whereType<String>().where((id) => id.isNotEmpty).toList();
+}
+
+// A site creation queued by a build from before sites had several collectors
+// names its collector as `collectionCollector`, which today's CreateSiteDto
+// would drop. Moved to `collectionCollectors` so the site still syncs with it.
+Object? upgradeQueuedSitePayload(Object? payload) {
+  if (payload is! Map || !payload.containsKey('collectionCollector')) {
+    return payload;
+  }
+  final upgraded = Map<String, dynamic>.from(payload);
+  final ids = collectorIdsFromQueued(upgraded.remove('collectionCollector'));
+  if (upgraded['collectionCollectors'] == null && ids.isNotEmpty) {
+    upgraded['collectionCollectors'] = ids;
+  }
+  return upgraded;
+}
+
 // prepare local site dto request
 CreateSiteDto convertToCreateSiteDto(
   SiteResponseData site,
@@ -3611,7 +3664,8 @@ CreateSiteDto convertToCreateSiteDto(
     ..regionId = meta['regionId'] as String
     ..latitude = meta['latitude'] as double
     ..longitude = meta['longitude'] as double
-    ..collectionCollector = meta['collectionCollector'] as String
+    ..collectionCollectors = ListBuilder(collectorIdsFromQueued(
+        meta['collectionCollectors'] ?? meta['collectionCollector']))
     ..photos = site.photos != null
         ? ListBuilder(site.photos!)
         : ListBuilder<String>());
@@ -3788,7 +3842,7 @@ Future<SyncQueueResult> _syncChangesToServerQueue(
 
     try {
       final dto = standardSerializers.deserializeWith(
-          CreateSiteDto.serializer, payload);
+          CreateSiteDto.serializer, upgradeQueuedSitePayload(payload));
       if (dto == null) throw Exception('Failed to deserialize site $localId');
 
       final response = await api.getProjectsApi().projectsControllerCreateSite(

@@ -4,8 +4,7 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 
 import { Site } from "@/src/types/site";
-import { formatDate } from "@/src/utils";
-import { User } from "@/src/types/global";
+import { collectorNames, formatDate } from "@/src/utils";
 import { DISEASE_SITE_CONFIG } from "@/src/utils/constant";
 
 export default function SiteListItem({
@@ -106,16 +105,7 @@ export default function SiteListItem({
       </div>
       <div className="flex w-[200px] items-center">
         <p className="truncate text-sm text-grey-80">
-          {site.collectionCollector ? (
-            (site.collectionCollector as User)?.firstName &&
-            (site.collectionCollector as User)?.lastName ? (
-              `${(site.collectionCollector as User)?.firstName} ${
-                (site.collectionCollector as User)?.lastName ?? ""
-              }`
-            ) : (
-              (site.collectionCollector as User)?.email
-            )
-          ) : (
+          {collectorNames(site) || (
             <span className="text-xs text-grey-70">[not assigned]</span>
           )}
         </p>

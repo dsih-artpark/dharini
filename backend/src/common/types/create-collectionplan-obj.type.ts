@@ -1,7 +1,6 @@
-import { User } from 'src/entities/user.entity';
-
 export type CreateCollectionPlanObj = {
-  collectionCollector?: User;
+  // The site's collectors, primary first.
+  collectorIds?: string[];
   collectionStartDate?: Date | string;
   collectionExpiryDate?: Date | string;
   collectionTime?: string;

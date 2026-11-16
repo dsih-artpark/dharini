@@ -46,25 +46,33 @@ class LocationInfoWidget extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        farmName,
-                        style: AppTypography.textTheme.bodyB2SemiBold.copyWith(
-                          color: AppColors.textStrong,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          farmName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              AppTypography.textTheme.bodyB2SemiBold.copyWith(
+                            color: AppColors.textStrong,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${farmType.toUpperCase()} | SITE: ${siteNumber.toUpperCase()}',
-                        style: AppTypography.textTheme.labelMMedium.copyWith(
-                          color: AppColors.textWeak,
+                        const SizedBox(height: 4),
+                        Text(
+                          '${farmType.toUpperCase()} | SITE: ${siteNumber.toUpperCase()}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.textTheme.labelMMedium.copyWith(
+                            color: AppColors.textWeak,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  if (isNewSite)
+                  if (isNewSite) ...[
+                    const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
@@ -79,6 +87,7 @@ class LocationInfoWidget extends StatelessWidget {
                         ),
                       ),
                     ),
+                  ],
                 ],
               ),
             ),

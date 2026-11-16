@@ -24,7 +24,7 @@ part 'nearby_site_response_data.g.dart';
 /// * [siteSubType] - Sub-type of the farm/site (e.g. Broiler, Breeder, Layer, Backyard)
 /// * [siteType] 
 /// * [diseases] 
-/// * [collectionCollector] 
+/// * [collectionCollectors] 
 /// * [createdBy] 
 /// * [location] 
 /// * [id] 
@@ -70,8 +70,8 @@ abstract class NearbySiteResponseData implements Built<NearbySiteResponseData, N
   @BuiltValueField(wireName: r'diseases')
   BuiltList<Disease> get diseases;
 
-  @BuiltValueField(wireName: r'collectionCollector')
-  User? get collectionCollector;
+  @BuiltValueField(wireName: r'collectionCollectors')
+  BuiltList<User>? get collectionCollectors;
 
   @BuiltValueField(wireName: r'createdBy')
   UserWithTeamResponse? get createdBy;
@@ -199,11 +199,11 @@ class _$NearbySiteResponseDataSerializer implements PrimitiveSerializer<NearbySi
       object.diseases,
       specifiedType: const FullType(BuiltList, [FullType(Disease)]),
     );
-    if (object.collectionCollector != null) {
-      yield r'collectionCollector';
+    if (object.collectionCollectors != null) {
+      yield r'collectionCollectors';
       yield serializers.serialize(
-        object.collectionCollector,
-        specifiedType: const FullType(User),
+        object.collectionCollectors,
+        specifiedType: const FullType(BuiltList, [FullType(User)]),
       );
     }
     if (object.createdBy != null) {
@@ -415,13 +415,13 @@ class _$NearbySiteResponseDataSerializer implements PrimitiveSerializer<NearbySi
           ) as BuiltList<Disease>;
           result.diseases.replace(valueDes);
           break;
-        case r'collectionCollector':
+        case r'collectionCollectors':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(User),
-          ) as User?;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(User)]),
+          ) as BuiltList<User>?;
           if (valueDes == null) continue;
-          result.collectionCollector.replace(valueDes);
+          result.collectionCollectors.replace(valueDes);
           break;
         case r'createdBy':
           final valueDes = serializers.deserialize(

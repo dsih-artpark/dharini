@@ -82,11 +82,6 @@ export class User {
 
   @Exclude({ toClassOnly: true })
   @ApiHideProperty()
-  @ManyToMany(() => Visit, (visit) => visit.collector, { nullable: true })
-  visited?: Visit[] | null;
-
-  @Exclude({ toClassOnly: true })
-  @ApiHideProperty()
   @OneToMany(() => Invite, (invite) => invite.invitedBy)
   invites: Invite;
 
@@ -147,11 +142,6 @@ export class User {
   @ApiHideProperty()
   @UpdateDateColumn()
   updatedAt: Date;
-
-  @Exclude({ toClassOnly: true })
-  @ApiHideProperty()
-  @OneToMany(() => Site, (site) => site.collectionCollector)
-  sites: Site[];
 
   @Exclude({ toClassOnly: true })
   @ApiHideProperty()

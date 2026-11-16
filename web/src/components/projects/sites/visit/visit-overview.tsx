@@ -2,7 +2,7 @@ import { useAtomValue } from "jotai";
 import Image from "next/image";
 
 import { visitAtom } from "@/src/store/visitAtom";
-import { formatDate } from "@/src/utils";
+import { formatDate, visitVisitors } from "@/src/utils";
 import { DISEASE_COLOR_CODE } from "@/src/utils/constant";
 
 export default function VisitOverview() {
@@ -89,27 +89,33 @@ export default function VisitOverview() {
               Visited by
             </p>
             <div className="self-stretch rounded border border-grey-20 flex-col justify-start items-start flex overflow-hidden">
-              {visit?.collector ? (
-                <div className="self-stretch p-3 bg-white justify-start items-center gap-3 inline-flex">
+              {/* Everyone who was at the visit, its submitter first; an
+                  older visit with none recorded shows its assignee. */}
+              {visitVisitors(visit).map((visitor, index) => (
+                <div
+                  key={visitor.id}
+                  className={`self-stretch p-3 bg-white justify-start items-center gap-3 inline-flex ${
+                    index > 0 ? "border-t border-grey-20" : ""
+                  }`}
+                >
                   <div className="w-9 h-9 p-2 bg-teal-10 rounded-[100px] flex-col justify-center items-center gap-2.5 inline-flex overflow-hidden">
                     <p className="self-stretch text-center text-grey-80 text-xs uppercase leading-[18px] tracking-tight">
-                      {visit.collector.firstName?.charAt(0) ?? ""}
-                      {visit.collector.lastName?.charAt(0) ?? ""}
+                      {visitor.firstName?.charAt(0) ?? ""}
+                      {visitor.lastName?.charAt(0) ?? ""}
                     </p>
                   </div>
                   <div className="grow shrink basis-0 flex-col justify-start items-start inline-flex">
                     <div className="self-stretch justify-center items-center gap-4 inline-flex">
                       <p className="grow shrink basis-0 text-grey-80 text-sm leading-[21px]">
-                        {visit.collector.firstName ?? ""}{" "}
-                        {visit.collector.lastName ?? ""}
+                        {visitor.firstName ?? ""} {visitor.lastName ?? ""}
                       </p>
                     </div>
                     <p className="self-stretch text-grey-70 text-sm leading-[21px]">
-                      {visit.collector.email}
+                      {visitor.email}
                     </p>
                   </div>
                 </div>
-              ) : null}
+              ))}
             </div>
           </div>
         </div>

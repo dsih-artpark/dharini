@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 **siteId** | **String** | site id | [optional] 
 **projectId** | **String** | project id | [optional] 
 **teamId** | **String** | team id | [optional] 
-**visitedBy** | **String** | team member id | [optional] 
+**visitedBy** | **BuiltList&lt;String&gt;** | IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted. | [optional] 
 **photos** | **BuiltList&lt;String&gt;** | file path | [optional] 
 **comment** | **String** | comment | [optional] 
 **suspectDiseaseData** | **BuiltList&lt;String&gt;** | This data is updating result of test result for disease | [optional] 

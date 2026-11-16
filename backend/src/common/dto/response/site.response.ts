@@ -1,4 +1,5 @@
-import { Type } from 'class-transformer';
+import { ApiHideProperty } from '@nestjs/swagger';
+import { Exclude, Type } from 'class-transformer';
 import {
   Disease,
   Location,
@@ -16,8 +17,14 @@ export class SiteResponseData extends Site {
   @Type(() => Disease)
   diseases: Disease[];
 
+  // The site's collectors, primary first.
   @Type(() => User)
-  collectionCollector?: User;
+  collectionCollectors?: User[];
+
+  // The ids they are stored as; collectionCollectors returns them.
+  @ApiHideProperty()
+  @Exclude()
+  collectorIds?: string[];
 
   @Type(() => UserWithTeamResponse)
   createdBy?: UserWithTeamResponse;

@@ -29,15 +29,20 @@ class ActionCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  farmName,
-                  style: const TextStyle(
-                    fontSize: 18.0,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.actionButtonDark,
+                Expanded(
+                  child: Text(
+                    farmName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 18.0,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.actionButtonDark,
+                    ),
                   ),
                 ),
-                if (isNew)
+                if (isNew) ...[
+                  const SizedBox(width: 8.0),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10.0,
@@ -56,6 +61,7 @@ class ActionCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 8.0),
@@ -67,11 +73,15 @@ class ActionCard extends StatelessWidget {
                   size: 16.0,
                 ),
                 const SizedBox(width: 4.0),
-                Text(
-                  location,
-                  style: TextStyle(
-                    fontSize: 12.0,
-                    color: Colors.grey[600],
+                Expanded(
+                  child: Text(
+                    location,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.0,
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ),
               ],

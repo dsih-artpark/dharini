@@ -16,6 +16,13 @@ class Profile extends HookWidget {
   Widget build(BuildContext context) {
     final profile = useProfile();
     final logout = useLogout();
+    // The project picked via Switch Project, and the workspace it belongs to.
+    // Not profile.project: that's the legacy user.project column, empty for
+    // super-admins, workspace-admins and many team-admins.
+    final project = useProject();
+    final workspaceName = project.data?.workspace?.name;
+    final projectName = project.data?.name;
+    final contactNumber = profile.data?.contactNumber;
 
     return SafeArea(
       child: Scaffold(
@@ -72,7 +79,7 @@ class Profile extends HookWidget {
                     Padding(
                       padding: Spacing.px(4),
                       child: Text(
-                        'ORGANISATION',
+                        'WORKSPACE',
                         style: Theme.of(context)
                             .textTheme
                             .labelLarge
@@ -85,7 +92,33 @@ class Profile extends HookWidget {
                     Padding(
                       padding: Spacing.px(4),
                       child: Text(
-                        '${profile.data?.project?.name}',
+                        workspaceName?.isNotEmpty == true
+                            ? workspaceName!
+                            : '—',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppColors.labletestblack),
+                      ),
+                    ),
+                    SizedBox(height: Spacing.space(4)),
+                    Padding(
+                      padding: Spacing.px(4),
+                      child: Text(
+                        'PROJECT',
+                        style: Theme.of(context)
+                            .textTheme
+                            .labelLarge
+                            ?.copyWith(color: AppColors.labletestgrey),
+                      ),
+                    ),
+                    SizedBox(
+                      height: Spacing.space(2),
+                    ),
+                    Padding(
+                      padding: Spacing.px(4),
+                      child: Text(
+                        projectName?.isNotEmpty == true ? projectName! : '—',
                         style: Theme.of(context)
                             .textTheme
                             .bodySmall
@@ -109,7 +142,9 @@ class Profile extends HookWidget {
                     Padding(
                       padding: Spacing.px(4),
                       child: Text(
-                        '+91 ${profile.data?.contactNumber}',
+                        contactNumber?.isNotEmpty == true
+                            ? '+91 $contactNumber'
+                            : '—',
                         style: Theme.of(context)
                             .textTheme
                             .bodySmall

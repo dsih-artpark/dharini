@@ -16,6 +16,7 @@ import 'database_service.dart';
 import 'photo_upload_manager.dart';
 import '../utils/hive_serialization.dart';
 import '../utils/sentry_scrubber.dart';
+import '../utils/visited_by.dart';
 
 enum SyncStatus { idle, syncing, error, completed }
 
@@ -908,7 +909,11 @@ class SyncService {
       ..siteId = visitData['siteId']
       ..projectId = visitData['projectId']
       ..teamId = visitData['teamId']
-      ..visitedBy = visitData['visitedBy']
+      // The submitter first, then the others who were there. A submission
+      // queued by a build from before visits had several visitors holds
+      // only the submitter's id.
+      ..visitedBy =
+          ListBuilder<String>(visitedByIdsFromQueued(visitData['visitedBy']))
       ..photos = ListBuilder<String>(
           (visitData['photos'] as List?)?.cast<String>() ?? <String>[])
       ..comment = visitData['comment']

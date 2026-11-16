@@ -23,7 +23,7 @@ part 'create_site_dto.g.dart';
 /// * [regionId] - ID of the region
 /// * [latitude] - latitude
 /// * [longitude] - longitude
-/// * [collectionCollector] - collectionCollector id
+/// * [collectionCollectors] - IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits.
 /// * [collectionConsent] - Site owner's collection consent: 'true' or 'false'
 /// * [diseaseIds] - IDs of diseases to associate with this site (subset of project diseases)
 /// * [name] 
@@ -77,9 +77,9 @@ abstract class CreateSiteDto implements Built<CreateSiteDto, CreateSiteDtoBuilde
   @BuiltValueField(wireName: r'longitude')
   num get longitude;
 
-  /// collectionCollector id
-  @BuiltValueField(wireName: r'collectionCollector')
-  String get collectionCollector;
+  /// IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits.
+  @BuiltValueField(wireName: r'collectionCollectors')
+  BuiltList<String>? get collectionCollectors;
 
   /// Site owner's collection consent: 'true' or 'false'
   @BuiltValueField(wireName: r'collectionConsent')
@@ -209,11 +209,13 @@ class _$CreateSiteDtoSerializer implements PrimitiveSerializer<CreateSiteDto> {
       object.longitude,
       specifiedType: const FullType(num),
     );
-    yield r'collectionCollector';
-    yield serializers.serialize(
-      object.collectionCollector,
-      specifiedType: const FullType(String),
-    );
+    if (object.collectionCollectors != null) {
+      yield r'collectionCollectors';
+      yield serializers.serialize(
+        object.collectionCollectors,
+        specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+      );
+    }
     if (object.collectionConsent != null) {
       yield r'collectionConsent';
       yield serializers.serialize(
@@ -415,12 +417,13 @@ class _$CreateSiteDtoSerializer implements PrimitiveSerializer<CreateSiteDto> {
           ) as num;
           result.longitude = valueDes;
           break;
-        case r'collectionCollector':
+        case r'collectionCollectors':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType(String),
-          ) as String;
-          result.collectionCollector = valueDes;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>?;
+          if (valueDes == null) continue;
+          result.collectionCollectors.replace(valueDes);
           break;
         case r'collectionConsent':
           final valueDes = serializers.deserialize(

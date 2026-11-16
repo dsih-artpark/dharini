@@ -60,7 +60,7 @@ abstract class VisitResponseData implements Built<VisitResponseData, VisitRespon
   User? get collector;
 
   @BuiltValueField(wireName: r'visitedBy')
-  User? get visitedBy;
+  BuiltList<User>? get visitedBy;
 
   @BuiltValueField(wireName: r'id')
   String get id;
@@ -156,7 +156,7 @@ class _$VisitResponseDataSerializer implements PrimitiveSerializer<VisitResponse
       yield r'visitedBy';
       yield serializers.serialize(
         object.visitedBy,
-        specifiedType: const FullType(User),
+        specifiedType: const FullType(BuiltList, [FullType(User)]),
       );
     }
     yield r'id';
@@ -284,8 +284,8 @@ class _$VisitResponseDataSerializer implements PrimitiveSerializer<VisitResponse
         case r'visitedBy':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(User),
-          ) as User?;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(User)]),
+          ) as BuiltList<User>?;
           if (valueDes == null) continue;
           result.visitedBy.replace(valueDes);
           break;

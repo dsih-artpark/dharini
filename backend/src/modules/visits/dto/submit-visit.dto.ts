@@ -12,7 +12,7 @@ export class SubmitVisitDto extends PickType(Visit, [
     description: 'list of sample data collected from site',
     example: `{
       "siteId": "eaa81d72-5733-40e2-8f91-e3af7f845967",
-      "visitedBy": "eaa81d72-5733-40e2-8f91-e3af7f845967",
+      "visitedBy": ["eaa81d72-5733-40e2-8f91-e3af7f845967"],
       "projectId" : "2742233c-4ddd-4f85-a961-4a30ceaa47e6",
       "teamId": "ab76cec7-38ee-48b8-b6f3-cb7813a0a937",
       "isCompleted": true,

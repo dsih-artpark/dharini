@@ -47,6 +47,8 @@ import { UpdateCollectedSampleDetailsDto } from './dto/update-collected-sample-d
 import { UpdateSampleDto } from './dto/update-sample.dto';
 import { UpdateSampleStageDetailsDto } from './dto/update-sample-stage-details.dto';
 import { computeVisitRoundsForSites } from '../../common/utils/visit-rounds.util';
+import { attachCollectionCollectors } from '../sites/site-collectors';
+import { attachVisitedBy } from '../visits/visit-visited-by';
 import { shouldScopeToProject } from './sample-scope.util';
 
 @Injectable()
@@ -469,12 +471,20 @@ export class SamplesService {
     teamId: string,
     collectedBy: string,
     transactionalEntityManager?: EntityManager,
+    // Originals already saved on the visit, which a replicate in this request
+    // may name as its original (a later submission to a completed visit).
+    existingOriginals: Pick<Sample, 'id' | 'barcode'>[] = [],
   ): Promise<Sample[]> {
     try {
       const manager =
         transactionalEntityManager || this.sampleRepository.manager;
       const createdSamples: Sample[] = [];
       const originalSampleMap: Map<string, Sample> = new Map(); // Map to store original samples by barcode
+      for (const original of existingOriginals) {
+        if (original.barcode) {
+          originalSampleMap.set(original.barcode, original as Sample);
+        }
+      }
 
       // Cache to hold created/resolved AnimalMetadata records during this request
       const animalMetadataCache = new Map<string, AnimalMetadata>();
@@ -1297,8 +1307,6 @@ export class SamplesService {
       .leftJoinAndSelect('location.region', 'region')
       .leftJoinAndSelect('region.parentRegion', 'parentRegion')
       .leftJoinAndSelect('sample.visit', 'visit')
-      .leftJoinAndSelect('site.collectionCollector', 'collectionCollector')
-      .leftJoinAndSelect('visit.visitedBy', 'visitedBy')
       .leftJoinAndSelect('sample.diseases', 'disease') // Diseases relation
       .leftJoinAndSelect('sample.receivedBy', 'receivedBy')
       .leftJoinAndSelect('sample.extractedBy', 'extractedBy')
@@ -1533,6 +1541,14 @@ export class SamplesService {
     siteQuery.skip((page - 1) * limit).take(limit);
 
     const [samples, total] = await siteQuery.getManyAndCount();
+    await attachCollectionCollectors(
+      this.sampleRepository.manager,
+      samples.map((sample) => sample.site),
+    );
+    await attachVisitedBy(
+      this.sampleRepository.manager,
+      samples.map((sample) => sample.visit),
+    );
 
     // Batch-fetch every sample's photos in a single query instead of one
     // mediaRepository lookup + N signed-URL calls per sample.
@@ -1839,8 +1855,6 @@ export class SamplesService {
         .leftJoinAndSelect('site.location', 'location')
         .leftJoinAndSelect('location.region', 'region')
         .leftJoinAndSelect('sample.visit', 'visit')
-        .leftJoinAndSelect('site.collectionCollector', 'collectionCollector')
-        .leftJoinAndSelect('visit.visitedBy', 'visitedBy')
         .leftJoinAndSelect('sample.diseases', 'disease')
         .leftJoinAndSelect('sample.receivedBy', 'receivedBy')
         .leftJoinAndSelect('sample.extractedBy', 'extractedBy')
@@ -1871,6 +1885,10 @@ export class SamplesService {
       if (!sampleData) {
         throw new NotFoundException('Sample not found');
       }
+      await attachCollectionCollectors(this.sampleRepository.manager, [
+        sampleData.site,
+      ]);
+      await attachVisitedBy(this.sampleRepository.manager, [sampleData.visit]);
 
       const signedUrls = await this.getSignedUrlForSample(sampleData);
       sampleData.photos = signedUrls;

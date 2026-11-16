@@ -15,7 +15,13 @@ import Spinner from "@/src/components/ui/spinner";
 import { Calendar, Edit3, ArrowDown } from "lucide-react";
 import { toast } from "react-toastify";
 
-import { formatDate } from "@/src/utils";
+import {
+  collectorName,
+  collectorNames,
+  formatDate,
+  siteCollectors,
+  visitVisitors,
+} from "@/src/utils";
 
 export type ScheduleStatus =
   | "Overdue"
@@ -29,7 +35,9 @@ export interface ScheduleItem {
   dayNumber: string;
   dayOfWeek: string;
   monthYear: string;
-  collectorName?: string;
+  // Who the visit is for, by name: everyone who was at a completed visit,
+  // else its collector followed by the site's other collectors, who share it.
+  people: string[];
   rescheduledNote?: string;
   status: ScheduleStatus;
   category: "upcoming" | "past";
@@ -144,16 +152,7 @@ export default function ScheduledVisitsList({
   }, [siteDetail]);
 
   const planSubtitle = useMemo(() => {
-    const collector = siteDetail?.collectionCollector;
-    let collectorName = "";
-    if (collector) {
-      if (typeof collector === "object") {
-        const name = `${collector.firstName || ""} ${collector.lastName || ""}`.trim();
-        if (name) collectorName = name;
-      } else if (typeof collector === "string") {
-        collectorName = collector;
-      }
-    }
+    const collectorName = collectorNames(siteDetail);
     const expiryStr = siteDetail?.collectionExpiryDate
       ? formatDate(siteDetail.collectionExpiryDate)
       : "";
@@ -208,25 +207,31 @@ export default function ScheduledVisitsList({
         }
       }
 
-      const collector = v.collector;
-      let collectorName = "";
-      if (collector) {
-        if (typeof collector === "object") {
-          collectorName =
-            `${collector.firstName || ""} ${collector.lastName || ""}`.trim() ||
-            collector.email ||
-            "";
-        } else if (typeof collector === "string") {
-          collectorName = collector;
-        }
-      }
+      // A completed visit lists everyone who was at it. A skipped one, which
+      // nobody visited, keeps its collector. Any other is shared by all the
+      // site's collectors: its own first, then the others.
+      const collector =
+        v.collector && typeof v.collector === "object" ? v.collector : null;
+      const people =
+        status === "Completed"
+          ? visitVisitors(v)
+          : status === "Skipped"
+            ? collector
+              ? [collector]
+              : []
+            : [
+                ...(collector ? [collector] : []),
+                ...siteCollectors(siteDetail).filter(
+                  (siteCollector) => siteCollector.id !== collector?.id,
+                ),
+              ];
 
       return {
         id: v.id,
         dayNumber,
         dayOfWeek,
         monthYear,
-        collectorName,
+        people: people.map(collectorName).filter(Boolean),
         rescheduledNote,
         status,
         // The backend refuses to reschedule a skipped visit.
@@ -260,7 +265,7 @@ export default function ScheduledVisitsList({
     }
 
     return mappedItems;
-  }, [apiVisits, filterType, rescheduledOverrides]);
+  }, [apiVisits, filterType, rescheduledOverrides, siteDetail]);
 
   // Limit display if not expanded
   const displayItems = useMemo(() => {
@@ -489,8 +494,22 @@ export default function ScheduledVisitsList({
 
                         {/* Text info */}
                         <div className="flex flex-col min-w-0">
-                          <h4 className="text-sm sm:text-base font-semibold text-grey-90 truncate group-hover:text-primary-500 transition-colors">
-                            {item.collectorName || "Unassigned"}
+                          {/* The first two names, then "+n" for the rest;
+                              hovering lists them all. */}
+                          <h4
+                            className="text-sm sm:text-base font-semibold text-grey-90 truncate group-hover:text-primary-500 transition-colors"
+                            title={
+                              item.people.length > 2
+                                ? item.people.join(", ")
+                                : undefined
+                            }
+                          >
+                            {item.people.slice(0, 2).join(", ") || "Unassigned"}
+                            {item.people.length > 2 && (
+                              <span className="ml-1.5 text-grey-60 font-medium">
+                                +{item.people.length - 2}
+                              </span>
+                            )}
                           </h4>
                           {item.rescheduledNote && (
                             <span className="text-xs font-medium text-[#1A56DB] mt-0.5">

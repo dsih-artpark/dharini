@@ -6,6 +6,7 @@ import 'package:es_platform_mobile/hooks/auth.dart';
 import 'package:es_platform_mobile/hooks/permissions.dart';
 import 'package:es_platform_mobile/utils/extensions/index.dart';
 import 'package:es_platform_mobile/utils/map_tile_provider.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:es_platform_mobile/views/sites/site_past_visit_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
@@ -509,7 +510,10 @@ class SiteDetails extends HookWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                if (site.collectionCollector != null)
+                                // Every collector, primary first.
+                                for (final collector
+                                    in site.collectionCollectors?.toList() ??
+                                        const <User>[])
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 16),
@@ -530,16 +534,13 @@ class SiteDetails extends HookWidget {
                                             height: 40,
                                             child: Center(
                                               child: Text(
-                                                (site.collectionCollector
-                                                                ?.firstName ??
-                                                            '')
-                                                        .length >= 2
-                                                    ? site.collectionCollector!
-                                                        .firstName!
+                                                (collector.firstName ?? '')
+                                                            .length >=
+                                                        2
+                                                    ? collector.firstName!
                                                         .substring(0, 2)
                                                         .toUpperCase()
-                                                    : (site.collectionCollector
-                                                                ?.firstName ??
+                                                    : (collector.firstName ??
                                                             '')
                                                         .toUpperCase(),
                                                 style: AppTypography
@@ -557,9 +558,7 @@ class SiteDetails extends HookWidget {
                                                   CrossAxisAlignment.start,
                                               children: [
                                                 Text(
-                                                  site.collectionCollector
-                                                          ?.firstName ??
-                                                      '',
+                                                  collector.firstName ?? '',
                                                   style: AppTypography
                                                       .textTheme.bodyB2SemiBold
                                                       .copyWith(
@@ -567,9 +566,7 @@ class SiteDetails extends HookWidget {
                                                   ),
                                                 ),
                                                 Text(
-                                                  site.collectionCollector
-                                                          ?.email ??
-                                                      '',
+                                                  collector.email ?? '',
                                                   style: AppTypography
                                                       .textTheme.bodyB3Regular
                                                       .copyWith(
@@ -791,8 +788,9 @@ class SiteDetails extends HookWidget {
                                                   e.sampleType?.name ?? '')
                                               .toList(),
                                           siteCode: visit.site.siteCode ?? '',
-                                          visitedBy:
-                                              visit.collector?.firstName ?? '',
+                                          visitedBy: visitorsOf(visit)
+                                              .map(visitorName)
+                                              .join(', '),
                                         ),
                                         const SizedBox(height: 8),
                                       ],

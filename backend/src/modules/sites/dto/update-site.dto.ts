@@ -1,6 +1,6 @@
 import { ApiProperty, PickType } from '@nestjs/swagger';
 import { Site } from 'src/entities/site.entity';
-import { IsOptional, Matches } from 'class-validator';
+import { IsArray, IsOptional, IsUUID, Matches } from 'class-validator';
 
 export class UpdateSiteDto extends PickType(Site, [
   'name',
@@ -49,12 +49,18 @@ export class UpdateSiteDto extends PickType(Site, [
   @IsOptional()
   longitude: number;
 
+  // No `isArray`/`type` here: see CreateSiteDto.collectionCollectors.
   @ApiProperty({
-    description: 'collectionCollector id',
-    example: 'user-uuid',
+    description:
+      "IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are.",
+    example: ['user-uuid'],
+    required: false,
+    nullable: true,
   })
   @IsOptional()
-  collectionCollector: string;
+  @IsArray()
+  @IsUUID('all', { each: true })
+  collectionCollectors?: string[];
 
   // Plain string, not boolean, with the pattern set here rather than taken
   // from @Matches: see CreateSiteDto.collectionConsent.

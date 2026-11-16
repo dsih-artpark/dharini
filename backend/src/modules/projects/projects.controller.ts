@@ -101,6 +101,7 @@ import { calculateExpiryDateFlexible } from '../sites/calExpiryDate';
 import { calculateStartDate } from '../sites/calStartDate';
 import { CreateSiteDto } from '../sites/dto/create-site.dto';
 import { UpdateSiteDto } from '../sites/dto/update-site.dto';
+import { normalizeCollectorIds } from '../sites/site-collectors';
 import { SitesService } from '../sites/sites.service';
 import { CreateMembersListDto } from '../teams/dto/create-list-member.dto';
 import { CreateMemberDto } from '../teams/dto/create-member.dto';
@@ -798,7 +799,7 @@ export class ProjectsController {
       const { user } = req;
       const {
         photos,
-        collectionCollector,
+        collectionCollectors,
         collectionTime,
         diseaseIds,
         ...createSiteObj
@@ -806,8 +807,9 @@ export class ProjectsController {
 
       createSiteObj.project = project;
 
+      // SitesService.create checks the collectors.
       const collectionObj: CreateCollectionPlanObj = {
-        collectionCollector: null,
+        collectorIds: normalizeCollectorIds(collectionCollectors) ?? [],
         collectionStartDate: null,
         collectionExpiryDate: null,
         collectionTime: collectionTime || null,
@@ -828,18 +830,6 @@ export class ProjectsController {
 
       if (diseaseIds && Array.isArray(diseaseIds) && diseaseIds.length > 0) {
         diseasesData = diseasesData.filter((d) => diseaseIds.includes(d.id));
-      }
-
-      let collector = null;
-      if (collectionCollector) {
-        collector = await this.userRepository.findOne({
-          where: { id: collectionCollector },
-        });
-        collectionObj.collectionCollector = collector;
-      }
-
-      if (collectionCollector && !collector) {
-        throw new HttpException('Collector not found', HttpStatus.NOT_FOUND);
       }
 
       let createdBy: User = null;
@@ -1115,7 +1105,7 @@ export class ProjectsController {
   ): Promise<SiteResponse> {
     try {
       const { user } = req;
-      const { collectionCollector, photos, collectionTime, ...createSiteObj } =
+      const { collectionCollectors, photos, collectionTime, ...createSiteObj } =
         updateSiteDto;
 
       const collectionObj: CreateCollectionPlanObj = {
@@ -1123,16 +1113,6 @@ export class ProjectsController {
         collectionExpiryDate: null,
         collectionTime: collectionTime || null,
       };
-
-      let collector = null;
-      if (collectionCollector) {
-        collector = await this.userRepository.findOne({
-          where: { id: collectionCollector },
-        });
-      }
-      if (!collector && collectionCollector) {
-        throw new HttpException('Collector not found', HttpStatus.NOT_FOUND);
-      }
 
       let updatedBy: User = null;
       if (user && user.id) {
@@ -1202,9 +1182,10 @@ export class ProjectsController {
         ).toFormat('yyyy-MM-dd HH:mm:ss') as unknown as Date;
       }
 
+      // SitesService.update checks the collectors.
       const site = await this.siteService.update(
         id,
-        collector,
+        normalizeCollectorIds(collectionCollectors),
         createSiteObj,
         collectionObj,
         updatedBy,

@@ -21,7 +21,8 @@ export type Visit = {
     disease?: Disease;
   }[];
   samples?: Sample[];
-  visitedBy: User[];
+  // Everyone who was at the visit, its submitter first.
+  visitedBy?: User[];
   photos: string[];
   comment: string;
   collector: User;

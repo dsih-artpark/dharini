@@ -75,7 +75,8 @@ const DEFAULT_VISIBLE_COLUMNS: SampleTableVisibleColumns = {
   disease: true,
   location: true,
   farmType: true,
-  collectedBy: true,
+  // Off by default; users can turn it on from the column picker.
+  collectedBy: false,
   lastActivity: true,
 };
 

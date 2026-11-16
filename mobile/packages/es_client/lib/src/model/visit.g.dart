@@ -12,7 +12,7 @@ class _$Visit extends Visit {
   @override
   final VisitStatus visitStatus;
   @override
-  final User? visitedBy;
+  final BuiltList<User>? visitedBy;
   @override
   final User? collector;
   @override
@@ -125,9 +125,11 @@ class VisitBuilder implements Builder<Visit, VisitBuilder> {
   set visitStatus(VisitStatus? visitStatus) =>
       _$this._visitStatus = visitStatus;
 
-  UserBuilder? _visitedBy;
-  UserBuilder get visitedBy => _$this._visitedBy ??= UserBuilder();
-  set visitedBy(UserBuilder? visitedBy) => _$this._visitedBy = visitedBy;
+  ListBuilder<User>? _visitedBy;
+  ListBuilder<User> get visitedBy =>
+      _$this._visitedBy ??= ListBuilder<User>();
+  set visitedBy(ListBuilder<User>? visitedBy) =>
+      _$this._visitedBy = visitedBy;
 
   UserBuilder? _collector;
   UserBuilder get collector => _$this._collector ??= UserBuilder();

@@ -3,6 +3,7 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:built_collection/built_collection.dart';
 import 'package:es_client/src/model/visit_status.dart';
 import 'package:es_client/src/model/user.dart';
 import 'package:built_value/built_value.dart';
@@ -36,7 +37,7 @@ abstract class Visit implements Built<Visit, VisitBuilder> {
   // enum visitStatusEnum {  upcoming,  overdue,  skipped,  completed,  };
 
   @BuiltValueField(wireName: r'visitedBy')
-  User? get visitedBy;
+  BuiltList<User>? get visitedBy;
 
   @BuiltValueField(wireName: r'collector')
   User? get collector;
@@ -104,7 +105,7 @@ class _$VisitSerializer implements PrimitiveSerializer<Visit> {
       yield r'visitedBy';
       yield serializers.serialize(
         object.visitedBy,
-        specifiedType: const FullType(User),
+        specifiedType: const FullType(BuiltList, [FullType(User)]),
       );
     }
     if (object.collector != null) {
@@ -201,8 +202,8 @@ class _$VisitSerializer implements PrimitiveSerializer<Visit> {
         case r'visitedBy':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(User),
-          ) as User?;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(User)]),
+          ) as BuiltList<User>?;
           if (valueDes == null) continue;
           result.visitedBy.replace(valueDes);
           break;

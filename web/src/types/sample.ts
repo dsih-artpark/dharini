@@ -81,7 +81,8 @@ export type Sample = {
   visit: {
     id: string;
     round?: number;
-    visitedBy?: User;
+    // Everyone who was at the visit, its submitter first.
+    visitedBy?: User[];
     collector?: User;
   };
   project: {

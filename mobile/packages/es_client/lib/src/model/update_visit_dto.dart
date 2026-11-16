@@ -19,7 +19,7 @@ part 'update_visit_dto.g.dart';
 /// * [siteId] - site id
 /// * [photos] - file path
 /// * [comment] - comment
-/// * [visitedBy] - team member id
+/// * [visitedBy] - IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.
 /// * [suspectDiseaseData] - This data is updating result of test result for disease
 /// * [diseaseQuestionnaireData] - Disease questionnaire responses grouped by disease shortName
 /// * [environmentalQuestionnaireData] - Environmental questionnaire responses
@@ -49,9 +49,9 @@ abstract class UpdateVisitDto implements Built<UpdateVisitDto, UpdateVisitDtoBui
   @BuiltValueField(wireName: r'comment')
   String? get comment;
 
-  /// team member id
+  /// IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.
   @BuiltValueField(wireName: r'visitedBy')
-  String? get visitedBy;
+  BuiltList<String>? get visitedBy;
 
   /// This data is updating result of test result for disease
   @BuiltValueField(wireName: r'suspectDiseaseData')
@@ -139,7 +139,7 @@ class _$UpdateVisitDtoSerializer implements PrimitiveSerializer<UpdateVisitDto> 
       yield r'visitedBy';
       yield serializers.serialize(
         object.visitedBy,
-        specifiedType: const FullType(String),
+        specifiedType: const FullType(BuiltList, [FullType(String)]),
       );
     }
     if (object.suspectDiseaseData != null) {
@@ -254,10 +254,10 @@ class _$UpdateVisitDtoSerializer implements PrimitiveSerializer<UpdateVisitDto> 
         case r'visitedBy':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(String),
-          ) as String?;
+            specifiedType: const FullType.nullable(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>?;
           if (valueDes == null) continue;
-          result.visitedBy = valueDes;
+          result.visitedBy.replace(valueDes);
           break;
         case r'suspectDiseaseData':
           final valueDes = serializers.deserialize(

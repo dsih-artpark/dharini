@@ -21,7 +21,15 @@ describe('SitesService.findOne', () => {
           async (key: string) => `https://signed/${key}`,
         ),
       },
-      siteRepository: { findOne: jest.fn().mockResolvedValue(site) },
+      siteRepository: {
+        findOne: jest.fn().mockResolvedValue(site),
+        manager: {
+          find: jest.fn().mockResolvedValue([
+            { id: 'c1', firstName: 'First' },
+            { id: 'c2', firstName: 'Second' },
+          ]),
+        },
+      },
       visitRepository: { find: jest.fn() },
       sampleRepository: { find: jest.fn() },
       mediaRepository: {
@@ -67,6 +75,7 @@ describe('SitesService.findOne', () => {
     const { service, deps } = makeService({
       id: SITE_ID,
       photos: ['m1'],
+      collectorIds: ['c2', 'c1'],
       diseases: [
         { id: 'd2', index: 2 },
         { id: 'd1', index: 1 },
@@ -100,7 +109,6 @@ describe('SitesService.findOne', () => {
       relations: [
         'project',
         'diseases',
-        'collectionCollector',
         'createdBy',
         'createdBy.team',
         'location',
@@ -125,6 +133,10 @@ describe('SitesService.findOne', () => {
     expect(result.site.diseases.map((d) => d.id)).toEqual(['d1', 'd2']);
     expect(result.nextCollectionDate).toBe(upcoming.toJSDate().toISOString());
     expect(result.photos).toEqual(['https://signed/photos/a.jpg']);
+    // The collectors come back as users, primary first.
+    expect(
+      result.site.collectionCollectors.map((user) => user.firstName),
+    ).toEqual(['Second', 'First']);
   });
 
   it('returns 404 for a missing site without running the visit and sample queries', async () => {

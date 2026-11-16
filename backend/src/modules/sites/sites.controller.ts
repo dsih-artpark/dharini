@@ -36,6 +36,7 @@ import { calculateExpiryDateFlexible } from './calExpiryDate';
 import { calculateStartDate } from './calStartDate';
 import { CreateSiteDto } from './dto/create-site.dto';
 import { UpdateSiteDto } from './dto/update-site.dto';
+import { normalizeCollectorIds } from './site-collectors';
 import { SitesService } from './sites.service';
 import { DateTime } from 'luxon';
 
@@ -77,12 +78,13 @@ export class SitesController {
       const {
         project,
         photos,
-        collectionCollector,
+        collectionCollectors,
         collectionTime,
         ...createSiteObj
       } = createSiteDto;
+      // SitesService.create checks the collectors.
       const collectionObj: CreateCollectionPlanObj = {
-        collectionCollector: null,
+        collectorIds: normalizeCollectorIds(collectionCollectors) ?? [],
         collectionStartDate: null,
         collectionExpiryDate: null,
         collectionTime: collectionTime || null,
@@ -96,17 +98,6 @@ export class SitesController {
       const diseasesData = projectData.diseases;
       if (!diseasesData) {
         throw new HttpException('Disease not found', HttpStatus.NOT_FOUND);
-      }
-      let collector = null;
-      if (collectionCollector) {
-        collector = await this.userRepository.findOne({
-          where: { id: collectionCollector },
-        });
-        collectionObj.collectionCollector = collector;
-      }
-
-      if (collectionCollector && !collector) {
-        throw new HttpException('Collector not found', HttpStatus.NOT_FOUND);
       }
 
       let createdBy: User = null;
@@ -509,7 +500,7 @@ export class SitesController {
   ): Promise<SiteResponse> {
     try {
       const { user } = req;
-      const { collectionCollector, photos, collectionTime, ...updateSiteObj } =
+      const { collectionCollectors, photos, collectionTime, ...updateSiteObj } =
         updateSiteDto;
 
       const collectionObj: CreateCollectionPlanObj = {
@@ -517,16 +508,6 @@ export class SitesController {
         collectionExpiryDate: null,
         collectionTime: collectionTime || null,
       };
-
-      let collector = null;
-      if (collectionCollector) {
-        collector = await this.userRepository.findOne({
-          where: { id: collectionCollector },
-        });
-      }
-      if (!collector && collectionCollector) {
-        throw new HttpException('Collector not found', HttpStatus.NOT_FOUND);
-      }
 
       let updatedBy: User = null;
       if (user && user.id) {
@@ -574,7 +555,7 @@ export class SitesController {
 
       const site = await this.siteService.update(
         id,
-        collector,
+        normalizeCollectorIds(collectionCollectors),
         updateSiteObj,
         collectionObj,
         updatedBy,

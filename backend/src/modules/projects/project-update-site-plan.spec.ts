@@ -1,6 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import { DateTime, Settings } from 'luxon';
 import { Site } from 'src/entities/site.entity';
+import { Team } from 'src/entities/team.entity';
+import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { SitesService } from '../sites/sites.service';
 import { ProjectsController } from './projects.controller';
@@ -38,7 +40,7 @@ describe('Editing a collection plan', () => {
       photos: null,
       project: { id: PROJECT_ID },
       location: { id: 'loc-1' },
-      collectionCollector: { id: 'u1' },
+      collectorIds: ['u1'],
       collectionFrequency: 1,
       collectionTime: '09:00:00',
       ...plan,
@@ -83,7 +85,7 @@ describe('Editing a collection plan', () => {
     regionId: 'district_572',
     latitude: 13.04,
     longitude: 77.59,
-    collectionCollector: 'u1',
+    collectionCollectors: ['u1'],
     ...plan,
   });
   const mobilePlan = (interval: number, days: string[], duration: number) =>
@@ -101,7 +103,7 @@ describe('Editing a collection plan', () => {
     collectionDayOfWeek = ['Monday'],
     collectionDuration = 60,
   ) => ({
-    collectionCollector: 'u1',
+    collectionCollectors: ['u1'],
     collectionFrequency: 1,
     collectionFrequencyInterval: 7,
     collectionDuration,
@@ -142,6 +144,47 @@ describe('Editing a collection plan', () => {
   const argsOf = (builder: any, method: string) =>
     builder.calls.filter((c) => c.method === method).map((c) => c.args);
 
+  // The users and project teams SitesService checks collectors against:
+  // u3 is in the project's other team, t2, and u9 in a team outside it.
+  const teamOf = (id: string) =>
+    ({ u3: 't2', u9: 't9' })[id as 'u3' | 'u9'] ?? 't1';
+  const collectorQuery = () => {
+    let ids: string[] = [];
+    const asUser = (id: string) => ({
+      id,
+      status: 'active',
+      team: { id: teamOf(id) },
+      roles: [],
+    });
+    const builder: any = new Proxy(
+      {},
+      {
+        get(_, method: string) {
+          if (method === 'then') return undefined;
+          if (method === 'getMany') {
+            return async () => ids.map(asUser);
+          }
+          // One collector, as loadProjectCollector looks them up.
+          if (method === 'getOne') {
+            return async () => (ids[0] ? asUser(ids[0]) : null);
+          }
+          if (method === 'getRawMany') {
+            return async () => [{ id: 't1' }, { id: 't2' }];
+          }
+          return (
+            _sql: unknown,
+            params?: { ids?: string[]; userId?: string },
+          ) => {
+            if (params?.ids) ids = params.ids;
+            if (params?.userId) ids = [params.userId];
+            return builder;
+          };
+        },
+      },
+    );
+    return builder;
+  };
+
   // The site row as the UPDATE leaves it, read back the way node-postgres does.
   const applyUpdate = (site: Site, set: Record<string, any>) => {
     const row: Record<string, any> = { ...site };
@@ -172,25 +215,30 @@ describe('Editing a collection plan', () => {
   ) => {
     const managerQueries: any[] = [];
     const manager = {
-      createQueryBuilder: jest.fn(() => {
+      createQueryBuilder: jest.fn((entity?: unknown) => {
+        // loadProjectCollector's lookups of a collector and the project's
+        // teams.
+        if (entity === User || entity === Team) return collectorQuery();
         const builder = queryBuilder(deleted);
         managerQueries.push(builder);
         return builder;
       }),
-      findOne: jest.fn(async (entity: unknown) => {
-        if (entity !== Site) return { id: 'u1', team: { id: 't1' } };
+      findOne: jest.fn(async (entity: unknown, options?: any) => {
+        // A collector, with their team.
+        if (entity !== Site) {
+          const id = options?.where?.id;
+          return { id, team: { id: teamOf(id) } };
+        }
         const update = managerQueries.find((q) => argsOf(q, 'update').length);
-        const row = applyUpdate(site, argsOf(update, 'set')[0][0]);
-        // The collector the relation query last set, if any.
-        const [assigned] = managerQueries
-          .filter((q) => argsOf(q, 'relation').length)
-          .flatMap((q) => argsOf(q, 'set').map(([user]) => user))
-          .filter(Boolean)
-          .reverse();
-        return assigned ? { ...row, collectionCollector: assigned } : row;
+        return applyUpdate(site, argsOf(update, 'set')[0][0]);
       }),
-      // The visits left once the replaceable ones are deleted.
-      find: jest.fn().mockResolvedValue(visits),
+      // The visits left once the replaceable ones are deleted, or the users
+      // the site's collectors are returned as.
+      find: jest.fn(async (entity: unknown, options?: any) =>
+        entity === User
+          ? options.where.id.value.map((id: string) => ({ id }))
+          : visits,
+      ),
       save: jest.fn<Promise<void>, any[]>(async () => {
         if (failSave) throw new Error('insert failed');
       }),
@@ -211,15 +259,19 @@ describe('Editing a collection plan', () => {
           'collectionLastScheduleDate',
           'collectionDuration',
           'collectionExpiryDate',
+          'collectorIds',
         ].map((propertyName) => ({ propertyName })),
-        relations: ['collectionCollector', 'updatedBy', 'location'].map(
-          (propertyName) => ({ propertyName }),
-        ),
+        relations: ['updatedBy', 'location'].map((propertyName) => ({
+          propertyName,
+        })),
       },
       manager: {
         transaction: jest.fn(async (work: (m: any) => unknown) =>
           work(manager),
         ),
+        // The collector checks: every test user is an active member of the
+        // project's one team.
+        createQueryBuilder: jest.fn(() => collectorQuery()),
       },
     };
     const locationService = {
@@ -422,41 +474,36 @@ describe('Editing a collection plan', () => {
       expectsWholePlanReplaced(edit);
     });
 
-    it('still only replaces upcoming visits when a save leaves the dates alone', async () => {
-      // A new collector on an unchanged plan: overdue visits stay, and dates
-      // a kept visit already has are skipped, as before.
+    it('keeps the visits when a save leaves the dates alone, adding only ones for dates without any', async () => {
+      // A new collector on an unchanged plan: the visits stay, ids and all -
+      // a phone may hold one offline - and go to the new collector in place.
+      // From today on, only a date with no visit gets one; 19 Oct was
+      // rescheduled away.
       const edit = await editPlan(
         activeWeeklyMondays(),
-        mobileBody({ collectionCollector: 'u2' }),
+        mobileBody({ collectionCollectors: ['u2'] }),
         {
           visits: [
+            { visitScheduledAt: utcDay('2026-10-12') },
             {
               visitScheduledAt: utcDay('2026-10-20'),
               rescheduledFrom: utcDay('2026-10-19'),
             },
+            { visitScheduledAt: utcDay('2026-10-26') },
           ],
         },
       );
       await edit.request;
 
-      const conditions = edit.deleteConditions();
-      expect(conditions).toContain('"visitStatus" = :status');
-      expect(argsOf(edit.visitDelete(), 'andWhere')[0][1]).toEqual({
-        status: 'upcoming',
-      });
-      expect(conditions).toContain('"isCompleted" = false');
-      expect(conditions).toContain('"rescheduledFrom" IS NULL');
-      // From today on: overdue (past) visits stay.
-      expect(conditions).toContain('"visitScheduledAt" >= :todayStart');
-      const [, { todayStart }] = argsOf(edit.visitDelete(), 'andWhere').find(
-        ([sql]) => sql.includes('todayStart'),
-      );
-      expect(todayStart.toISOString()).toBe('2026-10-12T00:00:00.000Z');
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeDefined();
       const dates = edit.createdDates();
-      expect(dates[0]).toBe('2026-10-12');
-      // 19 Oct was rescheduled away.
-      expect(dates[1]).toBe('2026-10-26');
+      expect(dates[0]).toBe('2026-11-02');
+      expect(dates).not.toContain('2026-10-19');
       expect(dates[dates.length - 1]).toBe('2027-01-04');
+      expect(
+        edit.createdVisits().every((visit) => visit.collector?.id === 'u2'),
+      ).toBe(true);
     });
 
     it('writes the site, the visit delete and the new visits in one transaction', async () => {
@@ -528,7 +575,7 @@ describe('Editing a collection plan', () => {
         collectionDuration: 30,
       });
       const edit = await editPlan(site, {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 0,
         collectionDuration: 0,
@@ -641,8 +688,8 @@ describe('Editing a collection plan', () => {
     });
 
     it('adds no second set of visits when the new plan is saved again', async () => {
-      // The plan as the edit above saved it, sent back unchanged: its overdue
-      // visits stay, and only its upcoming ones are replaced.
+      // The plan as the edit above saved it, sent back unchanged: its visits
+      // stay, and only its dates without one get one.
       const saved = storedSite({
         collectionStartDate: stored('2026-09-14 00:00:00'),
         collectionExpiryDate: stored('2026-11-13 23:59:59'),
@@ -651,18 +698,19 @@ describe('Editing a collection plan', () => {
         collectionDuration: 60,
       });
       const edit = await editPlan(saved, webPlan('2026-09-14'), {
-        visits: ['2026-09-14', '2026-09-21', '2026-09-28', '2026-10-05'].map(
-          (day) => ({ visitScheduledAt: utcDay(day) }),
-        ),
+        visits: [
+          '2026-09-14',
+          '2026-09-21',
+          '2026-09-28',
+          '2026-10-05',
+          '2026-10-12',
+          '2026-10-19',
+        ].map((day) => ({ visitScheduledAt: utcDay(day) })),
       });
       await edit.request;
 
-      expect(edit.deleteConditions()).toContain(
-        '"visitScheduledAt" >= :todayStart',
-      );
+      expect(edit.visitDelete()).toBeUndefined();
       expect(edit.createdDates()).toEqual([
-        '2026-10-12',
-        '2026-10-19',
         '2026-10-26',
         '2026-11-02',
         '2026-11-09',
@@ -724,12 +772,12 @@ describe('Editing a collection plan', () => {
 
     beforeEach(() => setClock('2026-10-12T05:30:00.000Z')); // Mon 12 Oct, 11:00 IST
 
-    it('only reassigns upcoming visits when the web form changes the collector', async () => {
+    it('keeps the visits, handing them to the new collector, when the web form changes only the collector', async () => {
       const edit = await editPlan(
         legacyWeeklyMondays(),
         {
           ...webPlan('2026-09-07', ['Monday'], 120),
-          collectionCollector: 'u2',
+          collectionCollectors: ['u2'],
         },
         {
           visits: [
@@ -745,12 +793,11 @@ describe('Editing a collection plan', () => {
       expect(response.success).toBe(true);
       // The stored 20 Jan end stays.
       expect(edit.setFields()).not.toHaveProperty('collectionExpiryDate');
-      // Only untouched upcoming visits from today go; overdue ones stay.
-      const conditions = edit.deleteConditions();
-      expect(conditions).toContain('"visitStatus" = :status');
-      expect(conditions).toContain('"visitScheduledAt" >= :todayStart');
-      // From today, against the stored end, around the kept rescheduled
-      // visit.
+      // No visit goes; the open ones go to the new collector in place.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeDefined();
+      // Only dates without a visit get one: from today, against the stored
+      // end, around the kept rescheduled visit.
       const dates = edit.createdDates();
       expect(dates[0]).toBe('2026-10-12');
       expect(dates).not.toContain('2026-10-19');
@@ -771,15 +818,14 @@ describe('Editing a collection plan', () => {
 
       const edit = await editPlan(site, {
         ...webPlan('2026-02-02', ['Monday'], 30),
-        collectionCollector: 'u2',
+        collectionCollectors: ['u2'],
       });
       const response = await edit.request;
 
       expect(response.success).toBe(true);
       expect(edit.setFields()).not.toHaveProperty('collectionExpiryDate');
-      expect(edit.deleteConditions()).toContain(
-        '"visitScheduledAt" >= :todayStart',
-      );
+      // The same dates: no visit goes, and only dates without one get one.
+      expect(edit.visitDelete()).toBeUndefined();
       expect(edit.createdDates()).toEqual([
         '2026-03-16',
         '2026-03-23',
@@ -819,7 +865,7 @@ describe('Editing a collection plan', () => {
       });
     const toNewCollector = () => ({
       ...webPlan('2026-10-19', ['Wednesday'], 30),
-      collectionCollector: 'u2',
+      collectionCollectors: ['u2'],
     });
     const planVisitsFrom19Oct = [
       '2026-10-19',
@@ -830,7 +876,7 @@ describe('Editing a collection plan', () => {
       '2026-11-18',
     ];
 
-    it('gives the new collector the plan visit that shares its day with a completed one', async () => {
+    it('keeps the plan visit that shares its day with a completed one, for the new collector', async () => {
       const completed: Partial<Visit> = {
         id: 'v-completed',
         visitScheduledAt: utcDay('2026-10-19'),
@@ -839,35 +885,44 @@ describe('Editing a collection plan', () => {
         collector: { id: 'u1' } as any,
       };
       const completedBefore = structuredClone(completed);
+      // The plan's own visits, 19 Oct's beside the completed one.
+      const planVisits = planVisitsFrom19Oct.map((day) => ({
+        id: `v-${day}`,
+        visitScheduledAt: utcDay(day),
+      }));
 
       const edit = await editPlan(fromMonday19Oct(), toNewCollector(), {
-        visits: [completed],
-        // The plan's own 19 Oct visit goes with the other untouched ones.
-        deleted: planVisitsFrom19Oct.map((day) => ({
-          visitScheduledAt: utcDay(day),
-        })),
+        visits: [completed, ...planVisits],
       });
       const response = await edit.request;
 
       expect(response.success).toBe(true);
-      // Every deleted plan visit is made again for the new collector,
-      // 19 Oct included.
-      expect(edit.createdDates()).toEqual(planVisitsFrom19Oct);
-      expect(edit.createdVisits().map((visit) => visit.collector?.id)).toEqual(
-        planVisitsFrom19Oct.map(() => 'u2'),
-      );
+      // The plan's visits stay, ids and all, and go to the new collector in
+      // place; none is made again.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeDefined();
+      expect(edit.manager.save).not.toHaveBeenCalled();
       // The completed visit stays as it was: it is neither deleted, saved
       // nor updated.
       expect(completed).toEqual(completedBefore);
-      expect(edit.createdVisits()).not.toContain(completed);
-      expect(edit.manager.save).toHaveBeenCalledTimes(1);
       expect(edit.manager.update.mock.calls).toEqual([
         [Site, SITE_ID, { collectionLastScheduleDate: utcDay('2026-11-18') }],
       ]);
     });
 
-    it('still deletes only untouched upcoming visits from today on', async () => {
-      const edit = await editPlan(fromMonday19Oct(), toNewCollector());
+    // A site saved with a plan but no collector has no plan visits yet. Its
+    // first collector gets the plan scheduled, through the same replacement
+    // as a changed plan, from today on.
+    const withoutCollectors = () => ({
+      ...fromMonday19Oct(),
+      collectorIds: [],
+    });
+
+    it('schedules the plan of a site getting its first collector, deleting only untouched upcoming visits from today on', async () => {
+      const edit = await editPlan(
+        withoutCollectors() as Site,
+        toNewCollector(),
+      );
       await edit.request;
 
       const conditions = edit.deleteConditions();
@@ -895,9 +950,10 @@ describe('Editing a collection plan', () => {
       ]);
     });
 
-    it('adds no visit beside a kept one on a day it deleted nothing from', async () => {
+    it('adds no visit beside a kept one', async () => {
       // 19 Oct was collected with no separate plan visit, and the 28 Oct
-      // visit was moved to 29 Oct: neither day gets a new visit.
+      // visit was moved to 29 Oct: neither day gets a new visit. The dates
+      // without one do.
       const edit = await editPlan(fromMonday19Oct(), toNewCollector(), {
         visits: [
           {
@@ -912,12 +968,10 @@ describe('Editing a collection plan', () => {
             rescheduledFrom: utcDay('2026-10-28'),
           },
         ],
-        deleted: ['2026-10-21', '2026-11-04', '2026-11-11', '2026-11-18'].map(
-          (day) => ({ visitScheduledAt: utcDay(day) }),
-        ),
       });
       await edit.request;
 
+      expect(edit.visitDelete()).toBeUndefined();
       expect(edit.createdDates()).toEqual([
         '2026-10-21',
         '2026-11-04',
@@ -927,21 +981,25 @@ describe('Editing a collection plan', () => {
     });
 
     it('makes one visit for a day even when two were deleted from it', async () => {
-      const edit = await editPlan(fromMonday19Oct(), toNewCollector(), {
-        visits: [
-          {
-            id: 'v-completed',
-            visitScheduledAt: utcDay('2026-10-19'),
-            isCompleted: true,
-            visitStatus: 'completed' as any,
-          },
-        ],
-        deleted: [
-          '2026-10-19',
-          '2026-10-19',
-          ...planVisitsFrom19Oct.slice(1),
-        ].map((day) => ({ visitScheduledAt: utcDay(day) })),
-      });
+      const edit = await editPlan(
+        withoutCollectors() as Site,
+        toNewCollector(),
+        {
+          visits: [
+            {
+              id: 'v-completed',
+              visitScheduledAt: utcDay('2026-10-19'),
+              isCompleted: true,
+              visitStatus: 'completed' as any,
+            },
+          ],
+          deleted: [
+            '2026-10-19',
+            '2026-10-19',
+            ...planVisitsFrom19Oct.slice(1),
+          ].map((day) => ({ visitScheduledAt: utcDay(day) })),
+        },
+      );
       await edit.request;
 
       expect(edit.createdDates()).toEqual(planVisitsFrom19Oct);
@@ -1002,7 +1060,7 @@ describe('Editing a collection plan', () => {
       setClock('2026-03-01T05:30:00.000Z'); // Sun 1 Mar, 11:00 IST
       const edit = await editPlan(
         endedPlan(7),
-        mobileBody({ collectionCollector: 'u2' }),
+        mobileBody({ collectionCollectors: ['u2'] }),
       );
       const response = await edit.request;
 
@@ -1010,6 +1068,79 @@ describe('Editing a collection plan', () => {
       expect(edit.visitDelete()).toBeUndefined();
       expect(edit.manager.save).not.toHaveBeenCalled();
       expectsOpenVisitsReassigned(edit);
+    });
+
+    it('adds a collector without touching the visits', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u1', 'u2'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u1', 'u2']);
+      // The visits stay the primary's, ids and all.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeUndefined();
+      expect(edit.manager.save).not.toHaveBeenCalled();
+      expect(response.data.collectionCollectors.map((user) => user.id)).toEqual(
+        ['u1', 'u2'],
+      );
+    });
+
+    it('hands the visits to a new primary collector', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u2', 'u1'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u2', 'u1']);
+      expectsOpenVisitsReassigned(edit);
+      expect(
+        edit.createdVisits().every((visit) => visit.collector?.id === 'u2'),
+      ).toBe(true);
+    });
+
+    it('adds a collector from another team, leaving the visits with the primary', async () => {
+      const edit = await editPlan(
+        fromMonday19Oct(),
+        mobileBody({ collectionCollectors: ['u1', 'u3'] }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u1', 'u3']);
+      // The visits stay the primary's, under their team t1.
+      expect(edit.visitDelete()).toBeUndefined();
+      expect(edit.visitReassign()).toBeUndefined();
+      expect(edit.manager.save).not.toHaveBeenCalled();
+      expect(response.data.collectionCollectors.map((user) => user.id)).toEqual(
+        ['u1', 'u3'],
+      );
+    });
+
+    it('refuses a collector who is not in the project', async () => {
+      await expectRefused(
+        await editPlan(
+          fromMonday19Oct(),
+          mobileBody({ collectionCollectors: ['u1', 'u9'] }),
+        ),
+        'u9 is not a member of a team in this project',
+      );
+    });
+
+    it('still saves a site whose collector has left, sent back unchanged', async () => {
+      const edit = await editPlan(
+        { ...fromMonday19Oct(), collectorIds: ['u9'] } as Site,
+        mobileBody({ collectionCollectors: ['u9'], address: '2 Farm Road' }),
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields()).not.toHaveProperty('collectorIds');
+      expect(edit.visitReassign()).toBeUndefined();
     });
 
     it('leaves the visits alone when the collector stays the same', async () => {
@@ -1028,7 +1159,7 @@ describe('Editing a collection plan', () => {
 
     // Monthly on the 2nd Monday from Thu 10 Sep for 90 days, so until 9 Dec.
     const septemberPlan = (duration = 90) => ({
-      collectionCollector: 'u1',
+      collectionCollectors: ['u1'],
       collectionFrequency: 1,
       collectionFrequencyInterval: 30,
       collectionDuration: duration,
@@ -1048,6 +1179,29 @@ describe('Editing a collection plan', () => {
         '2026-10-12',
         '2026-11-09',
       ]);
+    });
+
+    it('schedules a plan with collectors from two teams under the primary collector’s team', async () => {
+      // u3 is in team t2, u1 in t1; u3 is the primary.
+      const edit = await editPlan(
+        { ...planlessSite(), collectorIds: [] } as Site,
+        { ...septemberPlan(), collectionCollectors: ['u3', 'u1'] },
+      );
+      const response = await edit.request;
+
+      expect(response.success).toBe(true);
+      expect(edit.setFields().collectorIds).toEqual(['u3', 'u1']);
+      expect(edit.createdDates()).toEqual([
+        '2026-09-10',
+        '2026-09-14',
+        '2026-10-12',
+        '2026-11-09',
+      ]);
+      expect(
+        edit
+          .createdVisits()
+          .map((visit) => [visit.collector.id, visit.team.id]),
+      ).toEqual(edit.createdVisits().map(() => ['u3', 't2']));
     });
 
     it('is refused when it moves an existing plan back more than a month', async () => {
@@ -1073,7 +1227,7 @@ describe('Editing a collection plan', () => {
     it('saves a one-time collection on a past start date, as an overdue visit', async () => {
       // Sunday 4 Oct, ten days back.
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 0,
         collectionDuration: 0,
@@ -1091,7 +1245,7 @@ describe('Editing a collection plan', () => {
     it('saves a weekly Monday plan for one month from the earliest date', async () => {
       // 14 Sep to 14 Oct: its Mondays so far are all past.
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 7,
         collectionDuration: 30,
@@ -1116,7 +1270,7 @@ describe('Editing a collection plan', () => {
       // Today 14 Aug; 14 Jul to 13 Aug, all past.
       setClock('2026-08-14T05:30:00.000Z');
       const edit = await editPlan(planlessSite(), {
-        collectionCollector: 'u1',
+        collectionCollectors: ['u1'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 1,
         collectionDuration: 30,
@@ -1146,7 +1300,7 @@ describe('Editing a collection plan', () => {
       // 12 Sep is before the earliest date, 14 Sep, by more than the margin.
       await expectRefused(
         await editPlan(planlessSite(), {
-          collectionCollector: 'u1',
+          collectionCollectors: ['u1'],
           collectionFrequency: 1,
           collectionFrequencyInterval: 0,
           collectionDuration: 0,
@@ -1263,7 +1417,7 @@ describe('Editing a collection plan', () => {
     it('saves the web form sent back unchanged apart from the collector', async () => {
       // The web form sends the whole plan, prefilled start date included.
       const edit = await editPlan(endedPlan(7), {
-        collectionCollector: 'u2',
+        collectionCollectors: ['u2'],
         collectionFrequency: 1,
         collectionFrequencyInterval: 7,
         collectionDuration: 30,

@@ -1,5 +1,7 @@
 import { CronJobProcessor } from './visit-schedule-job-processor';
 import { VisitStatus } from '../../common/enums/visitStatus.enum';
+import { Team } from 'src/entities/team.entity';
+import { User } from 'src/entities/user.entity';
 
 /**
  * These tests pin the behaviour that the scheduling cron must create a visit for
@@ -13,12 +15,14 @@ describe('CronJobProcessor.process', () => {
   let visitRepository: any;
   let userRepository: any;
   let teamRepository: any;
+  let collector: any;
+  let collectorQueries: any[];
   let dueSites: any[];
 
   const makeSite = (id: string) => ({
     id,
     project: { id: 'p1' },
-    collectionCollector: { id: 'c1' },
+    collectorIds: ['c1', 'c2'],
     collectionStartDate: new Date('2026-05-22T00:00:00Z'),
     collectionLastScheduleDate: new Date('2026-06-12T00:00:00Z'),
     collectionFrequencyInterval: 7,
@@ -44,12 +48,28 @@ describe('CronJobProcessor.process', () => {
       create: jest.fn((v) => v),
       save: jest.fn().mockResolvedValue(undefined),
     };
+    // loadProjectCollector's user query and the project's teams (t1).
+    collector = { id: 'c1', team: { id: 't1' }, roles: [] };
+    collectorQueries = [];
     userRepository = {
-      findOne: jest.fn().mockResolvedValue({ id: 'c1', team: { id: 't1' } }),
+      manager: {
+        createQueryBuilder: jest.fn((entity: unknown) => {
+          const qb: any = {
+            leftJoinAndSelect: () => qb,
+            innerJoin: () => qb,
+            select: () => qb,
+            where: (_sql: string, params: any) => {
+              if (entity === User) collectorQueries.push(params);
+              return qb;
+            },
+            getOne: async () => collector,
+            getRawMany: async () => (entity === Team ? [{ id: 't1' }] : []),
+          };
+          return qb;
+        }),
+      },
     };
-    teamRepository = {
-      findOne: jest.fn().mockResolvedValue({ id: 't1' }),
-    };
+    teamRepository = {};
 
     processor = new CronJobProcessor(
       siteRepository,
@@ -76,6 +96,62 @@ describe('CronJobProcessor.process', () => {
 
     expect(visitRepository.save).toHaveBeenCalledTimes(2);
     expect(siteRepository.save).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives the visit to the primary collector and their team', async () => {
+    await processor.process();
+
+    expect(collectorQueries[0]).toEqual({ userId: 'c1' });
+    expect(visitRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        collector: expect.objectContaining({ id: 'c1' }),
+        team: { id: 't1' },
+      }),
+    );
+  });
+
+  it('uses the collector’s team in the site’s project, not their own team from another project', async () => {
+    collector = {
+      id: 'c1',
+      team: { id: 't-other-project' },
+      roles: [{ status: 'active', team: 't1', project: 'p1' }],
+    };
+
+    await processor.process();
+
+    expect(visitRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ team: { id: 't1' } }),
+    );
+  });
+
+  it.each([
+    ['no longer exists', null],
+    ['is in none of the project’s teams', { id: 'c1', team: null, roles: [] }],
+  ])(
+    'schedules nothing and keeps the site’s schedule when its collector %s',
+    async (_label, missing) => {
+      collector = missing;
+
+      await processor.process();
+
+      expect(visitRepository.save).not.toHaveBeenCalled();
+      // The pointer stays, so the site is scheduled once its collector is fixed.
+      expect(siteRepository.save).not.toHaveBeenCalled();
+    },
+  );
+
+  it('only picks sites that have a collector', async () => {
+    const builder = makeQueryBuilder();
+    siteRepository.createQueryBuilder.mockReturnValue(builder);
+
+    await processor.process();
+
+    const conditions = builder.andWhere.mock.calls.map(([sql]) => String(sql));
+    expect(
+      conditions.some((sql) =>
+        sql.includes('cardinality(site.collectorIds) > 0'),
+      ),
+    ).toBe(true);
   });
 
   it('looks for the existing visit by upcoming status', async () => {

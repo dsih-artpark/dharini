@@ -20,7 +20,7 @@ class _$SiteResponseData extends SiteResponseData {
   @override
   final BuiltList<Disease> diseases;
   @override
-  final User? collectionCollector;
+  final BuiltList<User>? collectionCollectors;
   @override
   final UserWithTeamResponse? createdBy;
   @override
@@ -73,7 +73,7 @@ class _$SiteResponseData extends SiteResponseData {
       this.siteSubType,
       this.siteType,
       required this.diseases,
-      this.collectionCollector,
+      this.collectionCollectors,
       this.createdBy,
       this.location,
       required this.id,
@@ -113,7 +113,7 @@ class _$SiteResponseData extends SiteResponseData {
         siteSubType == other.siteSubType &&
         siteType == other.siteType &&
         diseases == other.diseases &&
-        collectionCollector == other.collectionCollector &&
+        collectionCollectors == other.collectionCollectors &&
         createdBy == other.createdBy &&
         location == other.location &&
         id == other.id &&
@@ -145,7 +145,7 @@ class _$SiteResponseData extends SiteResponseData {
     _$hash = $jc(_$hash, siteSubType.hashCode);
     _$hash = $jc(_$hash, siteType.hashCode);
     _$hash = $jc(_$hash, diseases.hashCode);
-    _$hash = $jc(_$hash, collectionCollector.hashCode);
+    _$hash = $jc(_$hash, collectionCollectors.hashCode);
     _$hash = $jc(_$hash, createdBy.hashCode);
     _$hash = $jc(_$hash, location.hashCode);
     _$hash = $jc(_$hash, id.hashCode);
@@ -179,7 +179,7 @@ class _$SiteResponseData extends SiteResponseData {
           ..add('siteSubType', siteSubType)
           ..add('siteType', siteType)
           ..add('diseases', diseases)
-          ..add('collectionCollector', collectionCollector)
+          ..add('collectionCollectors', collectionCollectors)
           ..add('createdBy', createdBy)
           ..add('location', location)
           ..add('id', id)
@@ -236,11 +236,11 @@ class SiteResponseDataBuilder
       _$this._diseases ??= ListBuilder<Disease>();
   set diseases(ListBuilder<Disease>? diseases) => _$this._diseases = diseases;
 
-  UserBuilder? _collectionCollector;
-  UserBuilder get collectionCollector =>
-      _$this._collectionCollector ??= UserBuilder();
-  set collectionCollector(UserBuilder? collectionCollector) =>
-      _$this._collectionCollector = collectionCollector;
+  ListBuilder<User>? _collectionCollectors;
+  ListBuilder<User> get collectionCollectors =>
+      _$this._collectionCollectors ??= ListBuilder<User>();
+  set collectionCollectors(ListBuilder<User>? collectionCollectors) =>
+      _$this._collectionCollectors = collectionCollectors;
 
   UserWithTeamResponseBuilder? _createdBy;
   UserWithTeamResponseBuilder get createdBy =>
@@ -347,7 +347,7 @@ class SiteResponseDataBuilder
       _siteSubType = $v.siteSubType;
       _siteType = $v.siteType;
       _diseases = $v.diseases.toBuilder();
-      _collectionCollector = $v.collectionCollector?.toBuilder();
+      _collectionCollectors = $v.collectionCollectors?.toBuilder();
       _createdBy = $v.createdBy?.toBuilder();
       _location = $v.location?.toBuilder();
       _id = $v.id;
@@ -397,7 +397,7 @@ class SiteResponseDataBuilder
             siteSubType: siteSubType,
             siteType: siteType,
             diseases: diseases.build(),
-            collectionCollector: _collectionCollector?.build(),
+            collectionCollectors: _collectionCollectors?.build(),
             createdBy: _createdBy?.build(),
             location: _location?.build(),
             id: BuiltValueNullFieldError.checkNotNull(
@@ -430,8 +430,8 @@ class SiteResponseDataBuilder
 
         _$failedField = 'diseases';
         diseases.build();
-        _$failedField = 'collectionCollector';
-        _collectionCollector?.build();
+        _$failedField = 'collectionCollectors';
+        _collectionCollectors?.build();
         _$failedField = 'createdBy';
         _createdBy?.build();
         _$failedField = 'location';

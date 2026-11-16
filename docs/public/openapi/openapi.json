@@ -9978,10 +9978,17 @@
             "description": "longitude",
             "example": "-70.4453"
           },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
+          "collectionCollectors": {
+            "description": "IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits.",
+            "example": [
+              "user-uuid"
+            ],
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "collectionConsent": {
             "type": "string",
@@ -10008,8 +10015,7 @@
           "photos",
           "regionId",
           "latitude",
-          "longitude",
-          "collectionCollector"
+          "longitude"
         ]
       },
       "UserWithTeamResponse": {
@@ -10299,8 +10305,11 @@
               "$ref": "#/components/schemas/Disease"
             }
           },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
+          "collectionCollectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           },
           "createdBy": {
             "$ref": "#/components/schemas/UserWithTeamResponse"
@@ -10486,8 +10495,11 @@
               "$ref": "#/components/schemas/Disease"
             }
           },
-          "collectionCollector": {
-            "$ref": "#/components/schemas/User"
+          "collectionCollectors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           },
           "createdBy": {
             "$ref": "#/components/schemas/UserWithTeamResponse"
@@ -10636,10 +10648,17 @@
             "description": "longitude",
             "example": "-70.4453"
           },
-          "collectionCollector": {
-            "type": "string",
-            "description": "collectionCollector id",
-            "example": "user-uuid"
+          "collectionCollectors": {
+            "description": "IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are.",
+            "example": [
+              "user-uuid"
+            ],
+            "nullable": true,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
           "collectionConsent": {
             "type": "string",
@@ -10654,8 +10673,7 @@
           "photos",
           "regionId",
           "latitude",
-          "longitude",
-          "collectionCollector"
+          "longitude"
         ]
       },
       "VisitSummaryResponseData": {
@@ -11213,7 +11231,10 @@
             "$ref": "#/components/schemas/User"
           },
           "visitedBy": {
-            "$ref": "#/components/schemas/User"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           }
         },
         "required": [
@@ -11362,9 +11383,14 @@
             "example": "Anything regarding visit"
           },
           "visitedBy": {
-            "type": "string",
-            "description": "team member id",
-            "example": "eaa81d72-5733-40e2-8f91-e3af7f845967"
+            "description": "IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.",
+            "example": [
+              "eaa81d72-5733-40e2-8f91-e3af7f845967"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "suspectDiseaseData": {
             "description": "This data is updating result of test result for disease",
@@ -11478,9 +11504,14 @@
             "example": "eaa81d72-5733-40e2-8f91-e3af7f845967"
           },
           "visitedBy": {
-            "type": "string",
-            "description": "team member id",
-            "example": "eaa81d72-5733-40e2-8f91-e3af7f845967"
+            "description": "IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted, as apps from before visits had several visitors send.",
+            "example": [
+              "eaa81d72-5733-40e2-8f91-e3af7f845967"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "photos": {
             "description": "file path",
@@ -11669,7 +11700,7 @@
         "properties": {
           "visitData": {
             "description": "list of sample data collected from site",
-            "example": "{\n      \"siteId\": \"eaa81d72-5733-40e2-8f91-e3af7f845967\",\n      \"visitedBy\": \"eaa81d72-5733-40e2-8f91-e3af7f845967\",\n      \"projectId\" : \"2742233c-4ddd-4f85-a961-4a30ceaa47e6\",\n      \"teamId\": \"ab76cec7-38ee-48b8-b6f3-cb7813a0a937\",\n      \"isCompleted\": true,\n      \"photos\": [],\n      \"comment\": \"test\",\n      \"suspectDiseaseData\": [\n          \"{diseaseId: 99d12e32-079a-47c8-967a-5d92c7529d47, sampleCount: 0, isSuspectedPositive: false}\"\n      ]\n    }",
+            "example": "{\n      \"siteId\": \"eaa81d72-5733-40e2-8f91-e3af7f845967\",\n      \"visitedBy\": [\"eaa81d72-5733-40e2-8f91-e3af7f845967\"],\n      \"projectId\" : \"2742233c-4ddd-4f85-a961-4a30ceaa47e6\",\n      \"teamId\": \"ab76cec7-38ee-48b8-b6f3-cb7813a0a937\",\n      \"isCompleted\": true,\n      \"photos\": [],\n      \"comment\": \"test\",\n      \"suspectDiseaseData\": [\n          \"{diseaseId: 99d12e32-079a-47c8-967a-5d92c7529d47, sampleCount: 0, isSuspectedPositive: false}\"\n      ]\n    }",
             "allOf": [
               {
                 "$ref": "#/components/schemas/UpdateVisitOnSubmitDto"
@@ -12041,7 +12072,10 @@
             "type": "string"
           },
           "visitedBy": {
-            "$ref": "#/components/schemas/User"
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
           },
           "collector": {
             "$ref": "#/components/schemas/User"

@@ -10,7 +10,13 @@ import {
   Pencil,
 } from "lucide-react";
 import { Sample, SampleStatusType } from "@/src/types/sample";
-import { formatDate, isValidUrl } from "@/src/utils";
+import type { User } from "@/src/types/global";
+import {
+  collectorName,
+  formatDate,
+  isValidUrl,
+  visitVisitors,
+} from "@/src/utils";
 import {
   DISEASE_COLOR_CODE,
   SAMPLE_STATUS_MAPPING,
@@ -68,6 +74,19 @@ const ALL_COLUMNS_VISIBLE: SampleTableVisibleColumns = {
   lastActivity: true,
 };
 
+// Who collected a sample: its own collector first, then everyone else who
+// was at its visit, each listed once.
+function sampleCollectors(sample: Sample): User[] {
+  const seen = new Set<string>();
+  return [sample.collectedBy, ...visitVisitors(sample.visit)].filter(
+    (person): person is User => {
+      if (!person || seen.has(person.id)) return false;
+      seen.add(person.id);
+      return true;
+    },
+  );
+}
+
 export default function SamplesListItem({
   sample,
   activeTab,
@@ -98,6 +117,7 @@ export default function SamplesListItem({
   );
   const isAll = useAtomValue(labAllProjectsAtom);
   const user = useAtomValue(userAtom);
+  const collectors = sampleCollectors(sample);
 
   const anchorSample =
     selectedProcessableSamples.length > 0
@@ -350,11 +370,22 @@ export default function SamplesListItem({
         {/* Collected By */}
         {activeTab === "picked-up" && visibleColumns.collectedBy && (
           <td className="py-3 pr-4">
-            <p className="text-slate-600 text-sm capitalize whitespace-nowrap">
-              {sample.collectedBy
-                ? `${sample.collectedBy.firstName} ${sample.collectedBy.lastName}`
-                : "—"}
-            </p>
+            {collectors.length > 0 ? (
+              // First person by name, the rest as "+N"; hover lists all.
+              <p
+                className="flex items-center gap-1.5 text-slate-600 text-sm capitalize whitespace-nowrap"
+                title={collectors.map(collectorName).join(", ")}
+              >
+                {collectorName(collectors[0])}
+                {collectors.length > 1 && (
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-600">
+                    +{collectors.length - 1}
+                  </span>
+                )}
+              </p>
+            ) : (
+              <p className="text-slate-600 text-sm">—</p>
+            )}
           </td>
         )}
 

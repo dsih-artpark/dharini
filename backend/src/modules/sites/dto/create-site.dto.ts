@@ -60,12 +60,19 @@ export class CreateSiteDto extends PickType(Site, [
   @ApiHideProperty()
   project?: string;
 
+  // No `isArray`/`type` here: the Swagger plugin already infers string[],
+  // and stating it again nests the array in the spec.
   @ApiProperty({
-    description: 'collectionCollector id',
-    example: 'user-uuid',
+    description:
+      'IDs of the users who collect at the site, primary first. They may be from different teams of the project. Plan visits are created under the primary collector and their team. All of them see and can submit the visits.',
+    example: ['user-uuid'],
+    required: false,
+    nullable: true,
   })
   @IsOptional()
-  collectionCollector: string;
+  @IsArray()
+  @IsUUID('all', { each: true })
+  collectionCollectors?: string[];
 
   // Kept as a plain string (not boolean) because the varchar column predates
   // this field and released APKs deserialize it as String; a boolean on the

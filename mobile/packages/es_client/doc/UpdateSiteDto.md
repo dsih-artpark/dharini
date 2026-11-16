@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 **regionId** | **String** | ID of the region | 
 **latitude** | **num** | latitude | 
 **longitude** | **num** | longitude | 
-**collectionCollector** | **String** | collectionCollector id | 
+**collectionCollectors** | **BuiltList&lt;String&gt;** | IDs of the users who collect at the site, primary first. Replaces the site's collectors; left out or empty, they stay as they are. | [optional] 
 **collectionConsent** | **String** | Site owner's collection consent: 'true' or 'false' | [optional] 
 **name** | **String** |  | 
 **collectionFrequencyInterval** | **num** |  | [optional] 

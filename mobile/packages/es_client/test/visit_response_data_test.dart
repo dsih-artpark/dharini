@@ -32,7 +32,7 @@ void main() {
       // TODO
     });
 
-    // User visitedBy
+    // BuiltList<User> visitedBy
     test('to test the property `visitedBy`', () async {
       // TODO
     });

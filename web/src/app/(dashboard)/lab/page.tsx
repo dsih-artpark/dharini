@@ -1,8 +1,24 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import SamplesStat from "@/src/components/lab/samples-stat";
-import ReceivedSamplesList from "@/src/components/lab/received-sample-list";
 import SuperAdminProjectPicker from "@/src/components/lab/super-admin-project-picker";
+import Spinner from "@/src/components/ui/spinner";
+
+// Browser-only: the list starts from the tab and columns saved in
+// sessionStorage, which the server can't read, so a server render would
+// differ from the first client render and fail hydration.
+const ReceivedSamplesList = dynamic(
+  () => import("@/src/components/lab/received-sample-list"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex justify-center py-10">
+        <Spinner />
+      </div>
+    ),
+  },
+);
 
 export default function Lab() {
   return (

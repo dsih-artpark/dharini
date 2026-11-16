@@ -42,6 +42,7 @@ import {
   useIsSuperAdmin,
   useIsWorkspaceAdmin,
 } from "@/src/hooks/check-permission";
+import { useCurrentProjectResolver } from "@/src/hooks/use-current-project";
 import {
   getStoredSuperAdminProjectId,
   isSuperAdminLabFlowEnabled,
@@ -75,31 +76,44 @@ export default function Header() {
   const [isCreatingWorkspace, setIsCreatingWorkspace] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
-  const routeProjectId = pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? "";
 
   const isSuperAdmin = useIsSuperAdmin();
   const isWorkspaceAdmin = useIsWorkspaceAdmin();
   const hasPermission = useHasPermission();
   const canUpload = useCanUploadAnywhere();
-  // No `user.projects?.[0]?.id` fallback: picking an arbitrary project from
-  // a multi-project user's list would silently evaluate these checks
-  // against the wrong project. Without a resolved project, hasPermission
-  // falls through to workspace/system roles for currentWorkspaceAtom on its
-  // own - which is correct here since canAdmin/canLab already OR in
-  // isSuperAdmin/isWorkspaceAdmin separately.
-  const activeProjectId = routeProjectId || user?.project?.id;
+  const { resolveProjectId, workspaceProjects } = useCurrentProjectResolver();
+  // Evaluate the menu against the same project the destination pages
+  // (/lab, /monitor, ...) act on: the /projects/:id route, else the user's
+  // project in the current workspace, taken from their roles when the legacy
+  // `user.project` column is empty. Checking `user.project` alone hid
+  // Projects and Lab Processing from every team/project member whose legacy
+  // column was never written (common for team-admins who already had an
+  // account). `user.project` remains the fallback while the workspace's
+  // projects are still loading, so the menu doesn't flicker for everyone
+  // else. canAdmin/canLab already OR in isSuperAdmin/isWorkspaceAdmin.
+  const activeProjectId = resolveProjectId() || user?.project?.id;
   const canAdmin =
     isSuperAdmin ||
     isWorkspaceAdmin ||
     hasPermission("read", "project", activeProjectId);
+  // A member of several projects may hold the lab role on only one of them,
+  // so check every project in the workspace, not just the resolved one. The
+  // lab page's project picker lists only the permitted projects.
   const canLab =
     hasPermission("read", "sample-test", activeProjectId) ||
+    workspaceProjects.some((project) =>
+      hasPermission("read", "sample-test", project.id),
+    ) ||
     (isSuperAdmin && isSuperAdminLabFlowEnabled() && !!activeProjectId);
   // 4.3: workspace-admins have no user.project of their own (their UserRole
   // is workspace-scoped, not project-scoped) - without this they'd fall
   // through to the dead "#" href despite canAdmin being true for them.
   const adminHref =
     isSuperAdmin || isWorkspaceAdmin ? "/manage" : canAdmin ? "/manage" : "#";
+  // Everything on /settings is super-admin or workspace-admin only; for
+  // anyone else the page has nothing to show. Used by both the sidebar and
+  // the profile menu so the two entry points can't drift apart.
+  const canSeeSettings = isSuperAdmin || isWorkspaceAdmin;
 
   const fetchUser = async () => {
     try {
@@ -362,12 +376,16 @@ export default function Header() {
       icon: Users,
       active: pathname === "/team",
     },
-    {
-      href: "/settings",
-      label: "Settings",
-      icon: Settings,
-      active: pathname === "/settings",
-    },
+    ...(canSeeSettings
+      ? [
+        {
+          href: "/settings",
+          label: "Settings",
+          icon: Settings,
+          active: pathname === "/settings",
+        },
+      ]
+      : []),
   ];
 
   const breadcrumbs = useMemo(() => {
@@ -621,7 +639,10 @@ export default function Header() {
             )}
           </button>
           {showProfileMenu && (
-            <UserMenu onClose={() => setShowProfileMenu(false)} />
+            <UserMenu
+              showSettings={canSeeSettings}
+              onClose={() => setShowProfileMenu(false)}
+            />
           )}
         </div>
       </aside>

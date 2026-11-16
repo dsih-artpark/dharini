@@ -23,6 +23,7 @@ import { Media } from 'src/entities/media.entity';
 import { Project } from 'src/entities/project.entity';
 import { Role } from 'src/entities/role.entity';
 import { Sample } from 'src/entities/sample.entity';
+import { Site } from 'src/entities/site.entity';
 import { Team } from 'src/entities/team.entity';
 import { UserRole } from 'src/entities/user-role.entity';
 import { User } from 'src/entities/user.entity';
@@ -36,6 +37,7 @@ import {
 } from 'typeorm';
 import { MulterConfigService } from '../media/media.service';
 import { UserService } from '../users/users.service';
+import { wasAtVisit } from '../visits/visit-visited-by';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
@@ -77,6 +79,40 @@ export class TeamsService {
     private readonly mailerService: MailerService,
     private readonly cacheService: RedisCacheService,
   ) {}
+
+  // The sites each user collects for (one of `sites.collector_id`), with
+  // their visits. That column is a uuid[], so this stands in for the
+  // `user.sites` relation it used to back.
+  private async sitesByCollector(
+    userIds: string[],
+    { withLocation = false }: { withLocation?: boolean } = {},
+  ): Promise<Map<string, Site[]>> {
+    const sitesByUser = new Map<string, Site[]>(
+      userIds.map((userId) => [userId, []]),
+    );
+    if (!userIds.length) return sitesByUser;
+
+    // Each visit's collector id comes along for wasAtVisit.
+    const query = this.dataSource
+      .getRepository(Site)
+      .createQueryBuilder('site')
+      .leftJoinAndSelect('site.visits', 'visit')
+      .leftJoin('visit.collector', 'visitCollector')
+      .addSelect('visitCollector.id')
+      .where('site.collectorIds && ARRAY[:...userIds]::uuid[]', { userIds });
+    if (withLocation) {
+      query
+        .leftJoinAndSelect('site.location', 'location')
+        .leftJoinAndSelect('location.region', 'region')
+        .leftJoinAndSelect('region.parentRegion', 'parentRegion');
+    }
+    for (const site of await query.getMany()) {
+      for (const userId of site.collectorIds) {
+        sitesByUser.get(userId)?.push(site);
+      }
+    }
+    return sitesByUser;
+  }
 
   // A14: `query.projectId` used to go straight into `where: {...}` as an
   // object literal - if it was ever missing, TypeORM silently drops that
@@ -199,13 +235,7 @@ export class TeamsService {
 
     const members = await this.userRoleRepository.find({
       where: { team: team.id },
-      relations: [
-        'user',
-        'user.sites',
-        'user.sites.visits',
-        'user.roles',
-        'user.roles.role',
-      ],
+      relations: ['user', 'user.roles', 'user.roles.role'],
     });
     const teamMembers = members
       .map((userRole) =>
@@ -222,16 +252,21 @@ export class TeamsService {
 
     const total = collectors.length;
     const paginatedCollectors = collectors.slice(skip, skip + limit);
+    const sitesByMember = await this.sitesByCollector(
+      paginatedCollectors.map((member) => member.id),
+    );
 
     // Process members to include site count and last visited visit
     const TeamMembersCollectorListType = paginatedCollectors.map((member) => {
-      const siteCount = member.sites ? member.sites.length : 0;
+      const memberSites = sitesByMember.get(member.id) ?? [];
+      const siteCount = memberSites.length;
 
-      // Find the most recent visit
+      // Find the most recent visit the member was at - not one another
+      // collector of the same site did.
       let lastVisitedVisit: Date | null = null;
-      member.sites.forEach((site) => {
+      memberSites.forEach((site) => {
         site.visits.forEach((visit) => {
-          if (visit.visitedAt) {
+          if (visit.visitedAt && wasAtVisit(visit, member.id)) {
             if (!lastVisitedVisit || visit.visitedAt > lastVisitedVisit) {
               lastVisitedVisit = visit.visitedAt;
             }
@@ -334,15 +369,14 @@ export class TeamsService {
           'user.roles',
           'user.roles.role',
           'user.roles.role.permissions',
-          'user.sites',
-          'user.sites.visits',
-          'user.sites.location',
-          'user.sites.location.region',
-          'user.sites.location.region.parentRegion',
         ],
       });
       teamWithMembers.members = memberRoles.map((userRole) =>
         scopeUserRolesToProject(userRole.user, undefined),
+      );
+      const sitesByMember = await this.sitesByCollector(
+        teamWithMembers.members.filter(Boolean).map((member) => member.id),
+        { withLocation: true },
       );
       const members: MembersActivityDataType[] = [];
       for (const users of teamWithMembers?.members) {
@@ -364,7 +398,7 @@ export class TeamsService {
         let totalVisits = 0,
           totalPendingVisits = 0,
           totalOverdueVisits = 0;
-        for (const site of users.sites) {
+        for (const site of sitesByMember.get(users.id) ?? []) {
           for (const visit of site.visits) {
             const visitData: VisitDataForEveryMember = {
               id: '',

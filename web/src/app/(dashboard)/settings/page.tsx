@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useAtomValue } from "jotai";
 import { AlertTriangle, Terminal } from "lucide-react";
+import { userAtom } from "@/src/store/userAtom";
 import ManageSuperAdmins from "@/src/components/projects/manage-access/manage-super-admins";
 import DataPurging from "@/src/components/settings/data-purging";
 import ProjectDetailsPlayground from "@/src/components/settings/playground/project-details-playground";
@@ -16,8 +18,24 @@ type SettingsTab = "access" | "purge" | "playground" | "delete-account";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>("access");
+  const user = useAtomValue(userAtom);
   const isSuperAdmin = useIsSuperAdmin();
   const isWorkspaceAdmin = useIsWorkspaceAdmin();
+
+  // The profile is still loading; don't flash "no access" at an admin.
+  if (!user) return null;
+
+  // Every tab below is super-admin only, so anyone else (reaching this by URL
+  // - the sidebar hides Settings for them) would get a blank page.
+  if (!isSuperAdmin && !isWorkspaceAdmin) {
+    return (
+      <div className="dashboard-page-shell flex flex-col gap-6 bg-subtle">
+        <p className="text-sm text-grey-70">
+          You do not have access to Settings.
+        </p>
+      </div>
+    );
+  }
 
   // Workspace admins get the full workspace admin dashboard embedded here
   if (isWorkspaceAdmin && !isSuperAdmin) {

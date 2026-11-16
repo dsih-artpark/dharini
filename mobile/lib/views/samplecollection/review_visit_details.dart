@@ -17,6 +17,7 @@ import 'package:es_platform_mobile/services/database_service.dart';
 import 'package:es_platform_mobile/services/visit_draft_repository.dart';
 import 'package:es_platform_mobile/hooks/visit_draft.dart';
 import 'package:es_platform_mobile/utils/hive_serialization.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fquery/fquery.dart';
@@ -123,6 +124,9 @@ class ReviewVisitDetails extends HookWidget {
 
     final sitesData = useSites().data;
     final resolvedSite = useState<SiteResponseData?>(null);
+    // The site's other collectors this collector ticked as having been at
+    // the visit with them. The submitter is always one of its visitors.
+    final tickedVisitorIds = useState<Set<String>>(<String>{});
 
     useEffect(() {
       final inMemorySite =
@@ -175,6 +179,14 @@ class ReviewVisitDetails extends HookWidget {
 
     // Helper to check if GPS coordinates are available
     final hasCoords = latitude.value != null && longitude.value != null;
+
+    // The site's collectors, from the site as loaded online or from the
+    // offline cache, for the "Visited by" checklist.
+    final siteCollectors =
+        resolvedSite.value?.collectionCollectors?.toList() ?? const <User>[];
+    final otherCollectors = siteCollectors
+        .where((collector) => collector.id != profile.data?.id)
+        .toList();
 
     // Add loading state
     // if (visitDetails.isLoading || project.isLoading || profile.isLoading) {
@@ -579,7 +591,14 @@ class ReviewVisitDetails extends HookWidget {
           'originalVisitId': visit.id,
           'siteId': resolvedSiteId,
           'originalSiteId': visit.site.id,
-          'visitedBy': profile.data?.id,
+          // The submitter first, then the site's collectors they ticked.
+          'visitedBy': profile.data == null
+              ? <String>[]
+              : submissionVisitorIds(
+                  profile.data!.id,
+                  siteCollectors,
+                  tickedVisitorIds.value,
+                ),
           'projectId': project.data?.id,
           'teamId': teamId,
           'isCompleted': true,
@@ -638,6 +657,29 @@ class ReviewVisitDetails extends HookWidget {
         );
         await DatabaseService.savePendingSubmission(pendingSubmission);
 
+        // The backend records the submitter and the collectors they ticked
+        // as visitedBy; mirror that on the locally cached completed visit so
+        // the completed screens show who actually visited, not the assigned
+        // collector, before it syncs.
+        final submitter = profile.data;
+        final submittedBy = submitter == null
+            ? null
+            : User((b) => b
+              ..id = submitter.id
+              ..firstName = submitter.firstName
+              ..lastName = submitter.lastName
+              ..email = submitter.email
+              ..profilePicture = submitter.profilePicture
+              ..designation = submitter.designation
+              ..contactNumber = submitter.contactNumber
+              ..address = submitter.address);
+        final visitedBy = BuiltList<User>([
+          if (submittedBy != null) submittedBy,
+          ...siteCollectors.where((collector) =>
+              collector.id != submittedBy?.id &&
+              tickedVisitorIds.value.contains(collector.id)),
+        ]);
+
         // Update query cache
         final upcomingKey = QueryKeys.scheduledVisits(
           projectId,
@@ -663,6 +705,7 @@ class ReviewVisitDetails extends HookWidget {
               (b) => b
                 ..visitStatus = VisitStatus.completed
                 ..visitedAt = DateTime.now().toUtc()
+                ..visitedBy = visitedBy.toBuilder()
                 ..samples = convertSamplesToVisitSamples(samples),
             );
             return old == null ? [completedVisit] : [completedVisit, ...old];
@@ -681,6 +724,7 @@ class ReviewVisitDetails extends HookWidget {
             visit.rebuild((b) => b
               ..visitStatus = VisitStatus.completed
               ..visitedAt = DateTime.now().toUtc()
+              ..visitedBy = visitedBy.toBuilder()
               ..samples = convertSamplesToVisitSamples(samples)),
           );
           if (serializedVisit != null) {
@@ -800,6 +844,7 @@ class ReviewVisitDetails extends HookWidget {
               (b) => b
                 ..visitStatus = VisitStatus.completed
                 ..visitedAt = DateTime.now().toUtc()
+                ..visitedBy = visitedBy.toBuilder()
                 ..samples = convertSamplesToVisitSamples(samples),
             ),
           );
@@ -940,6 +985,37 @@ class ReviewVisitDetails extends HookWidget {
         ],
       );
     }
+
+    // One row of the "Visited by" checklist. Without [onChanged] the box is
+    // locked, as the submitter's own is.
+    Widget buildVisitorCheckbox({
+      required String name,
+      required String subtitle,
+      required bool value,
+      ValueChanged<bool?>? onChanged,
+    }) =>
+        CheckboxListTile(
+          value: value,
+          onChanged: onChanged,
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          activeColor: AppColors.primaryLight,
+          title: Text(
+            name,
+            style: AppTypography.textTheme.bodyB2SemiBold.copyWith(
+              color: AppColors.textStrong,
+            ),
+          ),
+          subtitle: subtitle.isEmpty
+              ? null
+              : Text(
+                  subtitle,
+                  style: AppTypography.textTheme.bodyB3Regular.copyWith(
+                    color: AppColors.textWeak,
+                  ),
+                ),
+        );
 
     Widget buildVisitorCard(String initials, String name, String email) =>
         Container(
@@ -1752,7 +1828,7 @@ class ReviewVisitDetails extends HookWidget {
                     _buildSectionHeader(
                         Icons.person_pin_outlined, 'Visited by'),
                     const SizedBox(height: 20),
-                    if (profile.data != null)
+                    if (profile.data != null && otherCollectors.isEmpty)
                       buildVisitorCard(
                         (profile.data!.lastName?.isNotEmpty == true)
                             ? profile.data!.lastName!
@@ -1762,6 +1838,41 @@ class ReviewVisitDetails extends HookWidget {
                         '${profile.data!.firstName ?? ''} ${profile.data!.lastName ?? ''}',
                         profile.data!.email ?? '',
                       ),
+                    // With other collectors on the site, the submitter ticks
+                    // whoever was at the visit with them. The submitter is
+                    // always one of its visitors, so their own box is locked.
+                    if (profile.data != null && otherCollectors.isNotEmpty) ...[
+                      Text(
+                        'Select everyone who was at this visit',
+                        style: AppTypography.textTheme.bodyB3Regular.copyWith(
+                          color: AppColors.textWeak,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      buildVisitorCheckbox(
+                        name:
+                            '${profile.data!.firstName ?? ''} ${profile.data!.lastName ?? ''}'
+                                .trim(),
+                        subtitle: 'You',
+                        value: true,
+                      ),
+                      ...otherCollectors.map(
+                        (collector) => buildVisitorCheckbox(
+                          name: visitorName(collector),
+                          subtitle: collector.email ?? '',
+                          value: tickedVisitorIds.value.contains(collector.id),
+                          onChanged: (ticked) {
+                            final next = {...tickedVisitorIds.value};
+                            if (ticked == true) {
+                              next.add(collector.id);
+                            } else {
+                              next.remove(collector.id);
+                            }
+                            tickedVisitorIds.value = next;
+                          },
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

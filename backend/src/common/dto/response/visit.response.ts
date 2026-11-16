@@ -46,7 +46,8 @@ class VisitResponseData extends Visit {
   @Type(() => VisitSampleData)
   samples: VisitSampleData[];
   collector?: User;
-  visitedBy?: User;
+  // Everyone who was at the visit, its submitter first.
+  visitedBy?: User[];
 }
 
 export class VisitResponse {

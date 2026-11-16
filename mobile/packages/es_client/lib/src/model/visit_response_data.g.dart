@@ -22,7 +22,7 @@ class _$VisitResponseData extends VisitResponseData {
   @override
   final User? collector;
   @override
-  final User? visitedBy;
+  final BuiltList<User>? visitedBy;
   @override
   final String id;
   @override
@@ -177,9 +177,11 @@ class VisitResponseDataBuilder
   UserBuilder get collector => _$this._collector ??= UserBuilder();
   set collector(UserBuilder? collector) => _$this._collector = collector;
 
-  UserBuilder? _visitedBy;
-  UserBuilder get visitedBy => _$this._visitedBy ??= UserBuilder();
-  set visitedBy(UserBuilder? visitedBy) => _$this._visitedBy = visitedBy;
+  ListBuilder<User>? _visitedBy;
+  ListBuilder<User> get visitedBy =>
+      _$this._visitedBy ??= ListBuilder<User>();
+  set visitedBy(ListBuilder<User>? visitedBy) =>
+      _$this._visitedBy = visitedBy;
 
   String? _id;
   String? get id => _$this._id;

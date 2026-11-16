@@ -67,8 +67,9 @@ export class VisitResponseDto extends PickType(Visit, [
   @Type(() => UserResponseDto)
   collector?: UserResponseDto;
 
+  // Everyone who was at the visit, its submitter first.
   @Type(() => UserResponseDto)
-  visitedBy?: UserResponseDto;
+  visitedBy?: UserResponseDto[];
 }
 
 export class VisitPaginatedResponseType {

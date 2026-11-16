@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **visitStartedAt** | [**DateTime**](DateTime.md) | Timestamp when the collector opened the page | [optional] 
 **visitStatus** | [**VisitStatus**](VisitStatus.md) |  | 
-**visitedBy** | [**User**](User.md) |  | [optional] 
+**visitedBy** | [**BuiltList&lt;User&gt;**](User.md) |  | [optional] 
 **collector** | [**User**](User.md) |  | [optional] 
 **id** | **String** |  | 
 **visitedAt** | [**DateTime**](DateTime.md) |  | [optional] 

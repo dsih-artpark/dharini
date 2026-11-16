@@ -24,7 +24,7 @@ class _$UpdateSiteDto extends UpdateSiteDto {
   @override
   final num longitude;
   @override
-  final String collectionCollector;
+  final BuiltList<String>? collectionCollectors;
   @override
   final String? collectionConsent;
   @override
@@ -66,7 +66,7 @@ class _$UpdateSiteDto extends UpdateSiteDto {
       required this.regionId,
       required this.latitude,
       required this.longitude,
-      required this.collectionCollector,
+      this.collectionCollectors,
       this.collectionConsent,
       required this.name,
       this.collectionFrequencyInterval,
@@ -101,7 +101,7 @@ class _$UpdateSiteDto extends UpdateSiteDto {
         regionId == other.regionId &&
         latitude == other.latitude &&
         longitude == other.longitude &&
-        collectionCollector == other.collectionCollector &&
+        collectionCollectors == other.collectionCollectors &&
         collectionConsent == other.collectionConsent &&
         name == other.name &&
         collectionFrequencyInterval == other.collectionFrequencyInterval &&
@@ -129,7 +129,7 @@ class _$UpdateSiteDto extends UpdateSiteDto {
     _$hash = $jc(_$hash, regionId.hashCode);
     _$hash = $jc(_$hash, latitude.hashCode);
     _$hash = $jc(_$hash, longitude.hashCode);
-    _$hash = $jc(_$hash, collectionCollector.hashCode);
+    _$hash = $jc(_$hash, collectionCollectors.hashCode);
     _$hash = $jc(_$hash, collectionConsent.hashCode);
     _$hash = $jc(_$hash, name.hashCode);
     _$hash = $jc(_$hash, collectionFrequencyInterval.hashCode);
@@ -159,7 +159,7 @@ class _$UpdateSiteDto extends UpdateSiteDto {
           ..add('regionId', regionId)
           ..add('latitude', latitude)
           ..add('longitude', longitude)
-          ..add('collectionCollector', collectionCollector)
+          ..add('collectionCollectors', collectionCollectors)
           ..add('collectionConsent', collectionConsent)
           ..add('name', name)
           ..add('collectionFrequencyInterval', collectionFrequencyInterval)
@@ -217,10 +217,11 @@ class UpdateSiteDtoBuilder
   num? get longitude => _$this._longitude;
   set longitude(num? longitude) => _$this._longitude = longitude;
 
-  String? _collectionCollector;
-  String? get collectionCollector => _$this._collectionCollector;
-  set collectionCollector(String? collectionCollector) =>
-      _$this._collectionCollector = collectionCollector;
+  ListBuilder<String>? _collectionCollectors;
+  ListBuilder<String> get collectionCollectors =>
+      _$this._collectionCollectors ??= ListBuilder<String>();
+  set collectionCollectors(ListBuilder<String>? collectionCollectors) =>
+      _$this._collectionCollectors = collectionCollectors;
 
   String? _collectionConsent;
   String? get collectionConsent => _$this._collectionConsent;
@@ -300,7 +301,7 @@ class UpdateSiteDtoBuilder
       _regionId = $v.regionId;
       _latitude = $v.latitude;
       _longitude = $v.longitude;
-      _collectionCollector = $v.collectionCollector;
+      _collectionCollectors = $v.collectionCollectors?.toBuilder();
       _collectionConsent = $v.collectionConsent;
       _name = $v.name;
       _collectionFrequencyInterval = $v.collectionFrequencyInterval;
@@ -349,8 +350,7 @@ class UpdateSiteDtoBuilder
                 latitude, r'UpdateSiteDto', 'latitude'),
             longitude: BuiltValueNullFieldError.checkNotNull(
                 longitude, r'UpdateSiteDto', 'longitude'),
-            collectionCollector: BuiltValueNullFieldError.checkNotNull(
-                collectionCollector, r'UpdateSiteDto', 'collectionCollector'),
+            collectionCollectors: _collectionCollectors?.build(),
             collectionConsent: collectionConsent,
             name: BuiltValueNullFieldError.checkNotNull(
                 name, r'UpdateSiteDto', 'name'),
@@ -375,6 +375,9 @@ class UpdateSiteDtoBuilder
 
         _$failedField = 'photos';
         photos.build();
+
+        _$failedField = 'collectionCollectors';
+        _collectionCollectors?.build();
       } catch (e) {
         throw BuiltValueNestedFieldError(
             r'UpdateSiteDto', _$failedField, e.toString());

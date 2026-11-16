@@ -31,11 +31,14 @@ export class UpdateVisitDto extends PickType(Visit, [
   @IsOptional()
   comment?: string;
 
+  // No `isArray`/`type` here: the Swagger plugin already infers string[],
+  // and stating it again nests the array in the spec.
   @ApiPropertyOptional({
-    description: 'team member id',
-    example: 'eaa81d72-5733-40e2-8f91-e3af7f845967',
+    description:
+      'IDs of the users who were at the visit, the submitter first. The others are recorded if they are members of a team in the project. A single id is also accepted.',
+    example: ['eaa81d72-5733-40e2-8f91-e3af7f845967'],
   })
-  visitedBy: string;
+  visitedBy: string[];
 
   @IsOptional()
   @ApiPropertyOptional({

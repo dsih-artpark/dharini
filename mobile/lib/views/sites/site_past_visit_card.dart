@@ -46,6 +46,8 @@ class SitePastVisitCard extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           farmName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 18,
