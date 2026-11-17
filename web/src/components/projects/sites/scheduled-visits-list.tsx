@@ -295,13 +295,14 @@ export default function ScheduledVisitsList({
     return mappedItems;
   }, [apiVisits, filterType, rescheduledOverrides, siteDetail]);
 
-  // Limit display if not expanded
+  // Limit display if not expanded. Every tab, since the expand arrow below
+  // shows on every tab once there are more than four.
   const displayItems = useMemo(() => {
-    if (filterType === "upcoming" && !expanded && filteredItems.length > 4) {
+    if (!expanded && filteredItems.length > 4) {
       return filteredItems.slice(0, 4);
     }
     return filteredItems;
-  }, [filteredItems, expanded, filterType]);
+  }, [filteredItems, expanded]);
 
   // Group items by monthYear
   const groupedItems = useMemo(() => {
@@ -500,13 +501,7 @@ export default function ScheduledVisitsList({
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => handleOpenReschedule(item)}
-                      className="group flex items-center justify-between py-4 transition-colors hover:bg-blue-10/40 px-2 sm:px-3 rounded-xl cursor-pointer"
-                      title={
-                        item.category === "upcoming"
-                          ? "Click to reschedule this visit"
-                          : undefined
-                      }
+                      className="group flex items-center justify-between py-4 transition-colors hover:bg-blue-10/40 px-2 sm:px-3 rounded-xl"
                     >
                       {/* Left: Date + Info */}
                       <div className="flex items-center gap-4 sm:gap-6 min-w-0">
@@ -551,35 +546,23 @@ export default function ScheduledVisitsList({
                       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                         {getStatusBadge(item.status)}
 
-                        {item.category === "upcoming" ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenReschedule(item);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 py-1.5 text-xs font-medium text-grey-70 transition hover:bg-blue-10 hover:text-primary-500 hover:border-blue-20 shadow-2xs active:scale-95"
-                            title="Reschedule visit"
-                            aria-label="Reschedule visit"
-                          >
-                            <Calendar className="w-3.5 h-3.5 text-grey-70 group-hover:text-primary-500" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toast.info(
-                                `Visit on ${item.dayNumber} ${item.monthYear} was ${item.status === "Skipped" ? "skipped" : "completed"}.`,
-                              );
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-grey-20 text-grey-70 transition hover:bg-grey-10 hover:text-grey-90 active:scale-95"
-                            title="View visit details"
-                            aria-label="View visit details"
-                          >
-                            <Calendar className="w-4 h-4 text-grey-70" />
-                          </button>
-                        )}
+                        {/* Only a visit that can still be rescheduled gets
+                            the calendar; completed and past ones have none. */}
+                        {item.category === "upcoming" &&
+                          item.status !== "Completed" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenReschedule(item);
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 py-1.5 text-xs font-medium text-grey-70 transition hover:bg-blue-10 hover:text-primary-500 hover:border-blue-20 shadow-2xs active:scale-95"
+                              title="Reschedule visit"
+                              aria-label="Reschedule visit"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-grey-70 group-hover:text-primary-500" />
+                            </button>
+                          )}
                       </div>
                     </div>
                   ))}

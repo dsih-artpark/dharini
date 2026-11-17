@@ -239,8 +239,12 @@ export class TeamsService {
     query: any,
     projectId?: string,
   ): Promise<TeamMemberPaginatedResponseType> {
-    const { page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
+    const { page = 1 } = query;
+    // The app sends no page size: it shows every collector on one screen and
+    // searches that list on the device. So without a `limit`, return them all
+    // - a default of 10 hid the rest from the list and from the search.
+    const limit = query.limit ? Number(query.limit) : undefined;
+    const skip = limit ? (page - 1) * limit : 0;
 
     const team = projectId
       ? await this.teamRepository.findOne({
@@ -263,7 +267,9 @@ export class TeamsService {
     );
 
     const total = collectors.length;
-    const paginatedCollectors = collectors.slice(skip, skip + limit);
+    const paginatedCollectors = limit
+      ? collectors.slice(skip, skip + limit)
+      : collectors;
     const sitesByMember = await this.projectSitesByCollector(
       projectId,
       paginatedCollectors.map((member) => member.id),
@@ -300,8 +306,8 @@ export class TeamsService {
       docs: TeamMembersCollectorListType,
       total,
       page: Number(page),
-      limit,
-      totalPages: Math.ceil(total / limit),
+      limit: limit ?? total,
+      totalPages: limit ? Math.ceil(total / limit) : 1,
     };
   }
 

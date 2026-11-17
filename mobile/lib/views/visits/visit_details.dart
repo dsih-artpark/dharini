@@ -237,10 +237,6 @@ class VisitDetailsScreen extends HookWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right,
-                color: AppColors.textWeak,
-              ),
             ],
           ),
         );

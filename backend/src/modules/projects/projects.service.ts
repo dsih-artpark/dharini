@@ -2246,12 +2246,13 @@ export class ProjectsService {
    * Team Allocation & Progress: one row per (member, site) the member works
    * at, carrying that member's own progress there.
    *
-   * - Rows (the allocation): sites where the member is the assigned collector
-   *   of a visit, actually did a visit, or handled a sample. With a disease
+   * - Rows (the allocation): sites where the member has a visit of their own
+   *   (see Pending), actually did a visit, or handled a sample. With a disease
    *   tab, only sites configured for that disease (site_diseases) - the same
    *   rule as the project Sites card. Rows do not depend on the date range.
-   * - Pending: open (upcoming or overdue) visits assigned to the member,
-   *   scheduled in the range.
+   * - Pending: open (upcoming or overdue) visits of the member's own -
+   *   assigned to them, or at a site they are one of the collectors of, as
+   *   the app lists them - scheduled in the range.
    * - Completed: completed visits the member did (`visitedBy`, else the
    *   assigned collector), visited in the range. With a disease tab, only
    *   visits that collected a sample for that disease.
@@ -2356,13 +2357,24 @@ export class ProjectsService {
       };
 
       if (memberIds.length) {
-        // 2. Pending: open visits assigned to the member. Any visit assigned
-        // to them (whatever its status or date) puts the site in their rows.
+        // 2. Pending: open visits of the member's own - assigned to them, or
+        // at a site they are one of the collectors of. Plan visits are all
+        // assigned to the site's first collector, but the app lists them for
+        // every collector of the site (VisitsService.getVisitSummary). Any
+        // such visit (whatever its status or date) puts the site in their
+        // rows.
+        const ownedBy = '"ownedBy"."memberId"';
         const pendingStats = await onlyDiseaseSites(
           this.visitRepository
             .createQueryBuilder('visit')
             .innerJoin('visit.site', 'site')
-            .select('visit.collectorId', 'memberId')
+            .innerJoin(
+              '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+              'ownedBy',
+              `${ownedBy} = "visit"."collectorId" OR ${ownedBy} = ANY ("site"."collector_id")`,
+              { memberIds },
+            )
+            .select(ownedBy, 'memberId')
             .addSelect('site.id', 'siteId')
             .addSelect('site.name', 'siteName')
             .addSelect(
@@ -2372,11 +2384,10 @@ export class ProjectsService {
               ]),
               'count',
             )
-            .where('visit.projectId = :projectId', { projectId })
-            .andWhere('visit.collectorId IN (:...memberIds)', { memberIds }),
+            .where('visit.projectId = :projectId', { projectId }),
         )
           .setParameters(dateParams)
-          .groupBy('visit.collectorId')
+          .groupBy(ownedBy)
           .addGroupBy('site.id')
           .addGroupBy('site.name')
           .getRawMany();

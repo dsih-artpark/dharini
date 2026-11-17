@@ -7,6 +7,7 @@ import 'package:es_platform_mobile/hooks/auth.dart';
 import 'package:es_platform_mobile/hooks/permissions.dart';
 import 'package:es_platform_mobile/utils/extensions/go_router.dart';
 import 'package:es_platform_mobile/utils/tenant_roles.dart';
+import 'package:es_platform_mobile/utils/visited_by.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hive/hive.dart';
@@ -207,6 +208,14 @@ class Sites extends HookWidget {
                         // },
                         itemBuilder: (BuildContext context, int index) {
                           final site = sites.data![index];
+                          // First two collectors by name, the rest as "+N".
+                          final collectorNames =
+                              (site.collectionCollectors?.toList() ??
+                                      const <User>[])
+                                  .map(visitorName)
+                                  .where((name) => name.isNotEmpty)
+                                  .toList();
+                          final extraCollectors = collectorNames.length - 2;
                           return InkWell(
                             onTap: () {
                               context.go('/site-details',
@@ -221,11 +230,10 @@ class Sites extends HookWidget {
                                 siteNumber: site.siteCode ?? '',
                                 address: site.address ?? '',
                                 assignedCollectors:
-                                    (site.collectionCollectors?.toList() ??
-                                            const <User>[])
-                                        .map((user) => user.firstName ?? '')
-                                        .where((name) => name.isNotEmpty)
-                                        .join(', '),
+                                    collectorNames.take(2).join(', ') +
+                                        (extraCollectors > 0
+                                            ? ' +$extraCollectors'
+                                            : ''),
                                 collectionSchedule:
                                     '${site.collectionTime ?? ''} time / ${site.collectionDayOfWeek ?? ''} day',
                                 mapImageUrl:

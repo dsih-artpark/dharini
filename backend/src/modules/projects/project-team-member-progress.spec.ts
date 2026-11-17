@@ -101,20 +101,22 @@ describe('ProjectsService.teamMemberProgress', () => {
     qb.addSelect.mock.calls.find(([, a]) => a === alias)?.[0] as string;
 
   describe('member-wise rows and counts', () => {
-    it('credits pending visits to the assigned collector', async () => {
+    it("credits pending visits to the assigned collector and every collector of the visit's site", async () => {
       const { result, pendingQb } = run({ diseaseId: DISEASE_ID });
       await result;
 
-      expect(pendingQb.select).toHaveBeenCalledWith(
-        'visit.collectorId',
-        'memberId',
-      );
-      expect(pendingQb.andWhere).toHaveBeenCalledWith(
-        'visit.collectorId IN (:...memberIds)',
+      // Plan visits are all assigned to the site's first collector; a second
+      // collector of the same site must still get the site and its visits.
+      const ownedBy = '"ownedBy"."memberId"';
+      expect(pendingQb.innerJoin).toHaveBeenCalledWith(
+        '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+        'ownedBy',
+        `${ownedBy} = "visit"."collectorId" OR ${ownedBy} = ANY ("site"."collector_id")`,
         // Name order: Amit Lab, Team Lead, Zara Collector.
         { memberIds: [amit.id, lead.id, zara.id] },
       );
-      expect(pendingQb.groupBy).toHaveBeenCalledWith('visit.collectorId');
+      expect(pendingQb.select).toHaveBeenCalledWith(ownedBy, 'memberId');
+      expect(pendingQb.groupBy).toHaveBeenCalledWith(ownedBy);
     });
 
     it('credits completed visits to whoever did them, else the assigned collector', async () => {

@@ -436,7 +436,7 @@ export default function SiteDetails() {
                     {siteDetail?.collectionFrequencyInterval === 0
                       ? "1 Visit"
                       : siteDetail?.collectionDuration
-                        ? `${siteDetail?.collectionDuration / 30} Month`
+                        ? `${siteDetail?.collectionDuration / 30} Month${siteDetail?.collectionDuration === 30 ? "" : "s"}`
                         : "--"}
                   </p>
                 </div>
@@ -445,7 +445,9 @@ export default function SiteDetails() {
 
             <div className="flex flex-col gap-4">
               <h3 className="text-sm font-semibold text-grey-90">
-                Assigned Collectors
+                {collectors.length === 1
+                  ? "Assigned Collector"
+                  : "Assigned Collectors"}
               </h3>
               {collectors.length ? (
                 collectors.map((collector) => (

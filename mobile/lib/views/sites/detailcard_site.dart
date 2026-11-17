@@ -173,10 +173,14 @@ class LocationInfoWidget extends StatelessWidget {
                     color: Colors.blue,
                   ),
                   const SizedBox(width: 8),
-                  Text(
-                    address,
-                    style: AppTypography.textTheme.bodyB4Medium.copyWith(
-                      color: AppColors.textStrong,
+                  Expanded(
+                    child: Text(
+                      address,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.textTheme.bodyB4Medium.copyWith(
+                        color: AppColors.textStrong,
+                      ),
                     ),
                   ),
                 ],
