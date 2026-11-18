@@ -2042,7 +2042,8 @@ export class ProjectsService {
         .createQueryBuilder('sample')
         .select('COUNT(DISTINCT sample.id)', 'total') // Optional: get total count if needed
         .addSelect(
-          `COUNT(DISTINCT CASE WHEN sample.sampleStatus != :completed THEN sample.id END)`,
+          // A discarded sample is no longer pending.
+          `COUNT(DISTINCT CASE WHEN sample.sampleStatus != :completed AND sample.discardedAt IS NULL THEN sample.id END)`,
           'totalPending',
         )
         .addSelect(
@@ -2169,11 +2170,11 @@ export class ProjectsService {
               'totalCollected',
             )
             .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :received AND sample.receivedById = :memberId THEN sample.id END)`,
+              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :received AND sample.discardedAt IS NULL AND sample.receivedById = :memberId THEN sample.id END)`,
               'totalReceived',
             )
             .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :extracted AND sample.extractedById = :memberId THEN sample.id END)`,
+              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :extracted AND sample.discardedAt IS NULL AND sample.extractedById = :memberId THEN sample.id END)`,
               'totalExtracted',
             )
             .addSelect(

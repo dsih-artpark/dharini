@@ -39,6 +39,7 @@ import {
   ListLabTestResponse,
 } from 'src/common/dto/response/lab-test.response';
 import {
+  ListSampleResponse,
   PaginatedSampleResponse,
   SampleResponse,
   SampleStatLogisticResponse,
@@ -93,6 +94,7 @@ import { CreateMultipleLabTestDto } from '../lab-tests/dto/create-lab-test.dto';
 import { UpdateMultipleLabTestDto } from '../lab-tests/dto/update-lab-test.dto';
 import { LabTestsService } from '../lab-tests/lab-tests.service';
 import { CreateSampleDto } from '../samples/dto/create-sample.dto';
+import { DiscardSamplesDto } from '../samples/dto/discard-samples.dto';
 import { UpdateCollectedSampleDetailsDto } from '../samples/dto/update-collected-sample-details.dto';
 import { UpdateSampleDto } from '../samples/dto/update-sample.dto';
 import { UpdateSampleStageDetailsDto } from '../samples/dto/update-sample-stage-details.dto';
@@ -1752,6 +1754,77 @@ export class ProjectsController {
     };
   }
 
+  @ApiOperation({
+    summary: 'Sample Archive: samples discarded mid-process',
+    description:
+      'Discarded samples, newest first, with a count per stage. `stage` is one of pre-processing, virus-isolation, extraction, testing.',
+  })
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'sample'))
+  @Get(':projectId/samples/discarded')
+  @ApiParam({ name: 'projectId', type: String, description: 'Project UUID' })
+  @ApiQuery({ name: 'workspaceId', required: false, type: String })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description: 'Matches sample ID, accession ID, reason or comment',
+  })
+  @ApiQuery({ name: 'diseaseId', required: false, type: String })
+  @ApiQuery({ name: 'stage', required: false, type: String })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  async findDiscardedSamples(
+    @Req() req,
+    @Query() query,
+    @Param('projectId') projectId: string,
+  ) {
+    const { user } = req;
+    const result = await this.sampleService.findDiscarded(
+      { ...query, projectId },
+      user,
+    );
+    return {
+      success: true,
+      message: 'Discarded samples fetched successfully',
+      data: result.docs,
+      page: result.page,
+      limit: result.limit,
+      total: result.total,
+      totalPages: result.totalPages,
+      counts: result.counts,
+    };
+  }
+
+  @ApiOperation({
+    summary: 'Discard samples mid-process (Pre-processing to Testing)',
+    description:
+      'Marks the samples as discarded with a reason, who and when. Pooled samples are discarded with the rest of their pool. The samples keep their status and can no longer be processed.',
+  })
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Update, 'sample'))
+  @SerializeOptions({
+    type: ListSampleResponse,
+    exposeDefaultValues: true,
+  })
+  @Post(':projectId/samples/discard')
+  @ApiParam({ name: 'projectId', type: String, description: 'Project UUID' })
+  async discardSamples(
+    @Req() req,
+    @Param('projectId') projectId: string,
+    @Body() discardSamplesDto: DiscardSamplesDto,
+  ): Promise<ListSampleResponse> {
+    const { user } = req;
+    const samples = await this.sampleService.discardSamples(
+      projectId,
+      discardSamplesDto,
+      user,
+    );
+    return {
+      success: true,
+      message: `${samples.length} sample${samples.length === 1 ? '' : 's'} discarded`,
+      data: samples,
+    };
+  }
+
   @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'sample'))
   @Get(':projectId/samples/lab-stats')
   @ApiParam({ name: 'projectId', type: String, description: 'Project UUID' })
@@ -1788,6 +1861,23 @@ export class ProjectsController {
       success: true,
       message: 'Lab Samples stats fetched successfully',
       data: sample,
+    };
+  }
+
+  @CheckPolicies((ability: AppAbility) => ability.can(Action.Read, 'sample'))
+  @Get(':projectId/samples/:sampleId/activity')
+  @ApiOperation({ summary: "Get a sample's activity log, oldest first" })
+  @ApiParam({ name: 'projectId', type: String, description: 'Project UUID' })
+  @ApiParam({ name: 'sampleId', type: String, description: 'Sample UUID' })
+  async getSampleActivity(
+    @Param('projectId') projectId: string,
+    @Param('sampleId') sampleId: string,
+  ): Promise<any> {
+    const activity = await this.sampleService.findActivity(projectId, sampleId);
+    return {
+      success: true,
+      message: 'Sample activity fetched successfully',
+      data: activity,
     };
   }
 

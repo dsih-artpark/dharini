@@ -41,6 +41,7 @@ import {
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
 import TeamMemberSelect from "@/src/components/lab/sample-accession/team-member-select";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1435,12 +1436,20 @@ export default function SamplePreprocessing({
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-        <button
-          onClick={handleBack}
-          className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all"
+          >
+            ← Back
+          </button>
+          <DiscardSampleAction
+            samples={samplesToProcess}
+            isBulkMode={isBulkMode}
+            onBulkDiscarded={() => onBulkSuccess?.("exit", "received")}
+            disabled={submitting}
+          />
+        </div>
 
         <div className="flex items-center gap-3">
           <button

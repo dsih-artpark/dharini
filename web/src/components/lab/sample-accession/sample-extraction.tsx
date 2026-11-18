@@ -23,6 +23,7 @@ import {
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
 import TeamMemberSelect from "@/src/components/lab/sample-accession/team-member-select";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 interface SampleExtractionProps {
   isBulkMode?: boolean;
@@ -908,12 +909,20 @@ export default function SampleExtraction({
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-4 pb-2">
-        <button
-          onClick={handleBack}
-          className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
+          >
+            ← Back
+          </button>
+          <DiscardSampleAction
+            samples={samplesToProcess}
+            isBulkMode={isBulkMode}
+            onBulkDiscarded={() => onBulkSuccess?.("exit", "pre-processed")}
+            disabled={submitting}
+          />
+        </div>
 
         <div className="flex items-center gap-4">
           <button

@@ -50,6 +50,19 @@ import { computeVisitRoundsForSites } from '../../common/utils/visit-rounds.util
 import { attachCollectionCollectors } from '../sites/site-collectors';
 import { attachVisitedBy } from '../visits/visit-visited-by';
 import { shouldScopeToProject } from './sample-scope.util';
+import { DiscardSamplesDto } from './dto/discard-samples.dto';
+
+// The step a discarded sample stopped at, keyed to the status it keeps (the
+// last step it completed).
+const DISCARD_STAGE_STATUS = {
+  'pre-processing': SampleStatus.RECEIVED,
+  'virus-isolation': SampleStatus.VIRUS_ISOLATION,
+  extraction: SampleStatus.PRE_PROCESSED,
+  testing: SampleStatus.EXTRACTED,
+} as const;
+type DiscardStage = keyof typeof DISCARD_STAGE_STATUS;
+const DISCARDABLE_STATUSES: SampleStatus[] =
+  Object.values(DISCARD_STAGE_STATUS);
 
 @Injectable()
 export class SamplesService {
@@ -1384,10 +1397,13 @@ export class SamplesService {
     if (siteId) siteQuery.andWhere('site.id = :siteId', { siteId });
     if (sampleTypeId)
       siteQuery.andWhere('sampleType.id = :sampleTypeId', { sampleTypeId });
-    if (sampleStatus)
+    if (sampleStatus) {
       siteQuery.andWhere('sample.sampleStatus = :sampleStatus', {
         sampleStatus,
       });
+      // A discarded sample keeps its status but is no longer at that step.
+      siteQuery.andWhere('sample.discardedAt IS NULL');
+    }
 
     if (stateId) {
       siteQuery.andWhere(
@@ -1866,6 +1882,7 @@ export class SamplesService {
         )
         .leftJoinAndSelect('sample.team', 'team')
         .leftJoinAndSelect('sample.reportGeneratedBy', 'reportGeneratedBy')
+        .leftJoinAndSelect('sample.discardedBy', 'discardedBy')
         .leftJoinAndSelect('sample.sampleType', 'sampleType')
         .leftJoinAndSelect('sample.pooledWith', 'pooledWith')
         .leftJoinAndSelect('visit.project', 'project')
@@ -1945,6 +1962,18 @@ export class SamplesService {
     if (!sample) {
       throw new NotFoundException('Sample not found');
     }
+
+    if (sample.discardedAt) {
+      throw new BadRequestException(
+        'This sample has been discarded and can no longer be processed',
+      );
+    }
+    // Discards go through discardSamples() only, so they always carry the
+    // reason, who and when, and an audit entry.
+    delete (updateSampleDto as any).discardReason;
+    delete (updateSampleDto as any).discardComment;
+    delete (updateSampleDto as any).discardedAt;
+    delete (updateSampleDto as any).discardedBy;
 
     // if (!sample) {
     //   // If the sample does not exist, create a new one
@@ -2213,6 +2242,12 @@ export class SamplesService {
 
     if (shouldScopeToProject(projectId) && sample.project?.id !== projectId) {
       throw new NotFoundException('Sample not found in this project');
+    }
+
+    if (sample.discardedAt) {
+      throw new BadRequestException(
+        'This sample has been discarded and its details can no longer be edited',
+      );
     }
 
     // A-cross-tenant: holding a role *named* project-viewer/lab-admin
@@ -2602,6 +2637,337 @@ export class SamplesService {
     }
   }
 
+  // Discards samples mid-process (Pre-processing to Testing). `sampleStatus`
+  // is left as it is; `discardedAt` marks the sample as discarded. A pooled
+  // sample shares one extract with its pool, so the whole pool is discarded.
+  async discardSamples(
+    projectId: string,
+    dto: DiscardSamplesDto,
+    user: User,
+  ): Promise<Sample[]> {
+    if (!user?.id) {
+      throw new ForbiddenException('User not found');
+    }
+
+    const reason = dto.reason.trim();
+    const comment = dto.comment?.trim() || null;
+    if (!reason) {
+      throw new BadRequestException('Reason for discard is required');
+    }
+    if (reason.toLowerCase() === 'other' && !comment) {
+      throw new BadRequestException(
+        'A comment is required when the reason is "Other"',
+      );
+    }
+
+    const discardedAt = new Date(dto.discardedAt);
+    // One minute of slack for clock drift between the browser and server.
+    if (discardedAt.getTime() > Date.now() + 60_000) {
+      throw new BadRequestException(
+        'Discard date and time cannot be in the future',
+      );
+    }
+
+    const discardedBy = await this.userRepository.findOne({
+      where: { id: dto.discardedBy },
+    });
+    if (!discardedBy) {
+      throw new BadRequestException('Discarded by user not found');
+    }
+
+    const projectWhere = shouldScopeToProject(projectId)
+      ? { project: { id: projectId } }
+      : {};
+    const requestedIds = [...new Set(dto.sampleIds)];
+
+    const discardedIds = await this.entityManager.transaction(
+      async (manager) => {
+        const repo = manager.getRepository(Sample);
+
+        const requested = await repo.find({
+          where: {
+            id: In(requestedIds),
+            status: StatusType.ACTIVE,
+            ...projectWhere,
+          },
+          relations: ['pooledWith'],
+        });
+        if (requested.length !== requestedIds.length) {
+          throw new NotFoundException(
+            'One or more samples were not found in this project',
+          );
+        }
+
+        const poolMemberIds = [
+          ...new Set(
+            requested.flatMap(
+              (sample) => sample.pooledWith?.map((pool) => pool.id) ?? [],
+            ),
+          ),
+        ].filter((id) => !requestedIds.includes(id));
+        const poolMembers = poolMemberIds.length
+          ? await repo.find({
+              where: {
+                id: In(poolMemberIds),
+                status: StatusType.ACTIVE,
+                ...projectWhere,
+              },
+            })
+          : [];
+
+        const samples = [...requested, ...poolMembers];
+        const notDiscardable = samples.filter(
+          (sample) =>
+            sample.discardedAt ||
+            !DISCARDABLE_STATUSES.includes(sample.sampleStatus),
+        );
+        if (notDiscardable.length) {
+          throw new BadRequestException(
+            `These samples can't be discarded: ${notDiscardable
+              .map((sample) => sample.barcode)
+              .join(', ')}. Only samples waiting at Pre-processing, ` +
+              'Virus Isolation, Extraction or Testing can be discarded.',
+          );
+        }
+
+        const ids = samples.map((sample) => sample.id);
+        await repo.update(
+          { id: In(ids) },
+          {
+            discardReason: reason,
+            discardComment: comment,
+            discardedAt,
+            discardedBy,
+          },
+        );
+
+        await manager.getRepository(SampleAudit).save(
+          samples.map((sample) =>
+            manager.getRepository(SampleAudit).create({
+              sample: { id: sample.id } as Sample,
+              user: { id: user.id } as User,
+              previousChanges: { sampleStatus: sample.sampleStatus },
+              currentChanges: {
+                sampleStatus: sample.sampleStatus,
+                discardReason: reason,
+                discardComment: comment,
+                discardedAt,
+                discardedById: discardedBy.id,
+              },
+              event: 'sample-discarded',
+            }),
+          ),
+        );
+
+        return ids;
+      },
+    );
+
+    return this.sampleRepository.find({
+      where: { id: In(discardedIds) },
+      relations: ['discardedBy'],
+    });
+  }
+
+  // A sample's activity log, oldest first, built from its audit rows. Only a
+  // few display fields are returned, never the stored snapshots, which can
+  // hold whole related records.
+  async findActivity(projectId: string, sampleId: string) {
+    const sample = await this.sampleRepository.findOne({
+      where: {
+        id: sampleId,
+        ...(shouldScopeToProject(projectId)
+          ? { project: { id: projectId } }
+          : {}),
+      },
+      select: { id: true },
+    });
+    if (!sample) throw new NotFoundException('Sample not found');
+
+    const audits = await this.sampleAuditRepository.find({
+      where: { sample: { id: sampleId }, status: StatusType.ACTIVE },
+      relations: { user: true },
+      order: { createdAt: 'ASC' },
+    });
+
+    const text = (value: unknown) =>
+      typeof value === 'string' || typeof value === 'number'
+        ? String(value)
+        : null;
+
+    // `previousChanges` isn't used: on status updates it is saved after the
+    // change, so it already holds the new status.
+    return audits.map((audit) => {
+      const current = (audit.currentChanges ?? {}) as Record<string, any>;
+      const steps = Array.isArray(current.preprocessingSteps)
+        ? current.preprocessingSteps
+        : [];
+      return {
+        id: audit.id,
+        event: audit.event ?? null,
+        createdAt: audit.createdAt,
+        user: audit.user
+          ? {
+              id: audit.user.id,
+              firstName: audit.user.firstName,
+              lastName: audit.user.lastName,
+            }
+          : null,
+        status: text(current.sampleStatus),
+        details: {
+          receivedVolumeValue: text(current.receivedVolumeValue),
+          receivedVolumeUnit: text(current.receivedVolumeUnit),
+          rejectReason: text(current.rejectReason),
+          preprocessingMethods: steps
+            .map((step) => text(step?.customMethod) || text(step?.method))
+            .filter(Boolean),
+          extractionSampleUsedValue: text(current.extractionSampleUsedValue),
+          extractionSampleUsedUnit: text(current.extractionSampleUsedUnit),
+          extractionSampleRemainingValue: text(
+            current.extractionSampleRemainingValue,
+          ),
+          extractionSampleRemainingUnit: text(
+            current.extractionSampleRemainingUnit,
+          ),
+          discardReason: text(current.discardReason),
+          discardComment: text(current.discardComment),
+        },
+      };
+    });
+  }
+
+  // The Sample Archive list: discarded samples, newest first, with a count per
+  // stage for the summary cards (counts ignore the `stage` filter so every
+  // card keeps its number while one is selected).
+  async findDiscarded(query: any, user: User) {
+    const { projectId, workspaceId, search, diseaseId, stage } = query;
+    const page = Math.max(Number(query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(query.limit) || 10, 1), 100);
+
+    const stageStatus = stage
+      ? DISCARD_STAGE_STATUS[stage as DiscardStage]
+      : undefined;
+    if (stage && !stageStatus) {
+      throw new BadRequestException('Unknown discard stage');
+    }
+
+    const tenant = await this.tenantScopeService.forUser(user);
+
+    const qb = this.sampleRepository
+      .createQueryBuilder('sample')
+      .leftJoinAndSelect('sample.site', 'site')
+      .leftJoinAndSelect('site.location', 'location')
+      .leftJoinAndSelect('location.region', 'region')
+      .leftJoinAndSelect('sample.visit', 'visit')
+      .leftJoinAndSelect('sample.collectedBy', 'collectedBy')
+      .leftJoinAndSelect('sample.sampleType', 'sampleType')
+      .leftJoinAndSelect('sample.diseases', 'disease')
+      .leftJoinAndSelect('sample.discardedBy', 'discardedBy')
+      .leftJoin('sample.project', 'sampleProject')
+      .where('sample.status = :status', { status: StatusType.ACTIVE })
+      .andWhere('sample.discardedAt IS NOT NULL');
+
+    // Tenant scoping as in findAll(), plus the route project for every scope.
+    if (shouldScopeToProject(projectId)) {
+      qb.andWhere('sample.projectId = :projectId', { projectId });
+    } else if (tenant.scope === Scope.System && workspaceId) {
+      qb.andWhere('sampleProject.workspace_id = :workspaceId', {
+        workspaceId,
+      });
+    }
+    if (tenant.scope === Scope.Team) {
+      applyProjectScope(qb, tenant, 'sample.projectId');
+      if (!tenant.teamIds.length) {
+        qb.andWhere('1 = 0');
+      } else {
+        qb.andWhere('sample.teamId IN (:...tenantTeamIds)', {
+          tenantTeamIds: tenant.teamIds,
+        });
+      }
+    }
+
+    // EXISTS rather than filtering the joined diseases, so a matching sample
+    // still lists all of its diseases.
+    if (diseaseId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM samples_diseases_diseases sd
+          WHERE sd."samplesId" = sample.id AND sd."diseasesId" = :diseaseId
+        )`,
+        { diseaseId },
+      );
+    }
+
+    if (search?.trim()) {
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub
+            .where('sample.barcode ILIKE :search')
+            .orWhere('sample.accessionId ILIKE :search')
+            .orWhere('sample.discardReason ILIKE :search')
+            .orWhere('sample.discardComment ILIKE :search');
+        }),
+        { search: `%${search.trim()}%` },
+      );
+    }
+
+    const countRows: { status: SampleStatus; count: string }[] = await qb
+      .clone()
+      .select('sample.sampleStatus', 'status')
+      .addSelect('COUNT(DISTINCT sample.id)', 'count')
+      .groupBy('sample.sampleStatus')
+      .getRawMany();
+    const counts: Record<DiscardStage | 'all', number> = {
+      all: 0,
+      'pre-processing': 0,
+      'virus-isolation': 0,
+      extraction: 0,
+      testing: 0,
+    };
+    for (const row of countRows) {
+      const rowStage = (
+        Object.keys(DISCARD_STAGE_STATUS) as DiscardStage[]
+      ).find((key) => DISCARD_STAGE_STATUS[key] === row.status);
+      const count = Number(row.count) || 0;
+      counts.all += count;
+      if (rowStage) counts[rowStage] += count;
+    }
+
+    if (stageStatus) {
+      qb.andWhere('sample.sampleStatus = :stageStatus', { stageStatus });
+    }
+
+    qb.orderBy('sample.discardedAt', 'DESC')
+      .addOrderBy('sample.id', 'ASC')
+      .skip((page - 1) * limit)
+      .take(limit);
+
+    const [docs, total] = await qb.getManyAndCount();
+
+    // Round isn't stored; derive it per site from visit order, as findAll()
+    // does.
+    const siteIds = [
+      ...new Set(docs.filter((s) => s.site).map((s) => s.site.id)),
+    ];
+    const visitRounds = await computeVisitRoundsForSites(
+      this.visitRepository,
+      siteIds,
+    );
+    docs.forEach((sample) => {
+      if (sample.visit) sample.visit.round = visitRounds.get(sample.visit.id);
+      sample.diseases?.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    });
+
+    return {
+      docs,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      counts,
+    };
+  }
+
   async remove(id: number) {
     const sample = await this.findOne(id);
     await this.update(sample.id, { status: StatusType.DELETED });
@@ -2652,7 +3018,9 @@ export class SamplesService {
           'totalCompleted',
         )
         .innerJoin('sample.project', 'project')
-        .leftJoin('sample.diseases', 'disease');
+        .leftJoin('sample.diseases', 'disease')
+        // Discarded samples keep their status but are out of the pipeline.
+        .where('sample.discardedAt IS NULL');
 
       // Scope to a single project unless a super-admin requested all projects.
       if (shouldScopeToProject(projectId)) {

@@ -188,28 +188,18 @@ export default function SuperAdminProjectPicker() {
   };
 
   return (
-    <div>
-      <div className="flex flex-col gap-3 rounded-2xl border border-grey-20 bg-white p-5 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div className="flex flex-col gap-1">
-          <p className="text-lg font-semibold text-grey-90">Lab Project</p>
-          <p className="text-sm leading-[21px] text-grey-70">
-            Choose the project context you want to use for the lab flow.
-          </p>
-        </div>
-        <div className="w-full sm:w-[320px]">
-          <Select
-            name="labProjectPicker"
-            className="w-full"
-            defaultValue={
-              isSuperAdminFlow && isAll ? ALL_PROJECTS_ID : user?.project?.id
-            }
-            options={options}
-            placeholder={isLoading ? "Loading projects..." : "Select a project"}
-            onChange={handleProjectChange}
-            isClearable={false}
-          />
-        </div>
-      </div>
+    <div className="w-full sm:w-[320px]">
+      <Select
+        name="labProjectPicker"
+        className="w-full"
+        defaultValue={
+          isSuperAdminFlow && isAll ? ALL_PROJECTS_ID : user?.project?.id
+        }
+        options={options}
+        placeholder={isLoading ? "Loading projects..." : "Select a project"}
+        onChange={handleProjectChange}
+        isClearable={false}
+      />
     </div>
   );
 }

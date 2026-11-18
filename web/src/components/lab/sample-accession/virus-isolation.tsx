@@ -25,6 +25,7 @@ import {
   SAMPLE_UNITS,
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -676,20 +677,28 @@ export default function VirusIsolation({
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-6 border-t border-grey-20">
-        <button
-          onClick={() => {
-            if (isBulkMode && onBulkSuccess) {
-              onBulkSuccess("back");
-            } else if (onBack) {
-              onBack();
-            } else {
-              router.replace("/lab");
-            }
-          }}
-          className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (isBulkMode && onBulkSuccess) {
+                onBulkSuccess("back");
+              } else if (onBack) {
+                onBack();
+              } else {
+                router.replace("/lab");
+              }
+            }}
+            className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
+          >
+            ← Back
+          </button>
+          <DiscardSampleAction
+            samples={samplesToProcess}
+            isBulkMode={isBulkMode}
+            onBulkDiscarded={() => onBulkSuccess?.("exit", "virus-isolation")}
+            disabled={submitting}
+          />
+        </div>
 
         <div className="flex items-center gap-4">
           <button

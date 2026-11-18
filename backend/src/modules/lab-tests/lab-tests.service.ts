@@ -43,6 +43,10 @@ export class LabTestsService {
       : null;
     if (createMultipleLabTestDto.sample && !sampleData)
       throw new BadRequestException('Sample not found');
+    if (sampleData?.discardedAt)
+      throw new BadRequestException(
+        'This sample has been discarded and can no longer be tested',
+      );
 
     const { team, site, visit, project } = sampleData;
 
@@ -214,6 +218,15 @@ export class LabTestsService {
 
     if (existingLabTests.length !== updateMultipleLabTestDto.labTests.length) {
       throw new BadRequestException('One or more lab test records not found');
+    }
+
+    if (
+      sampleData?.discardedAt ||
+      existingLabTests.some((labTest) => labTest.sample?.discardedAt)
+    ) {
+      throw new BadRequestException(
+        'This sample has been discarded and its lab tests can no longer be changed',
+      );
     }
 
     // Map and update records

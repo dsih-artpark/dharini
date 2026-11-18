@@ -16,6 +16,7 @@ import {
   getTeamMembersApi,
 } from "@/src/app/(dashboard)/lab/[sampleId]/loader";
 import Spinner from "@/src/components/ui/spinner";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 import DiseaseTestGroupCard, {
   DiseaseTestState,
   SampleTestParams,
@@ -624,13 +625,22 @@ export default function SampleTesting({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-4 py-3 items-center justify-end">
-        <button
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-grey-70 text-base font-medium border border-grey-30 rounded-xl hover:border-blue-40 hover:text-blue-40 transition-colors shadow-sm mr-auto disabled:opacity-50"
-          onClick={handleBack}
-          disabled={submitting}
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3 mr-auto">
+          <button
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-grey-70 text-base font-medium border border-grey-30 rounded-xl hover:border-blue-40 hover:text-blue-40 transition-colors shadow-sm disabled:opacity-50"
+            onClick={handleBack}
+            disabled={submitting}
+          >
+            ← Back
+          </button>
+          <DiscardSampleAction
+            samples={targetSamples}
+            isBulkMode={isBulkMode}
+            onBulkDiscarded={() => onBulkSuccess?.("exit", "extracted")}
+            disabled={submitting}
+            sizeClassName="px-6 py-3 text-base font-medium shadow-sm"
+          />
+        </div>
         <button
           className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-40 text-white text-base font-medium border border-blue-40 rounded-xl hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-50"
           onClick={() => handleSubmit("complete")}

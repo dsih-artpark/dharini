@@ -19,6 +19,12 @@ import { isValidUrl } from "@/src/utils";
 import Carousel from "@/src/components/ui/carousel";
 import Spinner from "@/src/components/ui/spinner";
 import { SAMPLE_STATUS_MAPPING } from "@/src/utils/constant";
+import {
+  formatDateTime,
+  getDiscardStage,
+  getDiscardStageLabel,
+  getUserName,
+} from "@/src/utils/discard";
 import { useHasPermission } from "@/src/hooks/check-permission";
 
 export default function SampleDetailModal({
@@ -126,6 +132,7 @@ export default function SampleDetailModal({
               <AccessionSampleCard sampleDetail={sample} />
               {/* toast */}
               {sample?.sampleStatus !== "rejected" &&
+                !sample?.discardedAt &&
                 (sample?.diseases?.length ?? 0) -
                   (sample?.labTests?.length ?? 0) >
                   0 && (
@@ -181,16 +188,45 @@ export default function SampleDetailModal({
               </div>
               {/* status */}
               <div className="self-stretch p-3 bg-white rounded border border-grey-20 flex-col justify-start items-start gap-3 flex">
-                <p className="text-grey-70 text-sm font-normal capitalize">
-                  Status:{" "}
-                  <span className="text-grey-80">
-                    {(
-                      SAMPLE_STATUS_MAPPING[
-                        sample.sampleStatus as keyof typeof SAMPLE_STATUS_MAPPING
-                      ] ?? sample.sampleStatus
-                    )?.replaceAll("-", " ")}
-                  </span>
-                </p>
+                {sample?.discardedAt ? (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="text-grey-70 text-sm font-normal">
+                      Status:{" "}
+                      <span className="font-medium text-red-30">
+                        Discarded at{" "}
+                        {getDiscardStageLabel(
+                          getDiscardStage(sample.sampleStatus),
+                        )}
+                      </span>
+                    </p>
+                    <p className="text-grey-70 text-sm">
+                      Reason:{" "}
+                      <span className="text-grey-80">
+                        {sample.discardReason || "—"}
+                      </span>
+                    </p>
+                    {sample.discardComment && (
+                      <p className="text-grey-70 text-sm">
+                        {sample.discardComment}
+                      </p>
+                    )}
+                    <p className="text-grey-70 text-xs">
+                      {getUserName(sample.discardedBy)} ·{" "}
+                      {formatDateTime(sample.discardedAt)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-grey-70 text-sm font-normal capitalize">
+                    Status:{" "}
+                    <span className="text-grey-80">
+                      {(
+                        SAMPLE_STATUS_MAPPING[
+                          sample.sampleStatus as keyof typeof SAMPLE_STATUS_MAPPING
+                        ] ?? sample.sampleStatus
+                      )?.replaceAll("-", " ")}
+                    </span>
+                  </p>
+                )}
                 {sample?.sampleStatus === "rejected" &&
                   sample?.rejectReason && (
                     <p className="text-grey-70 text-base font-normal leading-relaxed">
@@ -213,6 +249,7 @@ export default function SampleDetailModal({
             !isAll &&
             canUpdateLabTest &&
             sample?.sampleStatus &&
+            !sample?.discardedAt &&
             !["rejected", "test-report-generated"].includes(
               sample?.sampleStatus,
             ) && (
