@@ -16,6 +16,7 @@ import {
   FINAL_TEST_RESULTS,
   RowError,
   ValidationResult,
+  diseaseNotInProjectMessage,
 } from './data-import.types';
 import { FmdLsdCollectionRowDto } from './dto/fmd-lsd-collection-row.dto';
 import { FmdLsdLabRowDto } from './dto/fmd-lsd-lab-row.dto';
@@ -170,10 +171,13 @@ export class ImportValidationService {
     private readonly regionRepository: Repository<Region>,
   ) {}
 
+  // `projectDiseases`: the short names of the diseases the project is set up
+  // for; a row naming any other is refused.
   async validateCollectionRows(
     rawRows: Record<string, any>[],
     diseaseGroup: DiseaseGroup,
     projectId: string,
+    projectDiseases: string[],
   ): Promise<ValidationResult<CollectionRowDto>> {
     // Cast needed: the ternary's union constructor type isn't assignable to
     // plainToInstance's single-class overload even though both rows are validated identically below.
@@ -204,6 +208,7 @@ export class ImportValidationService {
           raw,
           row,
           diseaseGroup,
+          projectDiseases,
         )),
       );
       errors.push(...this.validateLocation(raw, row, locationContext));
@@ -238,10 +243,12 @@ export class ImportValidationService {
     };
   }
 
+  // `projectDiseases`: as for validateCollectionRows.
   async validateLabRows(
     rawRows: Record<string, any>[],
     diseaseGroup: DiseaseGroup,
     projectId: string,
+    projectDiseases: string[],
   ): Promise<ValidationResult<LabRowDto>> {
     const dtoClass = (
       diseaseGroup === 'AI' ? AiLabRowDto : FmdLsdLabRowDto
@@ -266,7 +273,12 @@ export class ImportValidationService {
 
       errors.push(...(await this.runClassValidation(dto, row)));
       errors.push(
-        ...(await this.validateLabDiseaseList(raw, diseaseGroup, row)),
+        ...(await this.validateLabDiseaseList(
+          raw,
+          diseaseGroup,
+          row,
+          projectDiseases,
+        )),
       );
 
       const instituteSampleId = raw['instituteSampleId'];
@@ -361,6 +373,7 @@ export class ImportValidationService {
     raw: Record<string, any>,
     row: number,
     diseaseGroup: DiseaseGroup,
+    projectDiseases: string[],
   ): Promise<RowError[]> {
     const errors: RowError[] = [];
 
@@ -449,6 +462,12 @@ export class ImportValidationService {
           row,
           column: 'disease',
           message: `Unknown disease "${disease}". Valid options: ${allowedDiseases.join(', ')}`,
+        });
+      } else if (!projectDiseases.includes(disease)) {
+        errors.push({
+          row,
+          column: 'disease',
+          message: diseaseNotInProjectMessage(disease, projectDiseases),
         });
       }
     }
@@ -651,6 +670,7 @@ export class ImportValidationService {
     raw: Record<string, any>,
     diseaseGroup: DiseaseGroup,
     row: number,
+    projectDiseases: string[],
   ): Promise<RowError[]> {
     const errors: RowError[] = [];
     const diseases = parseDiseaseList(raw['disease']);
@@ -667,6 +687,12 @@ export class ImportValidationService {
           row,
           column: 'disease',
           message: `Unknown disease "${disease}". Valid options: ${allowed.join(', ')}`,
+        });
+      } else if (!projectDiseases.includes(disease)) {
+        errors.push({
+          row,
+          column: 'disease',
+          message: diseaseNotInProjectMessage(disease, projectDiseases),
         });
       }
     }

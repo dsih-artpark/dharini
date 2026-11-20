@@ -52,23 +52,7 @@ class SuccessScreen extends HookWidget {
             ),
           );
           break;
-        case SyncStatus.completed:
-          syncBanner = Material(
-            color: Colors.green[400],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.check_circle, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  Text('Visit synced successfully!',
-                      style: TextStyle(color: Colors.white)),
-                ],
-              ),
-            ),
-          );
-          break;
+        // No banner once synced: the screen itself says the visit was saved.
         case SyncStatus.error:
           syncBanner = Material(
             color: Colors.red[400],
@@ -195,59 +179,60 @@ class SuccessScreen extends HookWidget {
                               height: 3,
                               color: AppColors.borderLight,
                             ),
-                            SizedBox(height: Spacing.space(6)),
-                            Container(
-                              margin: const EdgeInsets.only(bottom: 16),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  const Icon(
-                                    Icons.location_on_outlined,
-                                    color: Colors.black54,
-                                    size: 24,
-                                  ),
-                                  SizedBox(width: Spacing.space(3)),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: <Widget>[
-                                        Text(
-                                          profile.team?.teamName ?? '',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodyMedium
-                                              ?.copyWith(
-                                                color: AppColors.labletestblack,
-                                              ),
-                                        ),
-                                        SizedBox(height: Spacing.space(1)),
-                                        Text(
-                                          profile.team?.address ??
-                                              'Address not available',
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.copyWith(
-                                                color: AppColors.labletestgrey,
-                                              ),
-                                        ),
-                                        SizedBox(height: Spacing.space(1)),
-                                        // Text(
-                                        //   'View Location',
-                                        //   style: Theme.of(context)
-                                        //       .textTheme
-                                        //       .bodySmall
-                                        //       ?.copyWith(
-                                        //         color: AppColors.onInfoLight,
-                                        //       ),
-                                        // ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            // Team / lab address card - hidden for now.
+                            // SizedBox(height: Spacing.space(6)),
+                            // Container(
+                            //   margin: const EdgeInsets.only(bottom: 16),
+                            //   child: Row(
+                            //     crossAxisAlignment: CrossAxisAlignment.start,
+                            //     children: <Widget>[
+                            //       const Icon(
+                            //         Icons.location_on_outlined,
+                            //         color: Colors.black54,
+                            //         size: 24,
+                            //       ),
+                            //       SizedBox(width: Spacing.space(3)),
+                            //       Expanded(
+                            //         child: Column(
+                            //           crossAxisAlignment:
+                            //               CrossAxisAlignment.start,
+                            //           children: <Widget>[
+                            //             Text(
+                            //               profile.team?.teamName ?? '',
+                            //               style: Theme.of(context)
+                            //                   .textTheme
+                            //                   .bodyMedium
+                            //                   ?.copyWith(
+                            //                     color: AppColors.labletestblack,
+                            //                   ),
+                            //             ),
+                            //             SizedBox(height: Spacing.space(1)),
+                            //             Text(
+                            //               profile.team?.address ??
+                            //                   'Address not available',
+                            //               style: Theme.of(context)
+                            //                   .textTheme
+                            //                   .bodySmall
+                            //                   ?.copyWith(
+                            //                     color: AppColors.labletestgrey,
+                            //                   ),
+                            //             ),
+                            //             SizedBox(height: Spacing.space(1)),
+                            //             // Text(
+                            //             //   'View Location',
+                            //             //   style: Theme.of(context)
+                            //             //       .textTheme
+                            //             //       .bodySmall
+                            //             //       ?.copyWith(
+                            //             //         color: AppColors.onInfoLight,
+                            //             //       ),
+                            //             // ),
+                            //           ],
+                            //         ),
+                            //       ),
+                            //     ],
+                            //   ),
+                            // ),
                             // Row(
                             //   crossAxisAlignment: CrossAxisAlignment.start,
                             //   children: <Widget>[

@@ -20,77 +20,62 @@ import { ALL_PROJECTS_ID } from "@/src/lib/super-admin-lab-flow";
 import { useCurrentProjectResolver } from "@/src/hooks/use-current-project";
 import { formatDate } from "@/src/utils";
 import { SampleStatistics } from "@/src/types/sample";
-import Spinner from "@/src/components/ui/spinner";
 
 const PIPELINE_STAGES: {
   key: keyof SampleStatistics;
   label: string;
   Icon: React.ElementType;
-  bg: string;
   iconBg: string;
   iconColor: string;
   bar: string;
-  text: string;
 }[] = [
   {
     key: "totalCollected",
     label: "Collected",
     Icon: FlaskConical,
-    bg: "bg-orange-10",
-    iconBg: "bg-orange-20",
-    iconColor: "text-orange-50",
+    iconBg: "bg-orange-10",
+    iconColor: "text-orange-30",
     bar: "bg-orange-30",
-    text: "text-orange-60",
   },
   {
     key: "totalReceived",
     label: "Received",
     Icon: PackageOpen,
-    bg: "bg-blue-10",
-    iconBg: "bg-blue-20",
+    iconBg: "bg-blue-10",
     iconColor: "text-blue-40",
     bar: "bg-blue-40",
-    text: "text-blue-50",
   },
   {
     key: "totalPreprocessed",
     label: "Pre-processed",
     Icon: Beaker,
-    bg: "bg-teal-10",
-    iconBg: "bg-teal-20",
-    iconColor: "text-teal-50",
+    iconBg: "bg-teal-10",
+    iconColor: "text-teal-30",
     bar: "bg-teal-30",
-    text: "text-teal-60",
   },
   {
     key: "totalRejected",
     label: "Rejected",
     Icon: XCircle,
-    bg: "bg-red-10",
-    iconBg: "bg-red-20",
-    iconColor: "text-red-50",
-    bar: "bg-red-40",
-    text: "text-red-60",
+    iconBg: "bg-red-10",
+    iconColor: "text-red-30",
+    bar: "bg-red-30",
   },
   {
     key: "totalExtracted",
     label: "Extracted",
     Icon: Microscope,
-    bg: "bg-yellow-10",
-    iconBg: "bg-yellow-20",
-    iconColor: "text-yellow-50",
+    iconBg: "bg-yellow-10",
+    iconColor: "text-yellow-30",
     bar: "bg-yellow-30",
-    text: "text-yellow-60",
   },
   {
     key: "totalCompleted",
     label: "Report Generated",
     Icon: FileCheck,
-    bg: "bg-green-10",
-    iconBg: "bg-green-20",
-    iconColor: "text-green-50",
+    iconBg: "bg-green-10",
+    iconColor: "text-green-30",
     bar: "bg-green-30",
-    text: "text-green-60",
   },
 ];
 
@@ -178,7 +163,7 @@ export default function SamplesStat() {
     : 0;
 
   return (
-    <section className="flex flex-col gap-6 rounded-2xl border border-grey-20 bg-white p-5 shadow-card sm:p-6">
+    <section className="flex flex-col gap-4 rounded-2xl border border-grey-20 bg-white p-5 shadow-card">
       {/* <div className="flex flex-col justify-between gap-6 self-stretch sm:flex-row">
         <div className="flex flex-col gap-4 self-stretch">
           <h1 className="text-2xl font-semibold leading-tight text-grey-90 sm:text-[32px]">
@@ -236,19 +221,25 @@ export default function SamplesStat() {
         </div>
       </div> */}
 
-      <div className="self-stretch border-b border-grey-20" />
-
-      <div className="flex flex-col items-start justify-between gap-6 self-stretch sm:flex-row sm:items-center">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-semibold text-grey-90">
+      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-lg font-semibold text-grey-90">
             Samples in Pipeline
           </h2>
-          <p className="text-sm leading-normal text-grey-60">
-            Live snapshot of sample counts across each processing stage
+          <p className="text-sm text-grey-60">
+            {isLoading ? (
+              "Loading…"
+            ) : (
+              <>
+                <span className="font-semibold text-grey-80">{total}</span>{" "}
+                total samples
+              </>
+            )}{" "}
+            · Updated {formatDate(new Date())}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <p className="text-xs text-grey-60">Showing data for:</p>
+        <div className="flex shrink-0 items-center gap-2">
+          <p className="text-xs text-grey-60">Showing data for</p>
           <Select
             name="region"
             options={[
@@ -261,95 +252,66 @@ export default function SamplesStat() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-grey-20 bg-grey-10 p-4 sm:p-5">
-        <div className="flex items-end gap-3">
-          {isLoading ? (
-            <Spinner />
-          ) : (
-            <span className="text-4xl font-semibold leading-none text-grey-90">
-              {total}
-            </span>
-          )}
-          <span className="pb-1 text-sm leading-snug text-grey-60">
-            total samples
-            <br />
-            in pipeline
-          </span>
-        </div>
-
-        <div className="mt-5 flex h-3 w-full overflow-hidden rounded-full bg-grey-20">
-          {isLoading ? (
-            <div className="h-full w-full rounded-full bg-grey-40" />
-          ) : total === 0 ? (
-            <div className="h-full w-full rounded-full bg-grey-20" />
-          ) : (
-            PIPELINE_STAGES.map((stage, index) => {
-              const value = samplesStatData?.[stage.key] || 0;
-              if (value === 0) return null;
-              return (
-                <div
-                  key={index}
-                  className={`h-full transition-all duration-700 ${stage.bar}`}
-                  style={{ width: `${(value / total) * 100}%` }}
-                  title={`${stage.label}: ${value}`}
-                />
-              );
-            })
-          )}
-        </div>
+      {/* Each stage's share of the total */}
+      <div
+        className={`flex h-2 w-full overflow-hidden rounded-full bg-grey-20 ${
+          isLoading ? "animate-pulse" : ""
+        }`}
+      >
+        {!isLoading &&
+          total > 0 &&
+          PIPELINE_STAGES.map((stage) => {
+            const value = samplesStatData?.[stage.key] || 0;
+            if (value === 0) return null;
+            return (
+              <div
+                key={stage.key}
+                className={`h-full transition-all duration-700 ${stage.bar}`}
+                style={{ width: `${(value / total) * 100}%` }}
+                title={`${stage.label}: ${value}`}
+              />
+            );
+          })}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        {PIPELINE_STAGES.map((stage, index) => {
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
+        {PIPELINE_STAGES.map((stage) => {
           const value = samplesStatData?.[stage.key] || 0;
           const pct = total > 0 ? ((value / total) * 100).toFixed(0) : "0";
           const { Icon } = stage;
 
           return (
             <div
-              key={index}
-              className="rounded-xl border border-grey-20 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              key={stage.key}
+              className="flex items-center gap-3 rounded-xl border border-grey-20 px-3 py-2.5"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg ${stage.iconBg}`}
-                >
-                  <Icon size={16} className={stage.iconColor} strokeWidth={2} />
-                </div>
-                {!isLoading && total > 0 && (
-                  <p className={`text-xs font-semibold ${stage.text}`}>
-                    {pct}%
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${stage.iconBg}`}
+              >
+                <Icon size={16} className={stage.iconColor} strokeWidth={2} />
+              </span>
+              <div className="min-w-0">
+                {isLoading ? (
+                  <span className="block h-5 w-10 animate-pulse rounded bg-grey-20" />
+                ) : (
+                  <p className="flex items-baseline gap-1.5">
+                    <span className="text-xl font-semibold leading-5 text-grey-90">
+                      {value}
+                    </span>
+                    {total > 0 && (
+                      <span className="text-xs font-medium text-grey-60">
+                        {pct}%
+                      </span>
+                    )}
                   </p>
                 )}
-              </div>
-              {isLoading ? (
-                <div className="mt-5 flex h-8 items-center">
-                  <Spinner />
-                </div>
-              ) : (
-                <p className="mt-5 text-3xl font-semibold leading-none text-grey-90">
-                  {value}
+                <p className="mt-1 text-xs font-medium leading-4 text-grey-70">
+                  {stage.label}
                 </p>
-              )}
-              <p className="mt-2 text-sm font-medium leading-5 text-grey-70">
-                {stage.label}
-              </p>
-              <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-grey-20">
-                <div
-                  className={`h-full rounded-full ${stage.bar}`}
-                  style={{ width: total > 0 ? `${pct}%` : "0%" }}
-                />
               </div>
             </div>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-2 border-t border-grey-20 pt-4 text-sm text-grey-60">
-        <span>Last updated:</span>
-        <span className="font-semibold text-grey-70">
-          {formatDate(new Date())}
-        </span>
       </div>
     </section>
   );

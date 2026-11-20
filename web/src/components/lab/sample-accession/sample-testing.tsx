@@ -16,6 +16,7 @@ import {
   getTeamMembersApi,
 } from "@/src/app/(dashboard)/lab/[sampleId]/loader";
 import Spinner from "@/src/components/ui/spinner";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 import DiseaseTestGroupCard, {
   DiseaseTestState,
   SampleTestParams,
@@ -199,6 +200,34 @@ export default function SampleTesting({
     setDiseaseStates(initState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filteredDiseases, sampleGroups]);
+
+  // Bulk modal: a row was discarded (a pool goes whole). Drop its result rows
+  // from every disease, and any disease left with no rows, so validation and
+  // saving only see the samples still on screen; close the modal once nothing
+  // is left to test.
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    const goneKeys = new Set(
+      sampleGroups
+        .filter((g) => g.samples.every((s) => gone.has(s.id)))
+        .map((g) => (g.isPooled ? g.pooledId! : g.samples[0].id)),
+    );
+    setDiseaseStates((prev) => {
+      const next: typeof prev = {};
+      Object.entries(prev).forEach(([diseaseId, ds]) => {
+        const samples = Object.fromEntries(
+          Object.entries(ds.samples).filter(([key]) => !goneKeys.has(key)),
+        );
+        if (Object.keys(samples).length > 0) {
+          next[diseaseId] = { ...ds, samples };
+        }
+      });
+      return next;
+    });
+    if (targetSamples.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "extracted");
+    }
+  };
 
   const validate = () => {
     let isValid = true;
@@ -615,6 +644,18 @@ export default function SampleTesting({
               loadingTeamMembers={loadingTeamMembers}
               currentUserId={user?.id}
               errors={cardErrors}
+              renderRowAction={
+                isBulkMode
+                  ? (group) => (
+                      <DiscardSampleAction
+                        variant="row"
+                        samples={group.samples}
+                        onRowDiscarded={handleRowDiscarded}
+                        disabled={submitting}
+                      />
+                    )
+                  : undefined
+              }
             />
           );
         })}
@@ -624,13 +665,22 @@ export default function SampleTesting({
 
       {/* Actions */}
       <div className="flex flex-wrap gap-4 py-3 items-center justify-end">
-        <button
-          className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-grey-70 text-base font-medium border border-grey-30 rounded-xl hover:border-blue-40 hover:text-blue-40 transition-colors shadow-sm mr-auto disabled:opacity-50"
-          onClick={handleBack}
-          disabled={submitting}
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3 mr-auto">
+          <button
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-grey-70 text-base font-medium border border-grey-30 rounded-xl hover:border-blue-40 hover:text-blue-40 transition-colors shadow-sm disabled:opacity-50"
+            onClick={handleBack}
+            disabled={submitting}
+          >
+            ← Back
+          </button>
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={targetSamples}
+              disabled={submitting}
+              sizeClassName="px-6 py-3 text-base font-medium shadow-sm"
+            />
+          )}
+        </div>
         <button
           className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-40 text-white text-base font-medium border border-blue-40 rounded-xl hover:bg-blue-50 transition-colors shadow-sm disabled:opacity-50"
           onClick={() => handleSubmit("complete")}

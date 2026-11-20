@@ -2853,6 +2853,136 @@
         ]
       }
     },
+    "/projects/{projectId}/samples/discarded": {
+      "get": {
+        "description": "Discarded samples, newest first, with a count per stage. `stage` is one of pre-processing, virus-isolation, extraction, testing.",
+        "operationId": "ProjectsController_findDiscardedSamples",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "description": "Project UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "stage",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "diseaseId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Matches sample ID, accession ID, reason or comment",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspaceId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Sample Archive: samples discarded mid-process",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/projects/{projectId}/samples/discard": {
+      "post": {
+        "description": "Marks the samples as discarded with a reason, who and when. Pooled samples are discarded with the rest of their pool. The samples keep their status and can no longer be processed.",
+        "operationId": "ProjectsController_discardSamples",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "description": "Project UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscardSamplesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSampleResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Discard samples mid-process (Pre-processing to Testing)",
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
     "/projects/{projectId}/samples/lab-stats": {
       "get": {
         "operationId": "ProjectsController_getLabTestStats",
@@ -2910,6 +3040,52 @@
             "bearer": []
           }
         ],
+        "tags": [
+          "Projects"
+        ]
+      }
+    },
+    "/projects/{projectId}/samples/{sampleId}/activity": {
+      "get": {
+        "operationId": "ProjectsController_getSampleActivity",
+        "parameters": [
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "description": "Project UUID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sampleId",
+            "required": true,
+            "in": "path",
+            "description": "Sample UUID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get a sample's activity log, oldest first",
         "tags": [
           "Projects"
         ]
@@ -12797,6 +12973,67 @@
           "page",
           "limit",
           "totalPages"
+        ]
+      },
+      "DiscardSamplesDto": {
+        "type": "object",
+        "properties": {
+          "sampleIds": {
+            "minItems": 1,
+            "description": "Samples to discard. A pooled sample brings the rest of its pool with it.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "Reason for discard"
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "What was observed. Required when the reason is \"Other\"."
+          },
+          "discardedBy": {
+            "type": "string",
+            "format": "uuid",
+            "description": "User UUID of the team member who discarded"
+          },
+          "discardedAt": {
+            "type": "string",
+            "description": "When the sample was discarded"
+          }
+        },
+        "required": [
+          "sampleIds",
+          "reason",
+          "discardedBy",
+          "discardedAt"
+        ]
+      },
+      "ListSampleResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SampleResponseData"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "message",
+          "data"
         ]
       },
       "SampleStatLogisticResponseData": {

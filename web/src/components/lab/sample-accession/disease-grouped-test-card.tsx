@@ -128,6 +128,8 @@ interface DiseaseTestGroupCardProps {
   loadingTeamMembers: boolean;
   currentUserId?: string;
   errors: CardErrors;
+  // Bulk modal: an extra last cell per row (the discard button).
+  renderRowAction?: (group: SampleGroup) => React.ReactNode;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -142,6 +144,7 @@ export default function DiseaseTestGroupCard({
   loadingTeamMembers,
   currentUserId,
   errors,
+  renderRowAction,
 }: DiseaseTestGroupCardProps) {
   const [uploading, setUploading] = useState(false);
 
@@ -586,6 +589,11 @@ export default function DiseaseTestGroupCard({
                   <th className="px-4 py-3 text-[10px] font-bold text-grey-50 uppercase tracking-widest whitespace-nowrap">
                     Result Date
                   </th>
+                  {renderRowAction && (
+                    <th className="px-4 py-3">
+                      <span className="sr-only">Discard</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-grey-10">
@@ -793,6 +801,11 @@ export default function DiseaseTestGroupCard({
                           }
                         />
                       </td>
+                      {renderRowAction && (
+                        <td className="px-4 py-3 text-right">
+                          {renderRowAction(group)}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

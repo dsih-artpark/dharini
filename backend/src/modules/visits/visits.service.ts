@@ -1031,9 +1031,13 @@ export class VisitService implements OnModuleInit {
       await transactionalEntityManager.update(Visit, id, { visitedByIds });
     }
 
-    const onVisit = new Set(committedSamples.map((sample) => sample.barcode));
+    // Ignoring case, as createMultipleSamples does: "FEEDI" is the "feedi"
+    // already on the visit, not a new sample to refuse.
+    const onVisit = new Set(
+      committedSamples.map((sample) => sample.barcode?.toLowerCase()),
+    );
     const newSamples = (submitVisit.samples ?? []).filter(
-      (sample) => !sample.barcode || !onVisit.has(sample.barcode),
+      (sample) => !sample.barcode || !onVisit.has(sample.barcode.toLowerCase()),
     );
     if (newSamples.length === 0) {
       console.log(

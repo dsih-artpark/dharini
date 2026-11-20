@@ -9,6 +9,7 @@ import 'package:collection/collection.dart';
 import 'package:design_system/design_system.dart';
 import 'package:es_client/es_client.dart';
 import 'package:es_platform_mobile/hooks/auth.dart';
+import 'package:es_platform_mobile/hooks/barcode_validator.dart';
 import 'package:es_platform_mobile/models/pending_submission.dart';
 import 'package:es_platform_mobile/providers/connectivity_provider.dart';
 import 'package:es_platform_mobile/providers/sync_service_provider.dart';
@@ -523,7 +524,14 @@ class ReviewVisitDetails extends HookWidget {
     //   }
     // }, [visit, project, submitVisitMutation, samples, visitId, profile.data]);
 
+    final barcodeValidator = useBarcodeValidator();
+    // Set while a submission runs: the barcode check can take a while on a
+    // slow network, so the button spins and a second tap is ignored.
+    final isSubmitting = useState<bool>(false);
+
     final handleSubmitVisit = useCallback(() async {
+      if (isSubmitting.value) return;
+      isSubmitting.value = true;
       try {
         // The team a visit is attributed to is a property of the submitting
         // collector's role in this project, not the legacy global
@@ -540,6 +548,33 @@ class ReviewVisitDetails extends HookWidget {
                   'Unable to submit visit: you are not assigned to a team '
                   'for this project. Contact your administrator.',
                 ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        // Each sample needs its own barcode, ignoring case ("Feedi" and
+        // "feedi" are the same): within this visit, and - when online - in
+        // the project. Checked before the visit is queued, as a refusal from
+        // the server only arrives after the collector has moved on.
+        final barcodes = samples
+            .map((sample) => sample.barcode.trim())
+            .where((barcode) => barcode.isNotEmpty)
+            .toList();
+        final seenBarcodes = <String>{};
+        final repeatedBarcode = barcodes.firstWhereOrNull(
+            (barcode) => !seenBarcodes.add(barcode.toLowerCase()));
+        final barcodeError = repeatedBarcode != null
+            ? 'Barcode "$repeatedBarcode" is used for more than one sample '
+                'in this visit. Each sample needs its own barcode.'
+            : await barcodeValidator.validateBatch(barcodes);
+        if (barcodeError != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(barcodeError),
                 backgroundColor: Colors.red,
               ),
             );
@@ -754,15 +789,15 @@ class ReviewVisitDetails extends HookWidget {
           final scaffoldMessenger = ScaffoldMessenger.of(context);
           context.syncService.sync().then((result) async {
             debugPrint("Sync results: $result");
-            final msg = result.success
-                ? 'Visit submitted successfully'
-                : 'Visit submission failed: ${result.error ?? ""}';
-            final color = result.success ? Colors.green : Colors.red;
+            // The success screen already says the visit was saved; only a
+            // failure needs a message.
+            if (result.success) return;
             try {
               scaffoldMessenger.showSnackBar(
                 SnackBar(
-                    content: Text(msg),
-                    backgroundColor: color,
+                    content: Text(
+                        'Visit submission failed: ${result.error ?? ""}'),
+                    backgroundColor: Colors.red,
                     duration: const Duration(seconds: 5)),
               );
             } catch (e) {
@@ -772,18 +807,16 @@ class ReviewVisitDetails extends HookWidget {
           });
         }
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              networkStatus == NetworkStatus.online
-                  ? 'Visit saved. Syncing in background...'
-                  : 'Visit saved locally. Will sync when online.',
+        // Offline only: the success screen doesn't say the visit is still
+        // waiting to be sent.
+        if (networkStatus != NetworkStatus.online) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Visit saved locally. Will sync when online.'),
+              backgroundColor: Colors.orange,
             ),
-            backgroundColor: networkStatus == NetworkStatus.online
-                ? Colors.green
-                : Colors.orange,
-          ),
-        );
+          );
+        }
 
         final uniqueSampleTypes =
             samples.map((s) => s.sampleName).toSet().toList();
@@ -877,8 +910,18 @@ class ReviewVisitDetails extends HookWidget {
             backgroundColor: Colors.red,
           ),
         );
+      } finally {
+        if (context.mounted) isSubmitting.value = false;
       }
-    }, [visit, project, submitVisitMutation, samples, visitId, profile.data]);
+    }, [
+      visit,
+      project,
+      submitVisitMutation,
+      samples,
+      visitId,
+      profile.data,
+      barcodeValidator,
+    ]);
 
     // Define the builder functions at the top level of build
 
@@ -1504,7 +1547,7 @@ class ReviewVisitDetails extends HookWidget {
               borderRadius: BorderRadius.circular(8),
             ),
           ),
-          child: submitVisitMutation.isPending
+          child: submitVisitMutation.isPending || isSubmitting.value
               ? const CircularProgressIndicator(color: Colors.white)
               : hasCoords
                   ? Text(

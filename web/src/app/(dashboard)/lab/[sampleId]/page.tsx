@@ -194,6 +194,9 @@ export default function SampleAccessionProcess() {
                   }
                 };
 
+                // A discarded sample keeps its status but can't be processed.
+                if (sample?.discardedAt) return <SampleAccessionCompleted />;
+
                 return (
                   <>
                     {stepIndex === 0 && <SampleReceiving />}

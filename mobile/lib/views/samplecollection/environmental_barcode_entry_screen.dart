@@ -449,9 +449,10 @@ class EnvironmentalBarcodeEntryScreen extends HookWidget {
           .map((e) => e.value.copyWith(barcode: newBarcodes[e.key]))
           .toList();
 
+      // Compared lowercased: "Qwer" duplicates "qwer".
       final existingBarcodes = <String>{};
       for (final s in existingSamples) {
-        if (s.barcode.isNotEmpty) existingBarcodes.add(s.barcode);
+        if (s.barcode.isNotEmpty) existingBarcodes.add(s.barcode.toLowerCase());
       }
 
       // Get barcodes from other groups (excluding the group being generated)
@@ -460,15 +461,19 @@ class EnvironmentalBarcodeEntryScreen extends HookWidget {
         if (i == groupIndex) continue;
         final g = groups.value[i];
         for (final s in g.samples) {
-          if (s.barcode.isNotEmpty) otherGroupsBarcodes.add(s.barcode);
+          if (s.barcode.isNotEmpty) {
+            otherGroupsBarcodes.add(s.barcode.toLowerCase());
+          }
           for (final r in s.replicateBarcodes) {
-            if (r.isNotEmpty) otherGroupsBarcodes.add(r);
+            if (r.isNotEmpty) otherGroupsBarcodes.add(r.toLowerCase());
           }
         }
       }
 
       final duplicate = newBarcodes.firstWhere(
-        (b) => existingBarcodes.contains(b) || otherGroupsBarcodes.contains(b),
+        (b) =>
+            existingBarcodes.contains(b.toLowerCase()) ||
+            otherGroupsBarcodes.contains(b.toLowerCase()),
         orElse: () => '',
       );
 

@@ -107,6 +107,34 @@ export const updateLabTestApi = async (
   }
 };
 
+export type DiscardSamplesPayload = {
+  sampleIds: string[];
+  reason: string;
+  comment?: string;
+  discardedBy: string;
+  discardedAt: string;
+};
+
+// Discard samples mid-process. Pooled samples bring the rest of their pool,
+// so the response can hold more samples than were sent.
+export const discardSamplesApi = async (
+  projectId: string,
+  payload: DiscardSamplesPayload,
+): Promise<ApiResponse<Sample[]>> => {
+  try {
+    const response = await apiClient.post(
+      `/projects/${projectId}/samples/discard`,
+      payload,
+    );
+    return response.data;
+  } catch (error: unknown) {
+    if (error instanceof AxiosError && error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw new Error("Failed to discard sample.");
+  }
+};
+
 // Create a new kit
 export const createKitApi = async (name: string): Promise<ApiResponse<Kit>> => {
   try {

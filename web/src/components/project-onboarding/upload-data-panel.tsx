@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "react-toastify";
 import { CheckCircle2, FileSpreadsheet, X } from "lucide-react";
 
@@ -17,6 +17,7 @@ import {
   ImportSection,
   ImportResult,
 } from "@/src/app/(dashboard)/project-onboarding/actions";
+import { getProjectDetailApi } from "@/src/app/(dashboard)/projects/[id]/loader";
 
 type UploadDataPanelProps = {
   projectId: string;
@@ -44,6 +45,60 @@ export default function UploadDataPanel({
   // The file that produced `result`, kept so the success card can name it
   // after the picker has been cleared.
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  // The short names of the diseases the project is set up for. Null while
+  // loading, or when they couldn't be loaded: every group is offered then,
+  // and the backend refuses one the project doesn't have.
+  const [projectDiseases, setProjectDiseases] = useState<string[] | null>(
+    null
+  );
+  const [loadingDiseases, setLoadingDiseases] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) return;
+    let isCurrent = true;
+    setProjectDiseases(null);
+    setLoadingDiseases(true);
+    getProjectDetailApi(projectId)
+      .then(({ data }) => {
+        if (isCurrent) {
+          setProjectDiseases(
+            (data.diseases ?? []).map((disease) => disease.shortName)
+          );
+        }
+      })
+      .catch(() => {
+        if (isCurrent) setProjectDiseases(null);
+      })
+      .finally(() => {
+        if (isCurrent) setLoadingDiseases(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [projectId]);
+
+  const diseaseGroups = useMemo(
+    () =>
+      projectDiseases
+        ? DISEASE_GROUPS.filter((group) =>
+            group.diseases.some((disease) => projectDiseases.includes(disease))
+          )
+        : DISEASE_GROUPS,
+    [projectDiseases]
+  );
+  const noDiseases = diseaseGroups.length === 0;
+
+  // Keep the chosen group one the project has; with a single group, that one.
+  useEffect(() => {
+    if (
+      diseaseGroups.length > 0 &&
+      !diseaseGroups.some((group) => group.id === diseaseGroup)
+    ) {
+      setDiseaseGroup(diseaseGroups[0].id);
+      setResult(null);
+      setUploadedFile(null);
+    }
+  }, [diseaseGroups, diseaseGroup]);
 
   const updateUploading = (value: boolean) => {
     setUploading(value);
@@ -155,22 +210,29 @@ export default function UploadDataPanel({
         <label className="text-grey-80 text-sm font-semibold">
           Disease
         </label>
-        <select
-          className="self-stretch px-3 py-2 bg-blue-10 rounded border border-grey-40 text-grey-80 disabled:opacity-60"
-          value={diseaseGroup}
-          disabled={uploading}
-          onChange={(e) => {
-            setDiseaseGroup(e.target.value as DiseaseGroup);
-            setResult(null);
-            setUploadedFile(null);
-          }}
-        >
-          {DISEASE_GROUPS.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.label}
-            </option>
-          ))}
-        </select>
+        {noDiseases ? (
+          <p className="text-red-600 text-sm">
+            No diseases are configured for this project, so no data can be
+            uploaded to it.
+          </p>
+        ) : (
+          <select
+            className="self-stretch px-3 py-2 bg-blue-10 rounded border border-grey-40 text-grey-80 disabled:opacity-60"
+            value={diseaseGroup}
+            disabled={uploading || loadingDiseases}
+            onChange={(e) => {
+              setDiseaseGroup(e.target.value as DiseaseGroup);
+              setResult(null);
+              setUploadedFile(null);
+            }}
+          >
+            {diseaseGroups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.label}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {isSuccess && result && uploadedFile ? (
@@ -274,7 +336,7 @@ export default function UploadDataPanel({
               type="button"
               className="p-3 bg-white rounded-lg border border-blue-40 text-blue-40 text-base leading-normal disabled:opacity-50"
               onClick={handleDownloadTemplate}
-              disabled={downloading}
+              disabled={downloading || loadingDiseases || noDiseases}
             >
               {downloading ? "Downloading..." : "Download template (.xlsx)"}
             </button>
@@ -284,7 +346,7 @@ export default function UploadDataPanel({
                 className={`p-3 rounded-lg text-base leading-normal cursor-pointer ${file
                     ? "bg-white border border-blue-40 text-blue-40"
                     : "bg-blue-40 text-white"
-                  } ${uploading ? "opacity-50 pointer-events-none" : ""}`}
+                  } ${uploading || loadingDiseases || noDiseases ? "opacity-50 pointer-events-none" : ""}`}
               >
                 {file ? "Choose another file" : "Upload File"}
                 <input
@@ -292,7 +354,7 @@ export default function UploadDataPanel({
                   accept=".xlsx"
                   className="hidden"
                   onChange={handleFileChange}
-                  disabled={uploading}
+                  disabled={uploading || loadingDiseases || noDiseases}
                 />
               </label>
 
@@ -301,7 +363,7 @@ export default function UploadDataPanel({
                   type="button"
                   className="p-3 bg-blue-40 rounded-lg text-white text-base leading-normal disabled:opacity-50"
                   onClick={handleUpload}
-                  disabled={uploading}
+                  disabled={uploading || loadingDiseases || noDiseases}
                 >
                   {uploading ? "Uploading..." : "Upload"}
                 </button>
@@ -313,6 +375,7 @@ export default function UploadDataPanel({
             <ImportErrorSummary
               errors={result.errors}
               selected={{ diseaseGroup, section }}
+              availableDiseaseGroups={diseaseGroups.map((group) => group.id)}
               onSwitchTemplate={(template) => {
                 // The file stays selected, so Upload sends it again as the
                 // template it was detected to be.

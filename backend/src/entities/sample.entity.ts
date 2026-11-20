@@ -100,6 +100,22 @@ export class Sample {
   @Column({ type: 'timestamp', nullable: true })
   rejectedAt: Date;
 
+  // Discard: the lab stopped processing the sample between Pre-processing and
+  // Testing. A sample is discarded when `discardedAt` is set. `sampleStatus`
+  // is left at the last step it completed, so the step it stopped at comes
+  // from that status.
+  @Column({ nullable: true })
+  discardReason?: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  discardComment?: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  discardedAt?: Date | null;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  discardedBy?: User | null;
+
   @Column({ type: 'timestamp', nullable: true })
   receivedAt?: Date | null;
 

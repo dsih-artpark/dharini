@@ -69,6 +69,12 @@ export type Sample = {
   testedBy?: User;
   reportGeneratedBy?: User;
   rejectedAt: string;
+  // Discard: set when the lab stopped the sample between Pre-processing and
+  // Testing. sampleStatus stays at the last step the sample completed.
+  discardReason?: string | null;
+  discardComment?: string | null;
+  discardedAt?: string | null;
+  discardedBy?: User | null;
   testedAt: string;
   reportGeneratedAt: string;
   updatedAt: string;
@@ -140,6 +146,33 @@ export type SampleStatistics = {
   totalRejected: number;
   totalExtracted: number;
   totalCompleted: number;
+};
+
+export type DiscardStage =
+  "pre-processing" | "virus-isolation" | "extraction" | "testing";
+
+export type DiscardedSampleCounts = Record<DiscardStage | "all", number>;
+
+// One entry in a sample's activity log (from its audit rows).
+export type SampleActivity = {
+  id: string;
+  event: string | null;
+  createdAt: string;
+  user: Pick<User, "id" | "firstName" | "lastName"> | null;
+  // Status saved with the entry (for status changes, the new status)
+  status: string | null;
+  details: {
+    receivedVolumeValue: string | null;
+    receivedVolumeUnit: string | null;
+    rejectReason: string | null;
+    preprocessingMethods: string[];
+    extractionSampleUsedValue: string | null;
+    extractionSampleUsedUnit: string | null;
+    extractionSampleRemainingValue: string | null;
+    extractionSampleRemainingUnit: string | null;
+    discardReason: string | null;
+    discardComment: string | null;
+  };
 };
 
 export type Kit = {

@@ -25,6 +25,7 @@ import {
   SAMPLE_UNITS,
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -161,12 +162,18 @@ export default function VirusIsolation({
   );
 
   // ── Initialise per-group state ────────────────────────────────────────────
+  // Rows already on screen keep what was typed when the sample list changes
+  // (e.g. a row discarded from the bulk modal); only new rows start fresh.
   useEffect(() => {
     if (groupedSamples.length > 0) {
-      setStates(
+      setStates((prev) =>
         groupedSamples.map((group) => {
           // Base properties on the first sample within the group
           const s = group.samples[0];
+          const existing = prev.find(
+            (p) => p.id === (group.isPooled ? group.pooledId! : s.id),
+          );
+          if (existing) return { ...existing, samples: group.samples };
           const vi = s.details?.virusIsolation ?? {};
           // A group is AI if any of its individual constituent samples is AI
           const isAI = group.samples.some(
@@ -219,6 +226,15 @@ export default function VirusIsolation({
     },
     [],
   );
+
+  // Bulk modal: a row was discarded. Its row drops out with the sample list;
+  // close the modal once nothing is left to process.
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    if (samplesToProcess.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "virus-isolation");
+    }
+  };
 
   // ── Validation ────────────────────────────────────────────────────────────
   const isFormValid = useMemo(() => {
@@ -432,6 +448,11 @@ export default function VirusIsolation({
                 <th className="px-5 py-4 text-[10px] font-bold text-grey-600 uppercase tracking-widest">
                   Volume
                 </th>
+                {isBulkMode && (
+                  <th className="px-5 py-4">
+                    <span className="sr-only">Discard</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-grey-10">
@@ -656,6 +677,17 @@ export default function VirusIsolation({
                         placeholder="Vol"
                       />
                     </td>
+
+                    {isBulkMode && (
+                      <td className="px-5 py-4 text-right">
+                        <DiscardSampleAction
+                          variant="row"
+                          samples={s.samples}
+                          onRowDiscarded={handleRowDiscarded}
+                          disabled={submitting}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -676,20 +708,28 @@ export default function VirusIsolation({
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-6 border-t border-grey-20">
-        <button
-          onClick={() => {
-            if (isBulkMode && onBulkSuccess) {
-              onBulkSuccess("back");
-            } else if (onBack) {
-              onBack();
-            } else {
-              router.replace("/lab");
-            }
-          }}
-          className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (isBulkMode && onBulkSuccess) {
+                onBulkSuccess("back");
+              } else if (onBack) {
+                onBack();
+              } else {
+                router.replace("/lab");
+              }
+            }}
+            className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
+          >
+            ← Back
+          </button>
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={samplesToProcess}
+              disabled={submitting}
+            />
+          )}
+        </div>
 
         <div className="flex items-center gap-4">
           <button

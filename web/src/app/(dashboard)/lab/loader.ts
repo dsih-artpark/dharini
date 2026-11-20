@@ -1,6 +1,12 @@
 import apiClient from "@/src/libs/apiClient";
 import type { ApiResponse } from "@/src/types/global";
-import type { Sample, SampleStatistics } from "@/src/types/sample";
+import type {
+  DiscardStage,
+  DiscardedSampleCounts,
+  Sample,
+  SampleActivity,
+  SampleStatistics,
+} from "@/src/types/sample";
 import { AxiosError } from "axios";
 
 // Get received samples
@@ -37,6 +43,50 @@ export const getAllSamplesApi = async (
       throw new Error(error.response.data.message);
     }
     throw new Error("Failed to fetch samples list.");
+  }
+};
+
+// Sample Archive: discarded samples with a count per stage
+export const getDiscardedSamplesApi = async (
+  projectId: string,
+  params: {
+    search?: string;
+    diseaseId?: string;
+    stage?: DiscardStage;
+    page?: number;
+    limit?: number;
+    workspaceId?: string;
+  },
+): Promise<ApiResponse<Sample[]> & { counts: DiscardedSampleCounts }> => {
+  try {
+    const response = await apiClient.get(
+      `/projects/${projectId}/samples/discarded`,
+      { params },
+    );
+    return response.data;
+  } catch (error: unknown) {
+    if (error instanceof AxiosError && error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw new Error("Failed to fetch discarded samples.");
+  }
+};
+
+// Activity log for one sample, oldest first
+export const getSampleActivityApi = async (
+  projectId: string,
+  sampleId: string,
+): Promise<ApiResponse<SampleActivity[]>> => {
+  try {
+    const response = await apiClient.get(
+      `/projects/${projectId}/samples/${sampleId}/activity`,
+    );
+    return response.data;
+  } catch (error: unknown) {
+    if (error instanceof AxiosError && error.response?.data?.message) {
+      throw new Error(error.response.data.message);
+    }
+    throw new Error("Failed to fetch sample activity.");
   }
 };
 

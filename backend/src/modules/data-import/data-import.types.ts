@@ -41,3 +41,37 @@ export interface ImportTemplate {
   diseaseGroup: DiseaseGroup;
   section: ImportSection;
 }
+
+// The diseases (short names) each upload group covers, and its name as the
+// upload page's Disease dropdown shows it.
+export const DISEASE_GROUPS: Record<
+  DiseaseGroup,
+  { diseases: string[]; label: string }
+> = {
+  AI: { diseases: ['AI'], label: 'Avian Influenza (AI)' },
+  FMD_LSD: { diseases: ['FMD', 'LSD'], label: 'FMD / LSD' },
+};
+
+// Why a project can't take an upload for a disease group, or null when it
+// can: the group must be a known one, and the project must be set up for at
+// least one of its diseases.
+export function diseaseGroupRefusal(
+  diseaseGroup: string,
+  projectDiseases: string[],
+): string | null {
+  if (!Object.prototype.hasOwnProperty.call(DISEASE_GROUPS, diseaseGroup)) {
+    return `Unknown disease group "${diseaseGroup}". Valid options: ${Object.keys(DISEASE_GROUPS).join(', ')}`;
+  }
+  const group = DISEASE_GROUPS[diseaseGroup as DiseaseGroup];
+  if (!group.diseases.some((disease) => projectDiseases.includes(disease))) {
+    return `${group.label} is not configured for this project. Project diseases: ${projectDiseases.join(', ') || 'none'}`;
+  }
+  return null;
+}
+
+// A row naming a disease the project isn't set up for.
+export const diseaseNotInProjectMessage = (
+  disease: string,
+  projectDiseases: string[],
+): string =>
+  `Disease "${disease}" is not configured for this project. Project diseases: ${projectDiseases.join(', ') || 'none'}`;

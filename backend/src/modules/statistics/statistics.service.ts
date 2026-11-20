@@ -204,7 +204,8 @@ export class StatisticsService {
           'samplesCollected',
         )
         .addSelect(
-          `COUNT(DISTINCT CASE WHEN sample."sampleStatus" IN (:...pipelineStatuses) THEN sample.id END)`,
+          // Discarded samples keep their status but are out of the pipeline.
+          `COUNT(DISTINCT CASE WHEN sample."sampleStatus" IN (:...pipelineStatuses) AND sample."discardedAt" IS NULL THEN sample.id END)`,
           'samplesInPipeline',
         )
         .where('sample.status = :status', { status: StatusType.ACTIVE })
@@ -407,7 +408,7 @@ export class StatisticsService {
             sample_counts AS (
               SELECT sample."projectId",
                 COUNT(DISTINCT sample.id) FILTER (WHERE sample."collectedAt" BETWEEN $1 AND $3) AS "samplesCollected",
-                COUNT(DISTINCT sample.id) FILTER (WHERE sample."sampleStatus" IN (${[
+                COUNT(DISTINCT sample.id) FILTER (WHERE sample."discardedAt" IS NULL AND sample."sampleStatus" IN (${[
                   SampleStatus.PENDING,
                   SampleStatus.PICKED_UP,
                   SampleStatus.RECEIVED,

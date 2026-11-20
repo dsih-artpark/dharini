@@ -23,6 +23,7 @@ import {
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
 import TeamMemberSelect from "@/src/components/lab/sample-accession/team-member-select";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 interface SampleExtractionProps {
   isBulkMode?: boolean;
@@ -284,6 +285,16 @@ export default function SampleExtraction({
   ) => {
     const { name, value } = e.target;
     setCommonData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Bulk modal: a row was discarded. Its row drops out with the sample list
+  // (row data is keyed by sample / pool id); close the modal once nothing is
+  // left to process.
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    if (samplesToProcess.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "pre-processed");
+    }
   };
 
   const handleRowChange = (
@@ -758,6 +769,11 @@ export default function SampleExtraction({
               <th className="px-5 py-4 text-[10px] font-bold text-grey-600 uppercase tracking-widest whitespace-nowrap">
                 Extraction Date
               </th>
+              {isBulkMode && (
+                <th className="px-5 py-4">
+                  <span className="sr-only">Discard</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-grey-10">
@@ -899,6 +915,17 @@ export default function SampleExtraction({
                       }
                     />
                   </td>
+
+                  {isBulkMode && (
+                    <td className="px-4 py-3 text-right">
+                      <DiscardSampleAction
+                        variant="row"
+                        samples={group.samples}
+                        onRowDiscarded={handleRowDiscarded}
+                        disabled={submitting}
+                      />
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -908,12 +935,20 @@ export default function SampleExtraction({
 
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-4 pb-2">
-        <button
-          onClick={handleBack}
-          className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="px-5 py-2.5 rounded-xl border border-grey-20 text-grey-60 font-semibold text-sm hover:bg-grey-10 transition-all"
+          >
+            ← Back
+          </button>
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={samplesToProcess}
+              disabled={submitting}
+            />
+          )}
+        </div>
 
         <div className="flex items-center gap-4">
           <button

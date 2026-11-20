@@ -41,6 +41,7 @@ import {
 } from "@/src/utils/constant";
 import Spinner from "@/src/components/ui/spinner";
 import TeamMemberSelect from "@/src/components/lab/sample-accession/team-member-select";
+import DiscardSampleAction from "@/src/components/lab/sample-accession/discard-sample";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -371,6 +372,29 @@ export default function SamplePreprocessing({
     [poolGroups],
   );
 
+  /** Bulk modal: a row was discarded (a stored pool goes whole). Drops those
+   *  samples' form data and draft-pool membership, and closes the modal once
+   *  nothing is left to process. */
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    setSampleStates((prev) => prev.filter((s) => !gone.has(s.sampleId)));
+    const groups = poolGroups
+      .map((g) => {
+        const sampleIds = g.sampleIds.filter((id) => !gone.has(id));
+        if (sampleIds.length === g.sampleIds.length) return g;
+        const { volume, unit } = computePooledVolume(sampleIds);
+        return { ...g, sampleIds, volume, volumeUnit: unit };
+      })
+      .filter((g) => g.sampleIds.length > 0);
+    setPoolGroups(groups);
+    if (activePoolKey && !groups.some((g) => g.key === activePoolKey)) {
+      setActivePoolKey(null);
+    }
+    if (samplesToProcess.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "received");
+    }
+  };
+
   /** Discards the active pool if it never reached 2 members, otherwise leaves it
    *  as a normal committed pool. Always clears the "active" focus. */
   const finishActivePool = () => {
@@ -593,6 +617,8 @@ export default function SamplePreprocessing({
     return rows;
   }, [samplesByType, poolGroups, samplesToProcess]);
 
+  const poolingColSpan = isBulkMode ? 6 : 5;
+
   const incompletePools = useMemo(
     () => poolGroups.filter((g) => g.sampleIds.length < 2),
     [poolGroups],
@@ -694,8 +720,8 @@ export default function SamplePreprocessing({
         });
       } else {
         // Non-pooling: per-sample steps
-        updatePromises = sampleStates.map((ss, idx) => {
-          const original = samplesToProcess[idx];
+        updatePromises = sampleStates.map((ss) => {
+          const original = samplesToProcess.find((s) => s.id === ss.sampleId);
           const step: PreprocessingStep = {
             type: methodType,
             method: ss.method || methodType,
@@ -891,11 +917,16 @@ export default function SamplePreprocessing({
                 <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Remarks
                 </th>
+                {isBulkMode && (
+                  <th className="px-4 py-3">
+                    <span className="sr-only">Discard</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {samplesToProcess.map((sample, idx) => {
-                const ss = sampleStates[idx];
+              {samplesToProcess.map((sample) => {
+                const ss = sampleStates.find((s) => s.sampleId === sample.id);
                 if (!ss) return null;
                 return (
                   <tr
@@ -986,6 +1017,17 @@ export default function SamplePreprocessing({
                         }
                       />
                     </td>
+
+                    {isBulkMode && (
+                      <td className="px-4 py-3 text-right">
+                        <DiscardSampleAction
+                          variant="row"
+                          samples={[sample]}
+                          onRowDiscarded={handleRowDiscarded}
+                          disabled={submitting}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -1090,6 +1132,11 @@ export default function SamplePreprocessing({
                   <th className="px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Received Vol.
                   </th>
+                  {isBulkMode && (
+                    <th className="px-4 py-3">
+                      <span className="sr-only">Discard</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1101,7 +1148,7 @@ export default function SamplePreprocessing({
                         key={`type-${row.typeId}`}
                         className="bg-slate-100/70"
                       >
-                        <td colSpan={5} className="px-4 py-2">
+                        <td colSpan={poolingColSpan} className="px-4 py-2">
                           <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                             {row.typeName}
                           </span>
@@ -1128,7 +1175,7 @@ export default function SamplePreprocessing({
                           isActive ? "bg-teal-50/60" : "bg-slate-50/60"
                         }
                       >
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={poolingColSpan} className="px-4 py-3">
                           <div
                             className={`border rounded-xl p-4 flex flex-col gap-3 bg-white ${isActive ? "border-teal-300" : "border-slate-200"}`}
                           >
@@ -1311,6 +1358,21 @@ export default function SamplePreprocessing({
                           ? `${sample.receivedVolumeValue} ${unit}`
                           : "—"}
                       </td>
+                      {isBulkMode && (
+                        // Clicks here (and in the discard dialog, which React
+                        // bubbles through this cell) must not toggle the pool.
+                        <td
+                          className="px-4 py-3 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <DiscardSampleAction
+                            variant="row"
+                            samples={[sample]}
+                            onRowDiscarded={handleRowDiscarded}
+                            disabled={submitting}
+                          />
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -1435,12 +1497,20 @@ export default function SamplePreprocessing({
       </div>
 
       <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-        <button
-          onClick={handleBack}
-          className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all"
-        >
-          ← Back
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-semibold text-sm hover:bg-slate-50 transition-all"
+          >
+            ← Back
+          </button>
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={samplesToProcess}
+              disabled={submitting}
+            />
+          )}
+        </div>
 
         <div className="flex items-center gap-3">
           <button
