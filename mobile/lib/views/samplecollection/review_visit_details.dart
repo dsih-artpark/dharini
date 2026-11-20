@@ -9,6 +9,7 @@ import 'package:collection/collection.dart';
 import 'package:design_system/design_system.dart';
 import 'package:es_client/es_client.dart';
 import 'package:es_platform_mobile/hooks/auth.dart';
+import 'package:es_platform_mobile/hooks/barcode_validator.dart';
 import 'package:es_platform_mobile/models/pending_submission.dart';
 import 'package:es_platform_mobile/providers/connectivity_provider.dart';
 import 'package:es_platform_mobile/providers/sync_service_provider.dart';
@@ -523,6 +524,8 @@ class ReviewVisitDetails extends HookWidget {
     //   }
     // }, [visit, project, submitVisitMutation, samples, visitId, profile.data]);
 
+    final barcodeValidator = useBarcodeValidator();
+
     final handleSubmitVisit = useCallback(() async {
       try {
         // The team a visit is attributed to is a property of the submitting
@@ -540,6 +543,33 @@ class ReviewVisitDetails extends HookWidget {
                   'Unable to submit visit: you are not assigned to a team '
                   'for this project. Contact your administrator.',
                 ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+
+        // Each sample needs its own barcode, ignoring case ("Feedi" and
+        // "feedi" are the same): within this visit, and - when online - in
+        // the project. Checked before the visit is queued, as a refusal from
+        // the server only arrives after the collector has moved on.
+        final barcodes = samples
+            .map((sample) => sample.barcode.trim())
+            .where((barcode) => barcode.isNotEmpty)
+            .toList();
+        final seenBarcodes = <String>{};
+        final repeatedBarcode = barcodes.firstWhereOrNull(
+            (barcode) => !seenBarcodes.add(barcode.toLowerCase()));
+        final barcodeError = repeatedBarcode != null
+            ? 'Barcode "$repeatedBarcode" is used for more than one sample '
+                'in this visit. Each sample needs its own barcode.'
+            : await barcodeValidator.validateBatch(barcodes);
+        if (barcodeError != null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(barcodeError),
                 backgroundColor: Colors.red,
               ),
             );
@@ -878,7 +908,15 @@ class ReviewVisitDetails extends HookWidget {
           ),
         );
       }
-    }, [visit, project, submitVisitMutation, samples, visitId, profile.data]);
+    }, [
+      visit,
+      project,
+      submitVisitMutation,
+      samples,
+      visitId,
+      profile.data,
+      barcodeValidator,
+    ]);
 
     // Define the builder functions at the top level of build
 

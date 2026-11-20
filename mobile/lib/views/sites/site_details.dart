@@ -23,6 +23,11 @@ String collectionConsentLabel(String? consent) {
   return 'Not Recorded';
 }
 
+// Plan Details values shown as a badge: a field the site's plan leaves out,
+// and every field of a site with no plan.
+const _notAssigned = 'NOT ASSIGNED';
+const _noPlan = 'NO PLAN';
+
 class SiteDetails extends HookWidget {
   final String siteId;
 
@@ -97,6 +102,11 @@ class SiteDetails extends HookWidget {
     Widget body = const Center(child: CircularProgressIndicator());
 
     if (site != null) {
+      // A site without a collection plan (e.g. one added by an upload) says
+      // so, rather than reading as a plan with fields left out.
+      final planValueMissing = site.collectionFrequencyInterval == null
+          ? _noPlan
+          : _notAssigned;
       body = Column(
         children: <Widget>[
           // Header Navigation
@@ -448,20 +458,20 @@ class SiteDetails extends HookWidget {
                                                       ? 'Monthly'
                                                       : site.collectionFrequencyInterval == 90
                                                           ? 'Quarterly'
-                                                          : site.collectionFrequencyInterval?.toString() ?? 'NOT ASSIGNED'),
+                                                          : site.collectionFrequencyInterval?.toString() ?? planValueMissing),
                               _buildPlanDetailRow(
                                   'Day & Time',
                                   (site.collectionDayOfWeek?.isNotEmpty ??
                                           false)
                                       ? '${site.collectionDayOfWeek!.join(", ")}'
-                                      : 'NOT ASSIGNED'),
+                                      : planValueMissing),
                               _buildPlanDetailRow(
                                   'Duration',
                                   site.collectionFrequencyInterval == 0
                                       ? 'N/A'
                                       : site.collectionDuration != null
                                           ? '${(site.collectionDuration! / 30).toStringAsFixed(0)} months'
-                                          : 'NOT ASSIGNED'),
+                                          : planValueMissing),
                               const SizedBox(height: 8),
                             ],
                           ),
@@ -990,7 +1000,7 @@ class SiteDetails extends HookWidget {
             ),
           ),
           Expanded(
-            child: value == 'NOT ASSIGNED'
+            child: value == _notAssigned || value == _noPlan
                 ? Align(
                     alignment: Alignment.centerLeft,
                     child: Container(

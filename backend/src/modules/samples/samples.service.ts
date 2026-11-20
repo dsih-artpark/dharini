@@ -35,7 +35,7 @@ import { Team } from 'src/entities/team.entity';
 import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { AnimalMetadata } from 'src/entities/animal-metadata.entity';
-import { Brackets, EntityManager, ILike, In, Repository } from 'typeorm';
+import { Brackets, EntityManager, ILike, In, Raw, Repository } from 'typeorm';
 import { StatusType } from '../../common/enums/status.enum';
 import { TestResultType } from '../../common/enums/test-result.enum';
 import { CreateLabTestDto } from '../lab-tests/dto/create-lab-test.dto';
@@ -939,9 +939,13 @@ export class SamplesService {
     barcode: string,
   ): Promise<boolean> {
     // try {
+    // Ignoring case: "Feedi" is taken when "feedi" is. LOWER rather than
+    // ILIKE, which reads `_` and `%` in a barcode as wildcards.
     const existingSamples = await this.sampleRepository.find({
       where: {
-        barcode,
+        barcode: Raw((alias) => `LOWER(${alias}) = LOWER(:barcode)`, {
+          barcode,
+        }),
         project: { id: projectId },
       },
     });

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Project } from 'src/entities/project.entity';
@@ -13,6 +13,7 @@ import {
   ImportSection,
   ImportTemplate,
   RowError,
+  diseaseGroupRefusal,
 } from './data-import.types';
 
 const NO_DATA_ROWS_ERROR: RowError = {
@@ -20,6 +21,10 @@ const NO_DATA_ROWS_ERROR: RowError = {
   message:
     'No data rows found. Add your rows below the header row and delete the pre-filled example rows (the ones whose remarks start with "DELETE THIS ROW").',
 };
+
+// The short names of the diseases a project is set up for, e.g. ['AI'].
+const diseasesOf = (project?: Project | null): string[] =>
+  (project?.diseases ?? []).map((disease) => disease.shortName);
 
 @Injectable()
 export class DataImportService {
@@ -39,8 +44,10 @@ export class DataImportService {
   ): Promise<Buffer> {
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
-      relations: ['workspace'],
+      relations: ['workspace', 'diseases'],
     });
+    const refusal = diseaseGroupRefusal(diseaseGroup, diseasesOf(project));
+    if (refusal) throw new BadRequestException(refusal);
     return this.templateService.generate(
       diseaseGroup,
       section,
@@ -54,6 +61,16 @@ export class DataImportService {
     diseaseGroup: DiseaseGroup,
     projectId: string,
   ): Promise<ImportResult> {
+    const projectDiseases = await this.findProjectDiseases(projectId);
+    const refusal = diseaseGroupRefusal(diseaseGroup, projectDiseases);
+    if (refusal) {
+      return {
+        success: false,
+        importedCount: 0,
+        errors: [{ row: 0, message: refusal }],
+      };
+    }
+
     const sheet = await this.readRows(buffer, {
       diseaseGroup,
       section: 'collection',
@@ -66,6 +83,7 @@ export class DataImportService {
       rawRows,
       diseaseGroup,
       projectId,
+      projectDiseases,
     );
 
     if (!validation.isValid) {
@@ -85,6 +103,16 @@ export class DataImportService {
     diseaseGroup: DiseaseGroup,
     projectId: string,
   ): Promise<ImportResult> {
+    const projectDiseases = await this.findProjectDiseases(projectId);
+    const refusal = diseaseGroupRefusal(diseaseGroup, projectDiseases);
+    if (refusal) {
+      return {
+        success: false,
+        importedCount: 0,
+        errors: [{ row: 0, message: refusal }],
+      };
+    }
+
     const sheet = await this.readRows(buffer, { diseaseGroup, section: 'lab' });
     if ('errors' in sheet) {
       return { success: false, importedCount: 0, errors: sheet.errors };
@@ -94,6 +122,7 @@ export class DataImportService {
       rawRows,
       diseaseGroup,
       projectId,
+      projectDiseases,
     );
 
     if (!validation.isValid) {
@@ -106,6 +135,14 @@ export class DataImportService {
       projectId,
     );
     return { success: true, importedCount, errors: [] };
+  }
+
+  private async findProjectDiseases(projectId: string): Promise<string[]> {
+    const project = await this.projectRepository.findOne({
+      where: { id: projectId },
+      relations: ['diseases'],
+    });
+    return diseasesOf(project);
   }
 
   // Problems with the file as a whole are reported on their own: with the

@@ -118,6 +118,8 @@ export class ImportPersistenceService {
             location,
             village: row['villageOrLocality'] ?? null,
             address: siteAddress,
+            // The row's collector is assigned to the site they collected at.
+            collectorIds: [collector.id],
           });
           site = await manager.save(Site, site);
         } else {
@@ -133,6 +135,10 @@ export class ImportPersistenceService {
           }
           if (!site.address) {
             site.address = siteAddress;
+          }
+          // Added after any existing collectors, so the primary is unchanged.
+          if (!(site.collectorIds ?? []).includes(collector.id)) {
+            site.collectorIds = [...(site.collectorIds ?? []), collector.id];
           }
           await manager.save(Site, site);
         }
@@ -155,6 +161,8 @@ export class ImportPersistenceService {
             visitScheduledAt: visitedAt,
             visitStatus: VisitStatus.COMPLETED,
             isCompleted: true,
+            // The row's collector completed the visit ("Completed By").
+            visitedByIds: [collector.id],
           });
           visit = await manager.save(Visit, visit);
         } else if (
@@ -167,6 +175,12 @@ export class ImportPersistenceService {
           // "Pending" in the team-member-progress stats despite having samples.
           visit.visitStatus = VisitStatus.COMPLETED;
           visit.isCompleted = true;
+          visit = await manager.save(Visit, visit);
+        }
+        // A visit that already existed gets the row's collector added to who
+        // completed it, after anyone already listed.
+        if (!(visit.visitedByIds ?? []).includes(collector.id)) {
+          visit.visitedByIds = [...(visit.visitedByIds ?? []), collector.id];
           visit = await manager.save(Visit, visit);
         }
 

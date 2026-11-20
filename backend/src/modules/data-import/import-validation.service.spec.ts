@@ -13,6 +13,9 @@ import { FINAL_TEST_RESULTS, RowError } from './data-import.types';
 import { ImportValidationService } from './import-validation.service';
 
 const PROJECT_ID = 'project-1';
+// A project set up for every disease, for the checks that aren't about
+// which diseases a project has.
+const ALL_DISEASES = ['AI', 'FMD', 'LSD'];
 
 type StoredRegion = {
   id: string;
@@ -180,6 +183,7 @@ describe('ImportValidationService duplicate checks', () => {
         [fmdLsdLabRow(3), fmdLsdLabRow(4)],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.isValid).toBe(false);
@@ -202,6 +206,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.errors).toEqual([]);
@@ -216,6 +221,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleIdErrors(result.errors)).toEqual([
@@ -234,6 +240,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.isValid).toBe(true);
@@ -248,6 +255,7 @@ describe('ImportValidationService duplicate checks', () => {
         [fmdLsdLabRow(3, { disease: 'FMD' })],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.errors).toEqual([
@@ -270,6 +278,7 @@ describe('ImportValidationService duplicate checks', () => {
         [fmdLsdLabRow(3, { disease: 'LSD' })],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.isValid).toBe(true);
@@ -285,6 +294,7 @@ describe('ImportValidationService duplicate checks', () => {
         [fmdLsdLabRow(3, { disease: 'FMD & LSD' })],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleIdErrors(result.errors)).toEqual([
@@ -308,6 +318,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'AI',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.errors).toEqual([
@@ -327,6 +338,7 @@ describe('ImportValidationService duplicate checks', () => {
         [fmdLsdLabRow(3, { instituteSampleId: 'UNKNOWN' })],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleIdErrors(result.errors)).toEqual([
@@ -348,6 +360,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(result.errors).toEqual(
@@ -375,6 +388,7 @@ describe('ImportValidationService duplicate checks', () => {
         ],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleRepository.find).toHaveBeenCalledTimes(1);
@@ -403,6 +417,7 @@ describe('ImportValidationService duplicate checks', () => {
         [collectionRow(3, 'S-1'), collectionRow(4, 'NEW-1')],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleIdErrors(result.errors)).toEqual([
@@ -420,6 +435,7 @@ describe('ImportValidationService duplicate checks', () => {
         [collectionRow(3, 'NEW-1'), collectionRow(4, 'NEW-1')],
         'FMD_LSD',
         PROJECT_ID,
+        ALL_DISEASES,
       );
 
       expect(sampleIdErrors(result.errors)).toEqual([
@@ -448,7 +464,7 @@ describe('ImportValidationService duplicate checks', () => {
         (error) => error.column === 'State' || error.column === 'District',
       );
     const validate = (rows: Record<string, unknown>[]) =>
-      service.validateCollectionRows(rows, 'FMD_LSD', PROJECT_ID);
+      service.validateCollectionRows(rows, 'FMD_LSD', PROJECT_ID, ALL_DISEASES);
 
     it('accepts a configured state and district, ignoring case and extra spaces', async () => {
       const result = await validate([
@@ -572,6 +588,71 @@ describe('ImportValidationService duplicate checks', () => {
       expect(projectRepository.findOne).toHaveBeenCalledTimes(1);
       // One query for states, one for their districts.
       expect(regionRepository.find).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("the project's diseases", () => {
+    const diseaseErrors = (errors: RowError[]) =>
+      errors.filter((error) => error.column === 'disease');
+
+    it('rejects FMD lab rows in an AI-only project', async () => {
+      const result = await service.validateLabRows(
+        [fmdLsdLabRow(3, { disease: 'FMD' })],
+        'FMD_LSD',
+        PROJECT_ID,
+        ['AI'],
+      );
+
+      expect(result.isValid).toBe(false);
+      expect(diseaseErrors(result.errors)).toEqual([
+        {
+          row: 3,
+          column: 'disease',
+          field: 'disease',
+          message:
+            'Disease "FMD" is not configured for this project. Project diseases: AI',
+        },
+      ]);
+    });
+
+    it('rejects only the LSD lab row in an FMD-only project', async () => {
+      const result = await service.validateLabRows(
+        [
+          fmdLsdLabRow(3, { disease: 'FMD' }),
+          fmdLsdLabRow(4, { disease: 'LSD', instituteSampleId: 'S-2' }),
+        ],
+        'FMD_LSD',
+        PROJECT_ID,
+        ['FMD'],
+      );
+
+      expect(diseaseErrors(result.errors)).toEqual([
+        expect.objectContaining({
+          row: 4,
+          message:
+            'Disease "LSD" is not configured for this project. Project diseases: FMD',
+        }),
+      ]);
+    });
+
+    it('rejects an LSD collection row in an FMD-only project', async () => {
+      const result = await service.validateCollectionRows(
+        [
+          { __row: 3, instituteSampleId: 'NEW-1', disease: 'FMD' },
+          { __row: 4, instituteSampleId: 'NEW-2', disease: 'FMD & LSD' },
+        ],
+        'FMD_LSD',
+        PROJECT_ID,
+        ['FMD'],
+      );
+
+      expect(diseaseErrors(result.errors)).toEqual([
+        expect.objectContaining({
+          row: 4,
+          message:
+            'Disease "LSD" is not configured for this project. Project diseases: FMD',
+        }),
+      ]);
     });
   });
 });

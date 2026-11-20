@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AlertCircle } from "lucide-react";
 
 import type {
+  DiseaseGroup,
   ImportTemplate,
   RowError,
 } from "@/src/app/(dashboard)/project-onboarding/actions";
@@ -20,6 +21,9 @@ type ProblemGroup = { message: string; rows: number[] };
 type ImportErrorSummaryProps = {
   errors: RowError[];
   selected: ImportTemplate;
+  // The disease groups this project can take. A detected template for any
+  // other group is named, but not offered as a switch.
+  availableDiseaseGroups: DiseaseGroup[];
   onSwitchTemplate: (template: ImportTemplate) => void;
 };
 
@@ -31,6 +35,7 @@ type ImportErrorSummaryProps = {
 export default function ImportErrorSummary({
   errors,
   selected,
+  availableDiseaseGroups,
   onSwitchTemplate,
 }: ImportErrorSummaryProps) {
   const [showAll, setShowAll] = useState(false);
@@ -38,6 +43,7 @@ export default function ImportErrorSummary({
   const wrongTemplate = errors.find((error) => error.detectedTemplate);
   if (wrongTemplate?.detectedTemplate) {
     const detected = wrongTemplate.detectedTemplate;
+    const canSwitch = availableDiseaseGroups.includes(detected.diseaseGroup);
     return (
       <div
         role="alert"
@@ -53,15 +59,23 @@ export default function ImportErrorSummary({
               Wrong template. Nothing was imported.
             </p>
             <p className="text-sm text-grey-80">{wrongTemplate.message}</p>
+            {!canSwitch && (
+              <p className="text-sm text-grey-80">
+                This project isn&apos;t set up for{" "}
+                {diseaseGroupLabel(detected.diseaseGroup)}.
+              </p>
+            )}
           </div>
         </div>
-        <button
-          type="button"
-          className="shrink-0 self-start rounded-lg bg-blue-40 px-4 py-2.5 text-sm text-white sm:self-center"
-          onClick={() => onSwitchTemplate(detected)}
-        >
-          Switch to {templateDifference(detected, selected)}
-        </button>
+        {canSwitch && (
+          <button
+            type="button"
+            className="shrink-0 self-start rounded-lg bg-blue-40 px-4 py-2.5 text-sm text-white sm:self-center"
+            onClick={() => onSwitchTemplate(detected)}
+          >
+            Switch to {templateDifference(detected, selected)}
+          </button>
+        )}
       </div>
     );
   }
