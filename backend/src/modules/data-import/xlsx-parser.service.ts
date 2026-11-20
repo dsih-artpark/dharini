@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 
+export interface ParsedSheet {
+  // Non-blank header cells, in column order.
+  headers: string[];
+  rows: Record<string, any>[];
+}
+
 /**
  * Reads the first worksheet of an uploaded .xlsx template into plain row
  * objects keyed by header, skipping the workspace/project preamble rows and
@@ -8,7 +14,7 @@ import * as ExcelJS from 'exceljs';
  */
 @Injectable()
 export class XlsxParserService {
-  async parseRows(buffer: Buffer): Promise<Record<string, any>[]> {
+  async parse(buffer: Buffer): Promise<ParsedSheet> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
 
@@ -62,7 +68,7 @@ export class XlsxParserService {
       rows.push(rowData);
     });
 
-    return rows;
+    return { headers: headers.filter(Boolean), rows };
   }
 
   private cellToString(value: ExcelJS.CellValue): string | undefined {

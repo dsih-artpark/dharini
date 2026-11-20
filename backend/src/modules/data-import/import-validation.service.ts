@@ -7,7 +7,10 @@ import { Disease } from 'src/entities/disease.entity';
 import { SampleType } from 'src/entities/sample-type.entity';
 import { Sample } from 'src/entities/sample.entity';
 import { LabTest } from 'src/entities/lab-test.entity';
+import { Project } from 'src/entities/project.entity';
+import { Region } from 'src/entities/region.entity';
 import { StatusType } from 'src/common/enums/status.enum';
+import { RegionType } from 'src/common/enums/region.enum';
 import {
   DiseaseGroup,
   FINAL_TEST_RESULTS,
@@ -24,9 +27,27 @@ import {
   getSiteCategoryOptions,
 } from './config/site-category.config';
 import { parseDiseaseList } from './config/parse-disease-list';
+import {
+  RegionLookup,
+  loadRegionLookup,
+  normalizeRegionName,
+} from './config/region-lookup';
 
 type CollectionRowDto = FmdLsdCollectionRowDto | AiCollectionRowDto;
 type LabRowDto = FmdLsdLabRowDto | AiLabRowDto;
+
+// What a collection file's state/district cells are checked against: the
+// country-wide master list, and the regions the project is configured for.
+interface LocationContext {
+  lookup: RegionLookup;
+  configuredStates: Map<string, string>; // state id -> name
+  configuredDistrictsByState: Map<string, Region[]>;
+}
+
+function formatNames(names: Iterable<string>): string {
+  const sorted = [...names].sort((a, b) => a.localeCompare(b));
+  return sorted.length > 0 ? sorted.join(', ') : 'none';
+}
 
 // A handful of DTO field names read awkwardly once split on camelCase
 // boundaries (e.g. "Institute Sample Id") — spelled out for those only.
@@ -90,6 +111,37 @@ function buildFriendlyMessage(
     .join('; ');
 }
 
+// The template columns a row DTO reads (template headers are these keys).
+function dtoFields(dtoClass: { new (): object }): string[] {
+  return [
+    ...new Set(
+      getMetadataStorage()
+        .getTargetValidationMetadatas(dtoClass, '', false, false)
+        .map((metadata) => metadata.propertyName),
+    ),
+  ];
+}
+
+function normalizeColumnName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Errors name their column either by template key ("instituteSampleId") or
+// by label ("Tested By", "Sample ID"). Each one also gets the template key,
+// so the upload page can mark the exact cell whichever form was used.
+function withTemplateFields(errors: RowError[], fields: string[]): RowError[] {
+  const fieldByColumn = new Map<string, string>();
+  for (const field of fields) {
+    fieldByColumn.set(normalizeColumnName(field), field);
+    fieldByColumn.set(normalizeColumnName(humanizeField(field)), field);
+  }
+  return errors.map((error) => {
+    if (error.field || !error.column) return error;
+    const field = fieldByColumn.get(normalizeColumnName(error.column));
+    return field ? { ...error, field } : error;
+  });
+}
+
 // One lab result per (sample, disease): a row naming "FMD & LSD" claims both
 // pairs. Retest on the Lab page is the only way to add a second result.
 function labResultKey(sampleKey: string, disease: string): string {
@@ -112,6 +164,10 @@ export class ImportValidationService {
     private readonly sampleRepository: Repository<Sample>,
     @InjectRepository(LabTest)
     private readonly labTestRepository: Repository<LabTest>,
+    @InjectRepository(Project)
+    private readonly projectRepository: Repository<Project>,
+    @InjectRepository(Region)
+    private readonly regionRepository: Repository<Region>,
   ) {}
 
   async validateCollectionRows(
@@ -124,9 +180,7 @@ export class ImportValidationService {
     const dtoClass = (
       diseaseGroup === 'AI' ? AiCollectionRowDto : FmdLsdCollectionRowDto
     ) as { new (): CollectionRowDto };
-    const errors: RowError[] = [
-      ...this.checkForUnexpectedColumns(rawRows, dtoClass),
-    ];
+    const errors: RowError[] = [];
     const rows: CollectionRowDto[] = [];
     const seenInstituteSampleIds = new Set<string>();
     // The (barcode, project) unique index still backstops this at insert
@@ -135,6 +189,7 @@ export class ImportValidationService {
       projectId,
       rawRows.map((raw) => raw['instituteSampleId']),
     );
+    const locationContext = await this.loadLocationContext(projectId, rawRows);
 
     for (const raw of rawRows) {
       const row = raw['__row'] as number;
@@ -151,6 +206,7 @@ export class ImportValidationService {
           diseaseGroup,
         )),
       );
+      errors.push(...this.validateLocation(raw, row, locationContext));
 
       const instituteSampleId = raw['instituteSampleId'];
       if (instituteSampleId) {
@@ -175,7 +231,11 @@ export class ImportValidationService {
       rows.push(dto);
     }
 
-    return { isValid: errors.length === 0, errors, rows };
+    return {
+      isValid: errors.length === 0,
+      errors: withTemplateFields(errors, dtoFields(dtoClass)),
+      rows,
+    };
   }
 
   async validateLabRows(
@@ -186,9 +246,7 @@ export class ImportValidationService {
     const dtoClass = (
       diseaseGroup === 'AI' ? AiLabRowDto : FmdLsdLabRowDto
     ) as { new (): LabRowDto };
-    const errors: RowError[] = [
-      ...this.checkForUnexpectedColumns(rawRows, dtoClass),
-    ];
+    const errors: RowError[] = [];
     const rows: LabRowDto[] = [];
     const samplesByBarcode = await this.findSamplesByBarcode(
       projectId,
@@ -272,7 +330,11 @@ export class ImportValidationService {
       rows.push(dto);
     }
 
-    return { isValid: errors.length === 0, errors, rows };
+    return {
+      isValid: errors.length === 0,
+      errors: withTemplateFields(errors, dtoFields(dtoClass)),
+      rows,
+    };
   }
 
   private async runClassValidation(
@@ -286,46 +348,12 @@ export class ImportValidationService {
     return violations.map((violation) => ({
       row,
       column: humanizeField(violation.property),
+      field: violation.property,
       message: buildFriendlyMessage(
         violation.property,
         violation.constraints ?? {},
       ),
     }));
-  }
-
-  // Header names are identical across every row of a parsed sheet
-  // (`XlsxParserService` writes one key per template column onto every row
-  // object), so checking the first row is enough to catch a file with
-  // extra/renamed/misspelled columns — surfaced once, at the file level,
-  // rather than as per-row noise.
-  private checkForUnexpectedColumns(
-    rawRows: Record<string, any>[],
-    dtoClass: { new (): object },
-  ): RowError[] {
-    if (rawRows.length === 0) return [];
-    const knownFields = new Set(
-      getMetadataStorage()
-        .getTargetValidationMetadatas(dtoClass, '', false, false)
-        .map((metadata) => metadata.propertyName),
-    );
-    const actualColumns = Object.keys(rawRows[0]).filter(
-      (key) => key !== '__row',
-    );
-    const unexpectedColumns = actualColumns.filter(
-      (column) => !knownFields.has(column),
-    );
-    if (unexpectedColumns.length === 0) return [];
-
-    return [
-      {
-        row: 0,
-        message: `Unexpected column(s): ${unexpectedColumns
-          .map(humanizeField)
-          .join(
-            ', ',
-          )}. Please use the provided template without adding extra columns.`,
-      },
-    ];
   }
 
   private async validateCollectionBusinessRules(
@@ -509,6 +537,114 @@ export class ImportValidationService {
     }
 
     return errors;
+  }
+
+  // One project query and two region queries for the whole file.
+  private async loadLocationContext(
+    projectId: string,
+    rawRows: Record<string, any>[],
+  ): Promise<LocationContext> {
+    const [lookup, project] = await Promise.all([
+      loadRegionLookup(
+        this.regionRepository,
+        rawRows.map((raw) => raw['state']),
+      ),
+      this.projectRepository.findOne({
+        where: { id: projectId },
+        relations: { regions: { parentRegion: true } },
+      }),
+    ]);
+
+    const configuredStates = new Map<string, string>();
+    const configuredDistrictsByState = new Map<string, Region[]>();
+    for (const region of project?.regions ?? []) {
+      if (region.regionType === RegionType.STATE) {
+        configuredStates.set(region.id, region.name);
+      } else if (
+        region.regionType === RegionType.DISTRICT &&
+        region.parentRegion
+      ) {
+        // A configured district implies its state, as on the dashboard.
+        const stateId = region.parentRegion.id;
+        configuredStates.set(stateId, region.parentRegion.name);
+        configuredDistrictsByState.set(stateId, [
+          ...(configuredDistrictsByState.get(stateId) ?? []),
+          region,
+        ]);
+      }
+    }
+
+    return { lookup, configuredStates, configuredDistrictsByState };
+  }
+
+  // The dashboard location filters and the Create Site form only offer the
+  // project's configured states and districts. A site saved outside them
+  // would import fine but no location filter could ever reach it, and a
+  // name missing from the master list would save the site with no location.
+  private validateLocation(
+    raw: Record<string, any>,
+    row: number,
+    context: LocationContext,
+  ): RowError[] {
+    const reupload =
+      'Add it under Edit Project Details on the project page, then re-upload.';
+
+    const stateCell = raw['state'];
+    // A blank cell is already reported as "State is required" by the DTO.
+    if (!normalizeRegionName(stateCell)) return [];
+
+    const configuredStateNames = formatNames(context.configuredStates.values());
+    const state = context.lookup.findState(stateCell);
+    if (!state) {
+      return [
+        {
+          row,
+          column: 'State',
+          message: `State "${stateCell}" is not recognised. Check the spelling against the official state name. Configured for this project: ${configuredStateNames}.`,
+        },
+      ];
+    }
+    if (!context.configuredStates.has(state.id)) {
+      return [
+        {
+          row,
+          column: 'State',
+          message: `State "${state.name}" is not configured for this project. ${reupload} Configured for this project: ${configuredStateNames}.`,
+        },
+      ];
+    }
+
+    const districtCell = raw['district'];
+    if (!normalizeRegionName(districtCell)) return [];
+
+    const configuredDistricts =
+      context.configuredDistrictsByState.get(state.id) ?? [];
+    const configuredDistrictNames = formatNames(
+      configuredDistricts.map((district) => district.name),
+    );
+    const district = context.lookup.findDistrict(state.id, districtCell);
+    if (!district) {
+      return [
+        {
+          row,
+          column: 'District',
+          message: `District "${districtCell}" was not found in ${state.name}. Check the spelling against the official district name. Configured for ${state.name}: ${configuredDistrictNames}.`,
+        },
+      ];
+    }
+    if (
+      !configuredDistricts.some((configured) => configured.id === district.id)
+    ) {
+      return [
+        {
+          row,
+          column: 'District',
+          message: `District "${district.name}" is not configured for this project. ${reupload} Configured for ${state.name}: ${configuredDistrictNames}.`,
+        },
+      ];
+    }
+
+    return [];
   }
 
   private async validateLabDiseaseList(

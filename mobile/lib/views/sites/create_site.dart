@@ -1078,27 +1078,31 @@ class CreateSite extends HookWidget {
       isSaving.value = true;
 
       try {
-        final position = await LocationManager.ensureLocation(context);
-        if (position == null) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Location is required')),
-            );
-          }
-          isSaving.value = false;
-          return;
-        }
-
         double latitude;
         double longitude;
 
+        // The site is saved at the map marker. Only read the device location
+        // when no marker was set, so a failed GPS/browser fix does not block
+        // saving a site the user has already placed.
         if (currentMarkerLat.value != null && currentMarkerLng.value != null) {
           latitude = currentMarkerLat.value!;
           longitude = currentMarkerLng.value!;
           print(
               '[Save] Using marker coordinates: (lat=$latitude, lon=$longitude)');
         } else {
-          // Fallback to GPS position if marker wasn't initialized
+          final position = await LocationManager.ensureLocation(context);
+          if (position == null) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                      'Location is required. Place the site on the map or enter its latitude and longitude.'),
+                ),
+              );
+            }
+            isSaving.value = false;
+            return;
+          }
           latitude = position.latitude;
           longitude = position.longitude;
           print(
@@ -1276,15 +1280,15 @@ class CreateSite extends HookWidget {
           }
         }
       } catch (e, stack) {
+        // Keep the technical detail in the log, not in front of the user.
+        print('Failed to save site locally. ERROR: $e \nSTACK TRACE:\n$stack');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Failed to save site locally: $e'),
+            const SnackBar(
+              content: Text("Couldn't save the site. Please try again."),
               backgroundColor: Colors.red,
             ),
           );
-          print(
-              'Failed to save site locally. ERROR: $e \nSTACK TRACE:\n$stack');
         }
       } finally {
         isSaving.value = false;

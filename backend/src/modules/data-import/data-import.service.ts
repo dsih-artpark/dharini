@@ -6,9 +6,16 @@ import { XlsxParserService } from './xlsx-parser.service';
 import { TemplateService } from './template.service';
 import { ImportValidationService } from './import-validation.service';
 import { ImportPersistenceService } from './import-persistence.service';
-import { DiseaseGroup, ImportResult, ImportSection } from './data-import.types';
+import { checkColumns } from './column-check';
+import {
+  DiseaseGroup,
+  ImportResult,
+  ImportSection,
+  ImportTemplate,
+  RowError,
+} from './data-import.types';
 
-const NO_DATA_ROWS_ERROR = {
+const NO_DATA_ROWS_ERROR: RowError = {
   row: 0,
   message:
     'No data rows found. Add your rows below the header row and delete the pre-filled example rows (the ones whose remarks start with "DELETE THIS ROW").',
@@ -47,10 +54,14 @@ export class DataImportService {
     diseaseGroup: DiseaseGroup,
     projectId: string,
   ): Promise<ImportResult> {
-    const rawRows = await this.xlsxParser.parseRows(buffer);
-    if (rawRows.length === 0) {
-      return { success: false, importedCount: 0, errors: [NO_DATA_ROWS_ERROR] };
+    const sheet = await this.readRows(buffer, {
+      diseaseGroup,
+      section: 'collection',
+    });
+    if ('errors' in sheet) {
+      return { success: false, importedCount: 0, errors: sheet.errors };
     }
+    const rawRows = sheet.rows;
     const validation = await this.validationService.validateCollectionRows(
       rawRows,
       diseaseGroup,
@@ -74,11 +85,11 @@ export class DataImportService {
     diseaseGroup: DiseaseGroup,
     projectId: string,
   ): Promise<ImportResult> {
-    const rawRows = await this.xlsxParser.parseRows(buffer);
-    if (rawRows.length === 0) {
-      return { success: false, importedCount: 0, errors: [NO_DATA_ROWS_ERROR] };
+    const sheet = await this.readRows(buffer, { diseaseGroup, section: 'lab' });
+    if ('errors' in sheet) {
+      return { success: false, importedCount: 0, errors: sheet.errors };
     }
-
+    const rawRows = sheet.rows;
     const validation = await this.validationService.validateLabRows(
       rawRows,
       diseaseGroup,
@@ -95,5 +106,24 @@ export class DataImportService {
       projectId,
     );
     return { success: true, importedCount, errors: [] };
+  }
+
+  // Problems with the file as a whole are reported on their own: with the
+  // wrong template or edited columns, row checks would only repeat the same
+  // problem on every row.
+  private async readRows(
+    buffer: Buffer,
+    template: ImportTemplate,
+  ): Promise<{ rows: Record<string, any>[] } | { errors: RowError[] }> {
+    const { headers, rows } = await this.xlsxParser.parse(buffer);
+    const columnErrors = checkColumns(headers, template, (candidate) =>
+      this.templateService.getHeaders(
+        candidate.diseaseGroup,
+        candidate.section,
+      ),
+    );
+    if (columnErrors.length > 0) return { errors: columnErrors };
+    if (rows.length === 0) return { errors: [NO_DATA_ROWS_ERROR] };
+    return { rows };
   }
 }

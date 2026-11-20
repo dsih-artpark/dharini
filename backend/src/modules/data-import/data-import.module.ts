@@ -9,6 +9,7 @@ import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { LabTest } from 'src/entities/lab-test.entity';
 import { Project } from 'src/entities/project.entity';
+import { Region } from 'src/entities/region.entity';
 import { DataImportController } from './data-import.controller';
 import { DataImportService } from './data-import.service';
 import { XlsxParserService } from './xlsx-parser.service';
@@ -28,6 +29,7 @@ import { ImportPersistenceService } from './import-persistence.service';
       Visit,
       LabTest,
       Project,
+      Region,
     ]),
   ],
   controllers: [DataImportController],

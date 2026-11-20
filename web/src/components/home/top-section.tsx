@@ -16,7 +16,7 @@ export default function TopSection() {
     <section className="flex flex-col gap-6">
       <div className="rounded-3xl bg-blue-40 px-6 py-8 sm:px-8 lg:px-12 lg:py-11">
         <p className="text-lg font-bold uppercase leading-none tracking-[0.16em] text-white/80">
-          This month&apos;s overview
+          Last 30 days overview
         </p>
         <h1 className="mt-5 max-w-[620px] text-3xl font-semibold leading-tight text-white sm:text-4xl">
           Welcome back, {user?.firstName ?? "Admin"} - keep your surveillance on
@@ -33,11 +33,16 @@ export default function TopSection() {
         </Link>
       </div>
 
+      {/* All tiles cover the last 30 days only (see
+          StatisticsService.getHomeLast30Days). The site denominators are
+          sites with any activity in that window, not every site in the
+          workspace, so they will not match a project's all-time site count. */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           title="Visited Sites"
           value={homeData?.visits?.totalVisited ?? 0}
           total={homeData?.visits?.totalPresent ?? 0}
+          totalLabel="sites with activity"
           icon={<VisitedSitesIcon />}
           iconClassName="bg-blue-10"
         />
@@ -46,6 +51,7 @@ export default function TopSection() {
           title="Positive Sites"
           value={homeData?.sites?.totalPositive ?? 0}
           total={homeData?.sites?.totalPresent ?? 0}
+          totalLabel="sites with activity"
           valueClassName="text-red-30"
           icon={<PositiveSitesIcon />}
           iconClassName="bg-red-10"
@@ -55,6 +61,7 @@ export default function TopSection() {
           title="Samples Tested"
           value={homeData?.samples?.totalTested ?? 0}
           total={homeData?.samples?.totalPresent ?? 0}
+          totalLabel="samples collected"
           icon={<SamplesIcon fill="#5D7FDD" />}
           iconClassName="bg-blue-10"
         />
@@ -67,6 +74,7 @@ function StatCard({
   title,
   value,
   total,
+  totalLabel,
   icon,
   iconClassName,
   valueClassName = "text-grey-90",
@@ -74,6 +82,7 @@ function StatCard({
   title: string;
   value: number;
   total: number;
+  totalLabel: string;
   icon: ReactNode;
   iconClassName: string;
   valueClassName?: string;
@@ -95,7 +104,7 @@ function StatCard({
           {value}
         </p>
         <p className="mt-3 text-xs font-bold uppercase leading-none tracking-wide text-grey-60">
-          of {total} total
+          of {total} {totalLabel}
         </p>
       </div>
     </div>

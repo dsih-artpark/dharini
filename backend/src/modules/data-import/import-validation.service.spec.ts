@@ -5,11 +5,64 @@ import { Disease } from 'src/entities/disease.entity';
 import { SampleType } from 'src/entities/sample-type.entity';
 import { Sample } from 'src/entities/sample.entity';
 import { LabTest } from 'src/entities/lab-test.entity';
+import { Project } from 'src/entities/project.entity';
+import { Region } from 'src/entities/region.entity';
 import { StatusType } from 'src/common/enums/status.enum';
+import { RegionType } from 'src/common/enums/region.enum';
 import { FINAL_TEST_RESULTS, RowError } from './data-import.types';
 import { ImportValidationService } from './import-validation.service';
 
 const PROJECT_ID = 'project-1';
+
+type StoredRegion = {
+  id: string;
+  regionType: RegionType;
+  name: string;
+  parentRegion: StoredRegion | null;
+};
+
+const state = (id: string, name: string): StoredRegion => ({
+  id,
+  regionType: RegionType.STATE,
+  name,
+  parentRegion: null,
+});
+const district = (
+  id: string,
+  name: string,
+  parent: StoredRegion,
+): StoredRegion => ({
+  id,
+  regionType: RegionType.DISTRICT,
+  name,
+  parentRegion: parent,
+});
+
+const KARNATAKA = state('state-ka', 'Karnataka');
+const TAMIL_NADU = state('state-tn', 'Tamil Nadu');
+const BIHAR = state('state-br', 'Bihar');
+const MAHARASHTRA = state('state-mh', 'Maharashtra');
+const BENGALURU_URBAN = district('district-blr', 'Bengaluru Urban', KARNATAKA);
+const MYSURU = district('district-mys', 'Mysuru', KARNATAKA);
+const CHENNAI = district('district-chn', 'Chennai', TAMIL_NADU);
+// Same district name in two states.
+const AURANGABAD_BR = district('district-aur-br', 'Aurangabad', BIHAR);
+const AURANGABAD_MH = district('district-aur-mh', 'Aurangabad', MAHARASHTRA);
+const PUNE = district('district-pune', 'Pune', MAHARASHTRA);
+
+// The country-wide master list the upload resolves names against.
+const MASTER_REGIONS = [
+  KARNATAKA,
+  TAMIL_NADU,
+  BIHAR,
+  MAHARASHTRA,
+  BENGALURU_URBAN,
+  MYSURU,
+  CHENNAI,
+  AURANGABAD_BR,
+  AURANGABAD_MH,
+  PUNE,
+];
 
 type StoredSample = { id: string; barcode: string; collectedAt: Date };
 type StoredLabTest = {
@@ -53,8 +106,28 @@ describe('ImportValidationService duplicate checks', () => {
   let labTests: StoredLabTest[];
   let sampleRepository: { find: jest.Mock };
   let labTestRepository: { find: jest.Mock };
+  let projectRegions: StoredRegion[];
+  let projectRepository: { findOne: jest.Mock };
+  let regionRepository: { find: jest.Mock };
 
   beforeEach(async () => {
+    projectRegions = [KARNATAKA, BENGALURU_URBAN];
+    projectRepository = {
+      findOne: jest.fn(async () => ({
+        id: PROJECT_ID,
+        regions: projectRegions,
+      })),
+    };
+    regionRepository = {
+      find: jest.fn(async ({ where }) =>
+        MASTER_REGIONS.filter(
+          (region) =>
+            region.regionType === where.regionType &&
+            (!where.parentRegion ||
+              where.parentRegion.id.value.includes(region.parentRegion?.id)),
+        ),
+      ),
+    };
     samples = [
       { id: 'sample-1', barcode: 'S-1', collectedAt: new Date('2026-09-01') },
       { id: 'sample-2', barcode: 'S-2', collectedAt: new Date('2026-09-01') },
@@ -93,6 +166,8 @@ describe('ImportValidationService duplicate checks', () => {
         },
         { provide: getRepositoryToken(Sample), useValue: sampleRepository },
         { provide: getRepositoryToken(LabTest), useValue: labTestRepository },
+        { provide: getRepositoryToken(Project), useValue: projectRepository },
+        { provide: getRepositoryToken(Region), useValue: regionRepository },
       ],
     }).compile();
 
@@ -112,6 +187,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 4,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message:
             'Duplicate FMD lab result for instituteSampleId "S-1" in this file (also on row 3)',
         },
@@ -178,6 +254,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message:
             'Lab result for FMD already exists for instituteSampleId "S-1". To record another result, use Retest on the Lab page.',
         },
@@ -261,6 +338,34 @@ describe('ImportValidationService duplicate checks', () => {
       expect(labTestRepository.find).not.toHaveBeenCalled();
     });
 
+    it('names the template column of every error, whether keyed or labelled', async () => {
+      const result = await service.validateLabRows(
+        [
+          {
+            ...fmdLsdLabRow(3, { instituteSampleId: 'UNKNOWN' }),
+            testedBy: undefined,
+          },
+        ],
+        'FMD_LSD',
+        PROJECT_ID,
+      );
+
+      expect(result.errors).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            row: 3,
+            column: 'Tested By',
+            field: 'testedBy',
+          }),
+          expect.objectContaining({
+            row: 3,
+            column: 'instituteSampleId',
+            field: 'instituteSampleId',
+          }),
+        ]),
+      );
+    });
+
     it('looks up samples and existing results once per file, not per row', async () => {
       await service.validateLabRows(
         [
@@ -304,6 +409,7 @@ describe('ImportValidationService duplicate checks', () => {
         {
           row: 3,
           column: 'instituteSampleId',
+          field: 'instituteSampleId',
           message: 'instituteSampleId "S-1" already exists in this project',
         },
       ]);
@@ -322,6 +428,150 @@ describe('ImportValidationService duplicate checks', () => {
           message: 'Duplicate instituteSampleId "NEW-1" in this file',
         }),
       ]);
+    });
+  });
+
+  describe('collection row location', () => {
+    const locationRow = (
+      row: number,
+      stateName: string,
+      districtName: string,
+    ) => ({
+      __row: row,
+      instituteSampleId: `NEW-${row}`,
+      disease: 'FMD',
+      state: stateName,
+      district: districtName,
+    });
+    const locationErrors = (errors: RowError[]) =>
+      errors.filter(
+        (error) => error.column === 'State' || error.column === 'District',
+      );
+    const validate = (rows: Record<string, unknown>[]) =>
+      service.validateCollectionRows(rows, 'FMD_LSD', PROJECT_ID);
+
+    it('accepts a configured state and district, ignoring case and extra spaces', async () => {
+      const result = await validate([
+        locationRow(3, 'Karnataka', 'Bengaluru Urban'),
+        locationRow(4, '  karnataka ', 'bengaluru   URBAN'),
+      ]);
+
+      expect(locationErrors(result.errors)).toEqual([]);
+    });
+
+    it('rejects a state that is not in the master list', async () => {
+      const result = await validate([locationRow(3, 'TamilNadu', 'Chennai')]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        {
+          row: 3,
+          column: 'State',
+          field: 'state',
+          message:
+            'State "TamilNadu" is not recognised. Check the spelling against the official state name. Configured for this project: Karnataka.',
+        },
+      ]);
+    });
+
+    it('rejects a real state the project is not configured for', async () => {
+      const result = await validate([locationRow(3, 'Tamil Nadu', 'Chennai')]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        {
+          row: 3,
+          column: 'State',
+          field: 'state',
+          message:
+            'State "Tamil Nadu" is not configured for this project. Add it under Edit Project Details on the project page, then re-upload. Configured for this project: Karnataka.',
+        },
+      ]);
+    });
+
+    it('rejects a district that belongs to a different state', async () => {
+      const result = await validate([locationRow(3, 'Karnataka', 'Chennai')]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        {
+          row: 3,
+          column: 'District',
+          field: 'district',
+          message:
+            'District "Chennai" was not found in Karnataka. Check the spelling against the official district name. Configured for Karnataka: Bengaluru Urban.',
+        },
+      ]);
+    });
+
+    it('rejects a real district the project is not configured for', async () => {
+      const result = await validate([locationRow(3, 'Karnataka', 'Mysuru')]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        {
+          row: 3,
+          column: 'District',
+          field: 'district',
+          message:
+            'District "Mysuru" is not configured for this project. Add it under Edit Project Details on the project page, then re-upload. Configured for Karnataka: Bengaluru Urban.',
+        },
+      ]);
+    });
+
+    it('matches a repeated district name within the named state only', async () => {
+      projectRegions = [BIHAR, AURANGABAD_BR, MAHARASHTRA, PUNE];
+
+      const result = await validate([
+        locationRow(3, 'Bihar', 'Aurangabad'),
+        locationRow(4, 'Maharashtra', 'Aurangabad'),
+      ]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        expect.objectContaining({
+          row: 4,
+          column: 'District',
+          field: 'district',
+          message: expect.stringContaining(
+            'District "Aurangabad" is not configured for this project',
+          ),
+        }),
+      ]);
+    });
+
+    it("treats a configured district's state as configured", async () => {
+      projectRegions = [CHENNAI];
+
+      const result = await validate([locationRow(3, 'Tamil Nadu', 'Chennai')]);
+
+      expect(locationErrors(result.errors)).toEqual([]);
+    });
+
+    it('leaves a blank state to the required-field check', async () => {
+      const result = await validate([
+        { __row: 3, instituteSampleId: 'NEW-3', disease: 'FMD' },
+      ]);
+
+      expect(locationErrors(result.errors)).toEqual([
+        expect.objectContaining({
+          column: 'State',
+          field: 'state',
+          message: 'State is required',
+        }),
+        expect.objectContaining({
+          column: 'District',
+          field: 'district',
+          message: 'District is required',
+        }),
+      ]);
+    });
+
+    it('loads the project and regions once per file, not per row', async () => {
+      await validate([
+        locationRow(3, 'Karnataka', 'Bengaluru Urban'),
+        locationRow(4, 'Tamil Nadu', 'Chennai'),
+        locationRow(5, 'Karnataka', 'Mysuru'),
+      ]);
+
+      expect(projectRepository.findOne).toHaveBeenCalledTimes(1);
+      // One query for states, one for their districts.
+      expect(regionRepository.find).toHaveBeenCalledTimes(2);
     });
   });
 });

@@ -82,6 +82,14 @@ export class TemplateService {
     return Buffer.from(buffer);
   }
 
+  // The header row of a template, in order. An uploaded file must have
+  // exactly these columns.
+  getHeaders(diseaseGroup: DiseaseGroup, section: ImportSection): string[] {
+    return this.getSpec(diseaseGroup, section).columns.map(
+      (column) => column.header,
+    );
+  }
+
   private getSpec(
     diseaseGroup: DiseaseGroup,
     section: ImportSection,

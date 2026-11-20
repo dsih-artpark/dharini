@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAtomValue } from "jotai";
 import {
   FlaskConical,
   CheckCircle2,
@@ -14,7 +13,7 @@ import Select from "@/src/components/ui/select";
 import StatCard from "@/src/components/ui/stat-card";
 import Loader from "@/src/components/ui/loader";
 import { useIsSuperAdmin } from "@/src/hooks/check-permission";
-import { currentWorkspaceAtom } from "@/src/store/currentWorkspaceAtom";
+import { useHydratedWorkspace } from "@/src/hooks/use-hydrated-workspace";
 import { getAllProjectsApi } from "@/src/app/(dashboard)/manage/loader";
 import { fetchProjectRegions } from "@/src/app/(dashboard)/project-onboarding/loader";
 import { getProjectSampleTypesApi } from "@/src/app/(dashboard)/monitor/loader";
@@ -52,7 +51,7 @@ const emptyFilters: ComparisonFilterType = {
 
 export default function ProjectComparison() {
   const isSuperAdmin = useIsSuperAdmin();
-  const currentWorkspace = useAtomValue(currentWorkspaceAtom);
+  const { workspaceId, ready: workspaceReady } = useHydratedWorkspace();
 
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProjectComparisonData>();
@@ -70,15 +69,20 @@ export default function ProjectComparison() {
 
   // Load filter options once.
   useEffect(() => {
+    if (!workspaceReady) return;
+    // Ignore a response that lands after a newer request has started.
+    let ignore = false;
+
     const fetchOptions = async () => {
       const [projectsResponse, sampleTypeResponse, regionsResponse] =
         await Promise.all([
           // B11: scope to the currently selected workspace so the switcher
           // actually affects this tab.
-          getAllProjectsApi({ limit: 1000, workspaceId: currentWorkspace?.id }),
+          getAllProjectsApi({ limit: 1000, workspaceId }),
           getProjectSampleTypesApi(),
           fetchProjectRegions(),
         ]);
+      if (ignore) return;
 
       if (projectsResponse.success) {
         setAllProjects(
@@ -109,16 +113,22 @@ export default function ProjectComparison() {
     fetchOptions().catch((error) =>
       console.error("Error fetching comparison filters", error),
     );
-  }, [currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [workspaceId, workspaceReady]);
 
   // Fetch the comparison payload whenever filters change.
   useEffect(() => {
+    if (!workspaceReady) return;
+    let ignore = false;
+
     const fetchData = async () => {
       setLoading(true);
       try {
         const hasRange = !!(filters.startDate && filters.endDate);
         const { data: payload } = await getProjectComparisonApi({
-          workspaceId: currentWorkspace?.id,
+          workspaceId,
           projectId:
             isSuperAdmin && filters.projectId.length
               ? filters.projectId
@@ -135,16 +145,19 @@ export default function ProjectComparison() {
           startDate: hasRange ? toStartOfDayISO(filters.startDate) : undefined,
           endDate: hasRange ? toEndOfDayISO(filters.endDate) : undefined,
         });
-        setData(payload);
+        if (!ignore) setData(payload);
       } catch (error) {
         console.error("Error fetching comparison data", error);
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     };
 
     fetchData();
-  }, [filters, isSuperAdmin, currentWorkspace?.id]);
+    return () => {
+      ignore = true;
+    };
+  }, [filters, isSuperAdmin, workspaceId, workspaceReady]);
 
   const handleFilterChange = (name: string, value: string | string[]) => {
     setFilters((prev) => ({ ...prev, [name]: value }));

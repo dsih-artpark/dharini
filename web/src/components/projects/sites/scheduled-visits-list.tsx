@@ -46,10 +46,8 @@ export interface ScheduleItem {
 
 export default function ScheduledVisitsList({
   siteId,
-  onCountChange,
 }: {
   siteId?: string;
-  onCountChange?: (count: number) => void;
 }) {
   const { id: projectIdParam, siteId: siteIdParam } = useParams<{
     id: string;
@@ -110,10 +108,6 @@ export default function ScheduledVisitsList({
               ? skippedResponse.data
               : [];
           setApiVisits([...response.data, ...skippedVisits]);
-          if (onCountChange && filterType === "upcoming") {
-            const count = response.total ?? response.data.length;
-            onCountChange(count);
-          }
         }
       }
     } catch (e) {
@@ -125,11 +119,45 @@ export default function ScheduledVisitsList({
         setLoading(false);
       }
     }
-  }, [projectId, targetSiteId, filterType, onCountChange]);
+  }, [projectId, targetSiteId, filterType]);
 
   useEffect(() => {
     fetchScheduledVisits();
   }, [fetchScheduledVisits]);
+
+  // Count for each filter pill: the server total of the same query that pill
+  // lists (past = completed + skipped), so the numbers always match the lists.
+  // `assignedTo` is left out on purpose - it only turns paging off - so
+  // `limit: 1` returns the total without the visits themselves.
+  const [counts, setCounts] = useState<Record<
+    "upcoming" | "past" | "all",
+    number
+  > | null>(null);
+
+  const fetchCounts = useCallback(async () => {
+    if (!projectId) return;
+    const base: Parameters<typeof getScheduledVisitsApi>[1] = { limit: 1 };
+    if (targetSiteId) base.siteId = targetSiteId;
+    try {
+      const [upcoming, completed, skipped, all] = await Promise.all([
+        getScheduledVisitsApi(projectId, { ...base, visitStatus: "upcoming" }),
+        getScheduledVisitsApi(projectId, { ...base, isCompleted: true }),
+        getScheduledVisitsApi(projectId, { ...base, visitStatus: "skipped" }),
+        getScheduledVisitsApi(projectId, base),
+      ]);
+      setCounts({
+        upcoming: upcoming.total ?? 0,
+        past: (completed.total ?? 0) + (skipped.total ?? 0),
+        all: all.total ?? 0,
+      });
+    } catch (e) {
+      console.error("Error fetching scheduled visit counts:", e);
+    }
+  }, [projectId, targetSiteId]);
+
+  useEffect(() => {
+    fetchCounts();
+  }, [fetchCounts]);
 
   // Derive plan title and subtext from siteDetail if available
   const planTitle = useMemo(() => {
@@ -267,13 +295,14 @@ export default function ScheduledVisitsList({
     return mappedItems;
   }, [apiVisits, filterType, rescheduledOverrides, siteDetail]);
 
-  // Limit display if not expanded
+  // Limit display if not expanded. Every tab, since the expand arrow below
+  // shows on every tab once there are more than four.
   const displayItems = useMemo(() => {
-    if (filterType === "upcoming" && !expanded && filteredItems.length > 4) {
+    if (!expanded && filteredItems.length > 4) {
       return filteredItems.slice(0, 4);
     }
     return filteredItems;
-  }, [filteredItems, expanded, filterType]);
+  }, [filteredItems, expanded]);
 
   // Group items by monthYear
   const groupedItems = useMemo(() => {
@@ -347,7 +376,7 @@ export default function ScheduledVisitsList({
       );
 
       // Re-fetch scheduled visits from API to ensure sync
-      await fetchScheduledVisits();
+      await Promise.all([fetchScheduledVisits(), fetchCounts()]);
     } catch (err) {
       toast.error(
         (err instanceof Error && err.message) || "Failed to reschedule visit",
@@ -424,7 +453,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          Upcoming
+          Upcoming{counts && ` (${counts.upcoming})`}
         </button>
         <button
           type="button"
@@ -434,7 +463,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          Past
+          Past{counts && ` (${counts.past})`}
         </button>
         <button
           type="button"
@@ -444,7 +473,7 @@ export default function ScheduledVisitsList({
               : "border border-grey-20 bg-white text-grey-70 hover:bg-grey-10"
             }`}
         >
-          All
+          All{counts && ` (${counts.all})`}
         </button>
       </div>
 
@@ -472,13 +501,7 @@ export default function ScheduledVisitsList({
                   {items.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => handleOpenReschedule(item)}
-                      className="group flex items-center justify-between py-4 transition-colors hover:bg-blue-10/40 px-2 sm:px-3 rounded-xl cursor-pointer"
-                      title={
-                        item.category === "upcoming"
-                          ? "Click to reschedule this visit"
-                          : undefined
-                      }
+                      className="group flex items-center justify-between py-4 transition-colors hover:bg-blue-10/40 px-2 sm:px-3 rounded-xl"
                     >
                       {/* Left: Date + Info */}
                       <div className="flex items-center gap-4 sm:gap-6 min-w-0">
@@ -523,35 +546,23 @@ export default function ScheduledVisitsList({
                       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                         {getStatusBadge(item.status)}
 
-                        {item.category === "upcoming" ? (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenReschedule(item);
-                            }}
-                            className="flex items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 py-1.5 text-xs font-medium text-grey-70 transition hover:bg-blue-10 hover:text-primary-500 hover:border-blue-20 shadow-2xs active:scale-95"
-                            title="Reschedule visit"
-                            aria-label="Reschedule visit"
-                          >
-                            <Calendar className="w-3.5 h-3.5 text-grey-70 group-hover:text-primary-500" />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toast.info(
-                                `Visit on ${item.dayNumber} ${item.monthYear} was ${item.status === "Skipped" ? "skipped" : "completed"}.`,
-                              );
-                            }}
-                            className="flex h-9 w-9 items-center justify-center rounded-lg border border-grey-20 text-grey-70 transition hover:bg-grey-10 hover:text-grey-90 active:scale-95"
-                            title="View visit details"
-                            aria-label="View visit details"
-                          >
-                            <Calendar className="w-4 h-4 text-grey-70" />
-                          </button>
-                        )}
+                        {/* Only a visit that can still be rescheduled gets
+                            the calendar; completed and past ones have none. */}
+                        {item.category === "upcoming" &&
+                          item.status !== "Completed" && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenReschedule(item);
+                              }}
+                              className="flex items-center gap-1.5 rounded-lg border border-grey-20 bg-white px-2.5 py-1.5 text-xs font-medium text-grey-70 transition hover:bg-blue-10 hover:text-primary-500 hover:border-blue-20 shadow-2xs active:scale-95"
+                              title="Reschedule visit"
+                              aria-label="Reschedule visit"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-grey-70 group-hover:text-primary-500" />
+                            </button>
+                          )}
                       </div>
                     </div>
                   ))}
@@ -597,6 +608,7 @@ export default function ScheduledVisitsList({
         onClose={() => {
           setIsPlanModalOpen(false);
           fetchScheduledVisits();
+          fetchCounts();
         }}
         siteId={targetSiteId || siteDetail?.id}
       />

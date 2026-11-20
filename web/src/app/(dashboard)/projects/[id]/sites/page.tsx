@@ -6,7 +6,10 @@ import { useAtom } from "jotai";
 
 import Breadcrumb from "@/src/components/ui/breadcrumb";
 import SiteStatistics from "@/src/components/projects/sites/site-list/site-statistics";
-import SiteListItem from "@/src/components/projects/sites/site-list/site-list-item";
+import SiteListItem, {
+  SiteListHeader,
+  siteListMinWidth,
+} from "@/src/components/projects/sites/site-list/site-list-item";
 import { getProjectSitesApi } from "@/src/app/(dashboard)/projects/[id]/sites/loader";
 import { Site } from "@/src/types/site";
 import { getProjectDetailApi } from "@/src/app/(dashboard)/projects/[id]/loader";
@@ -23,6 +26,11 @@ import { useHasPermission } from "@/src/hooks/check-permission";
 export default function SiteList() {
   const { id } = useParams<{ id: string }>();
   const hasPermission = useHasPermission();
+  const canUpdateCollectionPlan = hasPermission(
+    "update",
+    "collection-plan",
+    id,
+  );
   const [project, setProject] = useAtom(projectAtom);
   const [, setSite] = useAtom(siteAtom);
 
@@ -279,64 +287,41 @@ export default function SiteList() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="flex flex-col overflow-x-auto">
-          <div className="inline-flex min-w-fit items-center gap-10 border-b border-grey-20 bg-grey-10 px-5 py-3">
-            <div className="flex min-w-[250px] items-center">
-              <p className="text-sm text-grey-70">Site ID</p>
-            </div>
-            <div className="flex w-[120px] items-center">
-              <p className="text-sm text-grey-70">Farm Type</p>
-            </div>
-            <div className="flex w-[120px] items-center">
-              <p className="text-sm text-grey-70">Sub Type</p>
-            </div>
-            <div className="flex w-[120px] items-center">
-              <p className="text-sm text-grey-70">Site Type</p>
-            </div>
-            <div className="flex w-[200px] items-center">
-              <p className="text-sm text-grey-70">Collector</p>
-            </div>
-            <div className="flex w-[120px] items-center justify-end">
-              <p className="text-right text-sm text-grey-70">Status</p>
-            </div>
-            <div className="flex w-[160px] items-center">
-              <p className="text-sm text-grey-70">Actions</p>
-            </div>
-          </div>
+        {/* Table: header and rows share one column template and one
+            scroll container, so they stay aligned at every width. */}
+        <div className="overflow-x-auto">
+          <div className={siteListMinWidth(canUpdateCollectionPlan)}>
+            <SiteListHeader showActions={canUpdateCollectionPlan} />
 
-          {loading && (
-            <div className="flex min-h-10 w-full items-center justify-center">
-              <Loader />
-            </div>
-          )}
-          {sites?.length
-            ? sites.map((site) => (
-                <SiteListItem
-                  key={site.id}
-                  site={{
-                    ...site,
-                    diseases: site.diseases?.length
-                      ? site.diseases
-                      : project?.diseases,
-                  }}
-                  canUpdateCollectionPlan={hasPermission(
-                    "update",
-                    "collection-plan",
-                    id,
-                  )}
-                  onUpdateCollectionPlan={(s) => {
-                    setSite(s);
-                    setSelectedSiteId(s.id);
-                    setIsOpenCollectionPlan(true);
-                  }}
-                />
-              ))
-            : !loading && (
-                <p className="mb-10 mt-4 text-center text-base text-grey-70">
-                  No data found
-                </p>
-              )}
+            {loading && (
+              <div className="flex min-h-10 w-full items-center justify-center">
+                <Loader />
+              </div>
+            )}
+            {sites?.length
+              ? sites.map((site) => (
+                  <SiteListItem
+                    key={site.id}
+                    site={{
+                      ...site,
+                      diseases: site.diseases?.length
+                        ? site.diseases
+                        : project?.diseases,
+                    }}
+                    canUpdateCollectionPlan={canUpdateCollectionPlan}
+                    onUpdateCollectionPlan={(s) => {
+                      setSite(s);
+                      setSelectedSiteId(s.id);
+                      setIsOpenCollectionPlan(true);
+                    }}
+                  />
+                ))
+              : !loading && (
+                  <p className="mb-10 mt-4 text-center text-base text-grey-70">
+                    No data found
+                  </p>
+                )}
+          </div>
         </div>
       </section>
 

@@ -11,9 +11,15 @@ export const FINAL_TEST_RESULTS = [
 ];
 
 export interface RowError {
-  row: number; // 1-based, matches spreadsheet row number (header = row 1)
-  column?: string;
+  row: number; // spreadsheet row number; 0 for a problem with the whole file
+  column?: string; // what the message calls the column, e.g. "Tested By"
+  // Template column key (the header in the file, e.g. "testedBy"), so the
+  // client can point at the exact cell.
+  field?: string;
   message: string;
+  // Set when the file's columns belong to a different template than the
+  // one selected, so the client can offer to switch.
+  detectedTemplate?: ImportTemplate;
 }
 
 export interface ValidationResult<T> {
@@ -30,3 +36,8 @@ export interface ImportResult {
 
 export type DiseaseGroup = 'AI' | 'FMD_LSD';
 export type ImportSection = 'collection' | 'lab';
+
+export interface ImportTemplate {
+  diseaseGroup: DiseaseGroup;
+  section: ImportSection;
+}

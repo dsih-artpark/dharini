@@ -52,6 +52,7 @@ export const getSiteComparisonApi = async (params: {
 };
 
 export const getSampleTypeComparisonApi = async (params: {
+  workspaceId?: string;
   projectId?: string;
   sampleType1Id: string;
   sampleType2Id: string;

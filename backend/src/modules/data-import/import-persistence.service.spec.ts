@@ -1,12 +1,20 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getDataSourceToken } from '@nestjs/typeorm';
 import { In, IsNull } from 'typeorm';
+import { RegionType } from 'src/common/enums/region.enum';
 import { StatusType } from 'src/common/enums/status.enum';
 import { TestResultType } from 'src/common/enums/test-result.enum';
 import { Disease } from 'src/entities/disease.entity';
 import { LabTest } from 'src/entities/lab-test.entity';
+import { Location } from 'src/entities/location.entity';
+import { Region } from 'src/entities/region.entity';
 import { Sample } from 'src/entities/sample.entity';
+import { SampleType } from 'src/entities/sample-type.entity';
+import { Site } from 'src/entities/site.entity';
+import { Team } from 'src/entities/team.entity';
+import { User } from 'src/entities/user.entity';
+import { UserRole } from 'src/entities/user-role.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { FINAL_TEST_RESULTS } from './data-import.types';
 import { ImportPersistenceService } from './import-persistence.service';
@@ -202,5 +210,133 @@ describe('ImportPersistenceService.persistLabRows', () => {
     expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(queryRunner.release).toHaveBeenCalled();
+  });
+});
+
+describe('ImportPersistenceService.persistCollectionRows location', () => {
+  const BIHAR = {
+    id: 'state-br',
+    regionType: RegionType.STATE,
+    name: 'Bihar',
+    parentRegion: null,
+  };
+  const MAHARASHTRA = {
+    id: 'state-mh',
+    regionType: RegionType.STATE,
+    name: 'Maharashtra',
+    parentRegion: null,
+  };
+  // Same district name in two states.
+  const AURANGABAD_BR = {
+    id: 'district-aur-br',
+    regionType: RegionType.DISTRICT,
+    name: 'Aurangabad',
+    parentRegion: BIHAR,
+  };
+  const AURANGABAD_MH = {
+    id: 'district-aur-mh',
+    regionType: RegionType.DISTRICT,
+    name: 'Aurangabad',
+    parentRegion: MAHARASHTRA,
+  };
+  const MASTER_REGIONS = [BIHAR, MAHARASHTRA, AURANGABAD_BR, AURANGABAD_MH];
+
+  const collectionRow = (overrides: Record<string, string> = {}) => ({
+    __row: 3,
+    instituteSampleId: 'S-9',
+    disease: 'FMD',
+    sampleType: 'Blood',
+    collectorEmail: 'collector@example.org',
+    collectorName: 'Field Collector',
+    siteName: 'New Farm',
+    siteCategory: 'Dairy',
+    state: 'maharashtra',
+    district: ' Aurangabad ',
+    visitOrCollectionDate: '2026-09-01',
+    ...overrides,
+  });
+
+  let service: ImportPersistenceService;
+  let manager: Record<string, jest.Mock>;
+  let queryRunner: Record<string, jest.Mock | typeof manager>;
+
+  beforeEach(async () => {
+    const regionRepository = {
+      find: jest.fn(async ({ where }) =>
+        MASTER_REGIONS.filter(
+          (region) =>
+            region.regionType === where.regionType &&
+            (!where.parentRegion ||
+              where.parentRegion.id.value.includes(region.parentRegion?.id)),
+        ),
+      ),
+    };
+    manager = {
+      getRepository: jest.fn((entity) =>
+        entity === Region ? regionRepository : undefined,
+      ),
+      find: jest.fn(async (entity) => {
+        if (entity === Team) return [{ id: 'team-1' }];
+        if (entity === Disease)
+          return [{ id: 'disease-fmd', shortName: 'FMD' }];
+        return [];
+      }),
+      findOne: jest.fn(async (entity) => {
+        if (entity === SampleType) return { id: 'sample-type-1' };
+        if (entity === User) return { id: 'user-1' };
+        if (entity === UserRole) return { team: 'team-1' };
+        // New site, new visit.
+        return null;
+      }),
+      create: jest.fn((_entity, data) => data),
+      save: jest.fn(async (_entity, data) => data),
+    };
+    queryRunner = {
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      rollbackTransaction: jest.fn(),
+      release: jest.fn(),
+      manager,
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ImportPersistenceService,
+        {
+          provide: getDataSourceToken(),
+          useValue: { createQueryRunner: () => queryRunner },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ImportPersistenceService);
+  });
+
+  const savedOf = (entity: unknown) =>
+    manager.save.mock.calls.find(([saved]) => saved === entity)?.[1];
+
+  it("links a new site to the named district within the row's state", async () => {
+    await expect(
+      service.persistCollectionRows([collectionRow()], 'FMD_LSD', 'project-1'),
+    ).resolves.toBe(1);
+
+    expect(savedOf(Location).region).toBe(AURANGABAD_MH);
+    expect(savedOf(Site).location.region).toBe(AURANGABAD_MH);
+    expect(queryRunner.commitTransaction).toHaveBeenCalled();
+  });
+
+  it('rolls back the whole file instead of saving a site with no location', async () => {
+    await expect(
+      service.persistCollectionRows(
+        [collectionRow({ district: 'Pune' })],
+        'FMD_LSD',
+        'project-1',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(manager.save).not.toHaveBeenCalledWith(Site, expect.anything());
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 });

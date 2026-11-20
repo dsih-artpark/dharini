@@ -43,7 +43,7 @@ import { UserRole } from 'src/entities/user-role.entity';
 import { User } from 'src/entities/user.entity';
 import { Visit } from 'src/entities/visit.entity';
 import { Workspace } from 'src/entities/workspace.entity';
-import { Brackets, ILike, In, Repository } from 'typeorm';
+import { Brackets, ILike, In, Repository, SelectQueryBuilder } from 'typeorm';
 import { RegionType } from '../../common/enums/region.enum';
 import { StatusType } from '../../common/enums/status.enum';
 import { LocationService } from '../location/location.service';
@@ -52,6 +52,7 @@ import { calculateExpiryDateFlexible } from '../sites/calExpiryDate';
 import { calculateStartDate } from '../sites/calStartDate';
 import { UpdateSiteDto } from '../sites/dto/update-site.dto';
 import { normalizeCollectorIds } from '../sites/site-collectors';
+import { siteTestStatusSql } from '../sites/site-test-status';
 import { SitesService } from '../sites/sites.service';
 import { UserService } from '../users/users.service';
 import { SubmitVisitDto } from '../visits/dto/submit-visit.dto';
@@ -151,7 +152,7 @@ export class ProjectsService {
     private readonly mediaService: MulterConfigService,
     private readonly cacheService: RedisCacheService,
     private readonly tenantScopeService: TenantScopeService,
-  ) {}
+  ) { }
 
   async findAll(query: any, user?: any): Promise<ProjectPaginatedResponseType> {
     const { page = 1, limit = 10, disease, region, workspaceId } = query;
@@ -193,7 +194,6 @@ export class ProjectsService {
           .leftJoinAndSelect('project.regions', 'region') // Join regions
           .leftJoinAndSelect('region.parentRegion', 'parentRegion')
           .leftJoinAndSelect('project.surveillanceTypes', 'surveillanceType') // Join surveillanceTypes
-          .leftJoinAndSelect('project.projectAdmins', 'projectAdmin') // Join projectAdmins
           .loadRelationCountAndMap('project.totalSiteCount', 'project.sites')
           // AndSelect: clients need the owning workspace to group a
           // multi-workspace user's projects - ManyToOne, so this cannot
@@ -255,6 +255,7 @@ export class ProjectsService {
           project.diseases.sort((a, b) => a.index - b.index);
           return project;
         });
+        await this.attachCurrentProjectAdmins(data);
 
         return {
           docs: data,
@@ -278,7 +279,6 @@ export class ProjectsService {
           .leftJoinAndSelect('project.diseases', 'disease')
           .leftJoinAndSelect('project.regions', 'region') // Join regions
           .leftJoinAndSelect('project.surveillanceTypes', 'surveillanceType')
-          .leftJoinAndSelect('project.projectAdmins', 'projectAdmin')
           .loadRelationCountAndMap('project.totalSiteCount', 'project.sites')
           // AndSelect: clients need the owning workspace to group a
           // multi-workspace user's projects - ManyToOne, so this cannot
@@ -348,6 +348,7 @@ export class ProjectsService {
           project.diseases.sort((a, b) => a.index - b.index);
           return project;
         });
+        await this.attachCurrentProjectAdmins(data);
         return {
           docs: data,
           total,
@@ -359,6 +360,43 @@ export class ProjectsService {
     } catch (error) {
       console.log('Get projects error', error);
       throw error;
+    }
+  }
+
+  // The project card's lead names used to come from `project_admins`, which
+  // is written only at project creation / invite acceptance and never cleaned
+  // up when a lead is removed from the team or their account is deleted - so
+  // a removed lead kept showing. Derive them from live `user_roles` instead:
+  // every active team-admin of a "project viewer" team in the project.
+  private async attachCurrentProjectAdmins(projects: Project[]): Promise<void> {
+    if (!projects.length) return;
+
+    const userRoles = await this.userRoleRepository
+      .createQueryBuilder('userRole')
+      .innerJoin('userRole.role', 'role')
+      .innerJoinAndSelect('userRole.user', 'user')
+      .innerJoin(Team, 'team', 'CAST(team.id AS text) = userRole.team')
+      .where('userRole.project IN (:...projectIds)', {
+        projectIds: projects.map((project) => project.id),
+      })
+      .andWhere('role.name = :teamAdmin', { teamAdmin: RoleType.TEAM_ADMIN })
+      .andWhere('team.isProjectViewer = true')
+      .andWhere('userRole.status = :active', { active: StatusType.ACTIVE })
+      .andWhere('user.status != :deleted', { deleted: StatusType.DELETED })
+      .orderBy('user.firstName', 'ASC')
+      .getMany();
+
+    const adminsByProject = new Map<string, Map<string, User>>();
+    for (const userRole of userRoles) {
+      const admins = adminsByProject.get(userRole.project) ?? new Map();
+      admins.set(userRole.user.id, userRole.user);
+      adminsByProject.set(userRole.project, admins);
+    }
+
+    for (const project of projects) {
+      project.projectAdmins = Array.from(
+        adminsByProject.get(project.id)?.values() ?? [],
+      );
     }
   }
 
@@ -424,18 +462,18 @@ export class ProjectsService {
 
     const memberRoles = teamIds.length
       ? await this.userRoleRepository.find({
-          where: {
-            team: In(teamIds),
-            project: projectId,
-            status: StatusType.ACTIVE,
-          },
-          relations: [
-            'user',
-            'user.roles',
-            'user.roles.role',
-            'user.roles.role.permissions',
-          ],
-        })
+        where: {
+          team: In(teamIds),
+          project: projectId,
+          status: StatusType.ACTIVE,
+        },
+        relations: [
+          'user',
+          'user.roles',
+          'user.roles.role',
+          'user.roles.role.permissions',
+        ],
+      })
       : [];
 
     const candidatesById = new Map<string, User>();
@@ -490,7 +528,6 @@ export class ProjectsService {
           'regions.parentRegion',
           'diseases',
           'surveillanceTypes',
-          'projectAdmins',
           'createdBy',
           'workspace',
         ],
@@ -498,6 +535,7 @@ export class ProjectsService {
       if (!project) {
         throw new NotFoundException(`Project with ID ${query.id} not found`);
       }
+      await this.attachCurrentProjectAdmins([project]);
 
       // Sort the diseases array in-place
       if (project.diseases.length > 0) {
@@ -563,9 +601,9 @@ export class ProjectsService {
 
       const workspaceProjects = scopedWorkspaceIds.length
         ? await this.projectRepository.find({
-            where: { workspace: { id: In(scopedWorkspaceIds) } },
-            select: ['id'],
-          })
+          where: { workspace: { id: In(scopedWorkspaceIds) } },
+          select: ['id'],
+        })
         : [];
 
       const wsProjectIds = workspaceProjects.map((p) => p.id);
@@ -606,10 +644,10 @@ export class ProjectsService {
       accessibleProjectIds && !accessibleProjectIds.length
         ? []
         : await this.projectRepository.find({
-            where: projectWhere,
-            relations: ['teams'],
-            order: { name: 'ASC' },
-          });
+          where: projectWhere,
+          relations: ['teams'],
+          order: { name: 'ASC' },
+        });
 
     const canEditRole =
       isSuperAdmin ||
@@ -660,10 +698,10 @@ export class ProjectsService {
         contactNumber: userRole.user.contactNumber,
         role: userRole.role
           ? {
-              id: userRole.role.id,
-              name: userRole.role.name,
-              scope: userRole.role.scope,
-            }
+            id: userRole.role.id,
+            name: userRole.role.name,
+            scope: userRole.role.scope,
+          }
           : null,
         team: team ? { id: team.id, teamName: team.teamName } : null,
         project: { id: project.id, name: project.name },
@@ -1224,18 +1262,18 @@ export class ProjectsService {
           : [];
         project.diseases = createProjectDto.diseases
           ? await diseaseRepository.findBy({
-              id: In(createProjectDto.diseases),
-            })
+            id: In(createProjectDto.diseases),
+          })
           : [];
         project.surveillanceTypes = createProjectDto.surveillanceTypes
           ? await surveillanceTypeRepository.findBy({
-              id: In(createProjectDto.surveillanceTypes),
-            })
+            id: In(createProjectDto.surveillanceTypes),
+          })
           : [];
         project.projectAdmins = createProjectDto.projectAdmins
           ? await userRepository.findBy({
-              id: In(createProjectDto.projectAdmins),
-            })
+            id: In(createProjectDto.projectAdmins),
+          })
           : [];
 
         project = await projectRepository.save(project);
@@ -1800,10 +1838,20 @@ export class ProjectsService {
   }
 
   /**
-   * Get site statistics by status
+   * Total / pending / positive / negative site counts for a project's Sites
+   * summary cards.
+   *
+   * Counts exactly the sites the site list (SitesService.findAll) returns for
+   * the same filters, bucketed by the same per-site status its rows show
+   * (siteTestStatusSql), so the cards and the list always agree:
+   *   - disease: sites configured for that disease (site_diseases), with only
+   *     that disease's lab tests deciding the status
+   *   - active sites only, within the caller's reachable projects
+   *   - startDate/endDate: site creation date, as the list filters
    */
   async getSitesStatisticsByStatus(
     projectId: string,
+    user: User,
     diseaseId?: string,
     startDate?: string,
     endDate?: string,
@@ -1813,145 +1861,49 @@ export class ProjectsService {
     positive: number;
     negative: number;
   }> {
+    const stats = { total: 0, pending: 0, positive: 0, negative: 0 };
+
+    // The list returns nothing for a project outside the caller's tenant
+    // scope, so the cards must not count it either.
+    if (!(await this.tenantScopeService.canReachProject(user, projectId))) {
+      return stats;
+    }
+
     const query = this.siteRepository
       .createQueryBuilder('site')
-      .select(
-        diseaseId
-          ? `
-          COUNT(DISTINCT CASE
-            WHEN EXISTS (
-              SELECT 1 FROM samples s
-              WHERE s."siteId" = site.id
-            )
-            OR NOT EXISTS (
-              SELECT 1 FROM samples s
-              INNER JOIN samples_diseases_diseases sd ON sd."samplesId" = s.id
-              WHERE s."siteId" = site.id
-            )
-            THEN site.id ELSE NULL
-          END)
-        `
-          : 'COUNT(DISTINCT site.id)',
-        'total',
-      )
+      .select('site.id', 'siteId')
       .addSelect(
-        `
-          COUNT(DISTINCT CASE 
-            WHEN EXISTS (
-              SELECT 1 FROM samples s
-              INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-              WHERE s."siteId" = site.id
-                AND s."sampleStatus" IN ('tested', 'test-report-generated')
-                AND lt."testResult" = :positive
-                ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-            )
-            THEN site.id ELSE NULL 
-          END)
-        `,
-        'positive',
+        siteTestStatusSql('site.id', diseaseId ? 'diseaseId' : undefined),
+        'status',
       )
-
-      .addSelect(
-        `
-          COUNT(DISTINCT CASE 
-            WHEN EXISTS (
-              SELECT 1 FROM samples s
-              INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-              WHERE s."siteId" = site.id
-                AND s."sampleStatus" IN ('tested', 'test-report-generated')
-                AND lt."testResult" = :negative
-                ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM samples s
-              INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-              WHERE s."siteId" = site.id
-                AND s."sampleStatus" IN ('tested', 'test-report-generated')
-                AND lt."testResult" = :positive
-                ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-            )
-            THEN site.id ELSE NULL 
-          END)
-        `,
-        'negative',
-      )
-
-      .addSelect(
-        `
-          COUNT(DISTINCT CASE 
-            -- Case 1: site has no samples
-            WHEN NOT EXISTS (
-              SELECT 1 FROM samples s WHERE s."siteId" = site.id
-            )
-            OR (
-              -- Case 2: site has samples but no lab tests
-              EXISTS (
-                SELECT 1 FROM samples s
-                WHERE s."siteId" = site.id
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM samples s
-                INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-                WHERE s."siteId" = site.id
-                  ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                  ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-              )
-            )
-            OR (
-              -- Case 3: has lab tests but only unclear or null results
-              EXISTS (
-                SELECT 1 FROM samples s
-                INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-                WHERE s."siteId" = site.id
-                  AND s."sampleStatus" IN ('tested', 'test-report-generated', 'picked-up')
-                  AND (lt."testResult" = :unclear OR lt."testResult" IS NULL)
-                  ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                  ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM samples s
-                INNER JOIN lab_tests lt ON lt."sampleId" = s.id
-                WHERE s."siteId" = site.id
-                  AND s."sampleStatus" IN ('tested', 'test-report-generated', 'picked-up')
-                  AND lt."testResult" IN (:positive, :negative)
-                  ${diseaseId ? 'AND lt."diseaseId" = :diseaseId' : ''}
-                  ${startDate && endDate ? 'AND lt."resultDate" BETWEEN :startDate AND :endDate' : ''}
-              )
-            )
-            THEN site.id ELSE NULL 
-          END)
-        `,
-        'pending',
-      )
-      .where('site."projectId" = :projectId', { projectId });
+      .where('site."projectId" = :projectId', { projectId })
+      .andWhere('site.status = :activeStatus', {
+        activeStatus: StatusType.ACTIVE,
+      });
 
     if (diseaseId) {
-      query.setParameter('diseaseId', diseaseId);
+      query.innerJoin('site.diseases', 'disease', 'disease.id = :diseaseId', {
+        diseaseId,
+      });
     }
 
     if (startDate && endDate) {
-      query.setParameter('startDate', startDate);
-      query.setParameter('endDate', endDate);
+      query.andWhere('DATE(site.createdAt) BETWEEN :startDate AND :endDate', {
+        startDate,
+        endDate,
+      });
     }
 
-    query.setParameter('positive', TestResultType.POSITIVE);
-    query.setParameter('negative', TestResultType.NEGATIVE);
-    query.setParameter('unclear', TestResultType.UNCLEAR);
+    const rows: { status: string }[] = await query.getRawMany();
 
-    // TEMP DEBUG - remove once the "syntax error at or near '('" is found
-    console.log('SITES-STATS-SQL', query.getSql());
+    for (const { status } of rows) {
+      stats.total += 1;
+      if (status === TestResultType.POSITIVE) stats.positive += 1;
+      else if (status === TestResultType.NEGATIVE) stats.negative += 1;
+      else stats.pending += 1;
+    }
 
-    const result = await query.getRawOne();
-
-    return {
-      total: Number(result.total ?? 0),
-      positive: Number(result.positive ?? 0),
-      negative: Number(result.negative ?? 0),
-      pending: Number(result.pending ?? 0),
-    };
+    return stats;
   }
 
   /**
@@ -2031,8 +1983,8 @@ export class ProjectsService {
           const photoIds = site.photos ?? [];
           const photos = photoIds.length
             ? await this.mediaRepository.findBy({
-                id: In(photoIds),
-              })
+              id: In(photoIds),
+            })
             : [];
 
           let filteredPhotos = photos;
@@ -2143,13 +2095,13 @@ export class ProjectsService {
 
     const memberRoles = teamIds.length
       ? await this.userRoleRepository.find({
-          where: {
-            team: In(teamIds),
-            project: projectId,
-            status: StatusType.ACTIVE,
-          },
-          relations: ['user', 'user.roles', 'user.roles.role'],
-        })
+        where: {
+          team: In(teamIds),
+          project: projectId,
+          status: StatusType.ACTIVE,
+        },
+        relations: ['user', 'user.roles', 'user.roles.role'],
+      })
       : [];
 
     const byId = new Map<string, User>();
@@ -2291,7 +2243,26 @@ export class ProjectsService {
   }
 
   /**
-   * Get team member progress per site for the combined view
+   * Team Allocation & Progress: one row per (member, site) the member works
+   * at, carrying that member's own progress there.
+   *
+   * - Rows (the allocation): sites where the member has a visit of their own
+   *   (see Pending), actually did a visit, or handled a sample. With a disease
+   *   tab, only sites configured for that disease (site_diseases) - the same
+   *   rule as the project Sites card. Rows do not depend on the date range.
+   * - Pending: open (upcoming or overdue) visits of the member's own -
+   *   assigned to them, or at a site they are one of the collectors of, as
+   *   the app lists them - scheduled in the range.
+   * - Completed: completed visits the member did (`visitedBy`, else the
+   *   assigned collector), visited in the range. With a disease tab, only
+   *   visits that collected a sample for that disease.
+   * - Sample columns: samples whose step the member performed, counted once
+   *   the sample has reached that step - so the number does not drop as the
+   *   sample moves on, and a step that was rolled back does not count -
+   *   dated by when the step happened.
+   * - Order: members by name, then sites by name, so a page always holds the
+   *   same members and rows do not shuffle between loads. An explicit column
+   *   sort applies on top.
    */
   async teamMemberProgress(query: any): Promise<any> {
     try {
@@ -2311,218 +2282,300 @@ export class ProjectsService {
       const perPage = Number(limit);
       const offset = (currentPage - 1) * perPage;
 
-      // 1. Every member of the project's teams, resolved from `user_roles`
-      const { members: allMembers, memberTeamMap } =
+      // startDate/endDate are exact instants (the web sends local month
+      // boundaries as ISO), compared against the timestamps directly.
+      const hasDateRange = Boolean(startDate && endDate);
+      const dateParams = hasDateRange ? { startDate, endDate } : {};
+      const between = (column: string) =>
+        hasDateRange && `${column} BETWEEN :startDate AND :endDate`;
+      const countWhere = (id: string, conditions: (string | false)[]) => {
+        const active = conditions.filter(Boolean);
+        return active.length
+          ? `COUNT(DISTINCT CASE WHEN ${active.join(' AND ')} THEN ${id} END)`
+          : `COUNT(DISTINCT ${id})`;
+      };
+      const onlyDiseaseSites = <T extends SelectQueryBuilder<any>>(qb: T): T =>
+        diseaseId
+          ? qb.innerJoin(
+            'site.diseases',
+            'siteDisease',
+            'siteDisease.id = :diseaseId',
+            { diseaseId },
+          )
+          : qb;
+
+      const emptyProgress = () => ({
+        pendingVisitCount: 0,
+        completedVisitCount: 0,
+        totalCollected: 0,
+        totalReceived: 0,
+        totalExtracted: 0,
+        totalTested: 0,
+        totalReportGenerated: 0,
+      });
+      type ProgressRow = { siteId: string; siteName: string } & ReturnType<
+        typeof emptyProgress
+      >;
+
+      // 1. Every member of the project's teams, resolved from `user_roles`,
+      // in a fixed order so pagination is stable.
+      const fullName = (m: {
+        firstName?: string | null;
+        lastName?: string | null;
+      }) => `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim().toLowerCase();
+      const { members, memberTeamMap } =
         await this.resolveProjectTeamMembers(projectId);
+      const allMembers = [...members].sort(
+        (a, b) =>
+          fullName(a).localeCompare(fullName(b)) || a.id.localeCompare(b.id),
+      );
       const totalMembers = allMembers.length;
 
-      // Paginate members
       const paginatedMembers = isDownload
         ? allMembers
         : allMembers.slice(offset, offset + perPage);
+      // As before, a member without a team in this project is not listed.
+      const listedMembers = paginatedMembers.filter((m) =>
+        memberTeamMap.has(m.id),
+      );
+      const memberIds = listedMembers.map((m) => m.id);
 
-      const memberIds = paginatedMembers.map((m) => m.id);
-      const relevantTeamIds = [
-        ...new Set(
-          memberIds.map((id) => memberTeamMap.get(id)).filter(Boolean),
-        ),
-      ] as string[];
+      // memberId -> siteId -> that member's progress at that site
+      const rowsByMember = new Map<string, Map<string, ProgressRow>>();
+      const rowFor = (memberId: string, siteId: string, siteName: string) => {
+        let sites = rowsByMember.get(memberId);
+        if (!sites) {
+          sites = new Map();
+          rowsByMember.set(memberId, sites);
+        }
+        let row = sites.get(siteId);
+        if (!row) {
+          row = { siteId, siteName, ...emptyProgress() };
+          sites.set(siteId, row);
+        }
+        return row;
+      };
 
-      // 2. Get visit counts per team per site (one query for all relevant teams)
-      // `completedVisitCount` is disease-scoped: a visit only "completed" for
-      // a given disease if it has a sample of that disease (left-joined so a
-      // visit with zero samples yet — an upcoming one — isn't dropped from
-      // the result, since `pendingVisitCount` stays disease-agnostic: a
-      // scheduled visit has no samples yet, so its disease isn't known
-      // until collection happens).
-      let visitQuery = this.visitRepository
-        .createQueryBuilder('visit')
-        .select('visit.teamId', 'teamId')
-        .addSelect('visit.siteId', 'siteId')
-        .addSelect('site.name', 'siteName')
-        .addSelect(
-          `COUNT(DISTINCT CASE WHEN visit.visitStatus = '${VisitStatus.UPCOMING}' THEN visit.id END)`,
-          'pendingVisitCount',
+      if (memberIds.length) {
+        // 2. Pending: open visits of the member's own - assigned to them, or
+        // at a site they are one of the collectors of. Plan visits are all
+        // assigned to the site's first collector, but the app lists them for
+        // every collector of the site (VisitsService.getVisitSummary). Any
+        // such visit (whatever its status or date) puts the site in their
+        // rows.
+        const ownedBy = '"ownedBy"."memberId"';
+        const pendingStats = await onlyDiseaseSites(
+          this.visitRepository
+            .createQueryBuilder('visit')
+            .innerJoin('visit.site', 'site')
+            .innerJoin(
+              '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+              'ownedBy',
+              `${ownedBy} = "visit"."collectorId" OR ${ownedBy} = ANY ("site"."collector_id")`,
+              { memberIds },
+            )
+            .select(ownedBy, 'memberId')
+            .addSelect('site.id', 'siteId')
+            .addSelect('site.name', 'siteName')
+            .addSelect(
+              countWhere('visit.id', [
+                `visit.visitStatus IN ('${VisitStatus.UPCOMING}', '${VisitStatus.OVERDUE}')`,
+                between('visit.visitScheduledAt'),
+              ]),
+              'count',
+            )
+            .where('visit.projectId = :projectId', { projectId }),
         )
-        .innerJoin('visit.site', 'site')
-        .where('visit.teamId IN (:...teamIds)', {
-          teamIds: relevantTeamIds,
-        })
-        .andWhere('visit.projectId = :projectId', { projectId });
+          .setParameters(dateParams)
+          .groupBy(ownedBy)
+          .addGroupBy('site.id')
+          .addGroupBy('site.name')
+          .getRawMany();
 
-      if (diseaseId) {
-        visitQuery = visitQuery
+        for (const stat of pendingStats) {
+          rowFor(stat.memberId, stat.siteId, stat.siteName).pendingVisitCount =
+            Number(stat.count) || 0;
+        }
+
+        // 3. Completed: visits the member was at - everyone in `visitedBy`,
+        // falling back to the assigned collector when nobody was recorded (as
+        // wasAtVisit). A visit with several visitors counts for each of them.
+        // Column names are quoted by hand: TypeORM does not rewrite
+        // `visit.collectorId` inside `ARRAY[...]`.
+        const doneBy = '"doneBy"."memberId"';
+        const completedQuery = onlyDiseaseSites(
+          this.visitRepository
+            .createQueryBuilder('visit')
+            .innerJoin('visit.site', 'site')
+            .innerJoin(
+              '(SELECT unnest(ARRAY[:...memberIds]::uuid[]) AS "memberId")',
+              'doneBy',
+              `${doneBy} = ANY (CASE WHEN cardinality("visit"."visitedById") > 0 THEN "visit"."visitedById" ELSE ARRAY["visit"."collectorId"] END)`,
+              { memberIds },
+            )
+            .select(doneBy, 'memberId')
+            .addSelect('site.id', 'siteId')
+            .addSelect('site.name', 'siteName')
+            .where('visit.projectId = :projectId', { projectId })
+            .andWhere(`visit.visitStatus = '${VisitStatus.COMPLETED}'`),
+        );
+        if (diseaseId) {
+          // A visit only counts as completed for a disease if it collected a
+          // sample for it (left-joined so sample-less visits keep their row).
+          completedQuery
+            .leftJoin('visit.samples', 'sample')
+            .leftJoin('sample.diseases', 'disease');
+        }
+        const completedStats = await completedQuery
           .addSelect(
-            `COUNT(DISTINCT CASE WHEN visit.visitStatus = '${VisitStatus.COMPLETED}' AND disease.id = :diseaseId THEN visit.id END)`,
-            'completedVisitCount',
+            countWhere('visit.id', [
+              Boolean(diseaseId) && 'disease.id = :diseaseId',
+              between('COALESCE(visit.visitedAt, visit.visitScheduledAt)'),
+            ]),
+            'count',
           )
-          .leftJoin('visit.samples', 'sample')
-          .leftJoin('sample.diseases', 'disease')
-          .setParameter('diseaseId', diseaseId);
-      } else {
-        visitQuery = visitQuery.addSelect(
-          `COUNT(DISTINCT CASE WHEN visit.visitStatus = '${VisitStatus.COMPLETED}' THEN visit.id END)`,
-          'completedVisitCount',
+          .setParameters(dateParams)
+          .groupBy(doneBy)
+          .addGroupBy('site.id')
+          .addGroupBy('site.name')
+          .getRawMany();
+
+        for (const stat of completedStats) {
+          rowFor(
+            stat.memberId,
+            stat.siteId,
+            stat.siteName,
+          ).completedVisitCount = Number(stat.count) || 0;
+        }
+
+        // 4. Samples. Each column credits whoever performed that step, once
+        // the sample has reached it. Checking the current stage as well as the
+        // actor matters: a sample moved back a stage keeps its later actors
+        // (e.g. a `received` sample can still carry `testedBy`).
+        const pipeline = [
+          SampleStatus.PENDING,
+          SampleStatus.PICKED_UP,
+          SampleStatus.RECEIVED,
+          SampleStatus.PRE_PROCESSED,
+          SampleStatus.VIRUS_ISOLATION,
+          SampleStatus.EXTRACTED,
+          SampleStatus.TESTED,
+          SampleStatus.TEST_REPORT_GENERATED,
+        ];
+        const reachedSql = (step: SampleStatus) =>
+          `sample.sampleStatus IN (${pipeline
+            .slice(pipeline.indexOf(step))
+            .map((status) => `'${status}'`)
+            .join(', ')})`;
+        const sampleSteps: {
+          key: keyof ReturnType<typeof emptyProgress>;
+          done: string;
+          at: string;
+        }[] = [
+            {
+              // Collection always happened, whatever came after (even rejection).
+              key: 'totalCollected',
+              done: 'sample.collectedById = :memberId',
+              at: 'sample.collectionTime',
+            },
+            {
+              key: 'totalReceived',
+              done: `sample.receivedById = :memberId AND ${reachedSql(SampleStatus.RECEIVED)}`,
+              at: 'sample.receivedAt',
+            },
+            {
+              key: 'totalExtracted',
+              done: `sample.extractedById = :memberId AND ${reachedSql(SampleStatus.EXTRACTED)}`,
+              at: 'sample.extractionDateTime',
+            },
+            {
+              key: 'totalTested',
+              done: `sample.testedById = :memberId AND ${reachedSql(SampleStatus.TESTED)}`,
+              at: 'sample.testedAt',
+            },
+            {
+              key: 'totalReportGenerated',
+              done: `sample.reportGeneratedById = :memberId AND ${reachedSql(SampleStatus.TEST_REPORT_GENERATED)}`,
+              at: 'sample.reportGeneratedAt',
+            },
+          ];
+
+        await Promise.all(
+          listedMembers.map(async (member) => {
+            const sampleQuery = this.sampleRepository
+              .createQueryBuilder('sample')
+              .innerJoin('sample.site', 'site')
+              .select('site.id', 'siteId')
+              .addSelect('site.name', 'siteName')
+              .where('sample.projectId = :projectId', { projectId })
+              // Any step this member performed puts the site in their rows.
+              .andWhere(
+                new Brackets((qb) => {
+                  const [first, ...rest] = sampleSteps.map((s) => s.done);
+                  qb.where(first);
+                  rest.forEach((done) => qb.orWhere(done));
+                }),
+              )
+              .setParameters({ memberId: member.id, ...dateParams });
+
+            for (const step of sampleSteps) {
+              sampleQuery.addSelect(
+                countWhere('sample.id', [step.done, between(step.at)]),
+                step.key,
+              );
+            }
+
+            if (diseaseId) {
+              sampleQuery.innerJoin(
+                'sample.diseases',
+                'disease',
+                'disease.id = :diseaseId',
+                { diseaseId },
+              );
+            }
+            onlyDiseaseSites(sampleQuery);
+
+            const sampleStats = await sampleQuery
+              .groupBy('site.id')
+              .addGroupBy('site.name')
+              .getRawMany();
+
+            for (const stat of sampleStats) {
+              const row = rowFor(member.id, stat.siteId, stat.siteName);
+              for (const step of sampleSteps) {
+                row[step.key] = Number(stat[step.key]) || 0;
+              }
+            }
+          }),
         );
       }
 
-      const visitStats: any[] = relevantTeamIds.length
-        ? await visitQuery
-            .groupBy('visit.teamId')
-            .addGroupBy('visit.siteId')
-            .addGroupBy('site.name')
-            .getRawMany()
-        : [];
-
-      // Build a map: teamId -> siteId -> { siteName, pendingVisitCount, completedVisitCount }
-      const teamVisitMap = new Map<
-        string,
-        Map<
-          string,
-          {
-            siteName: string;
-            pendingVisitCount: number;
-            completedVisitCount: number;
-          }
-        >
-      >();
-      for (const stat of visitStats) {
-        if (!teamVisitMap.has(stat.teamId)) {
-          teamVisitMap.set(stat.teamId, new Map());
+      // 5. One row per (member, site) in member-name then site-name order;
+      // a member with nothing in this project yet still gets a row.
+      const results: any[] = [];
+      for (const member of listedMembers) {
+        const memberInfo = {
+          userId: member.id,
+          firstName: member.firstName,
+          lastName: member.lastName,
+        };
+        const sites = [...(rowsByMember.get(member.id)?.values() ?? [])].sort(
+          (a, b) => (a.siteName ?? '').localeCompare(b.siteName ?? ''),
+        );
+        if (sites.length) {
+          sites.forEach((row) => results.push({ ...memberInfo, ...row }));
+        } else {
+          results.push({
+            ...memberInfo,
+            siteId: '',
+            siteName: 'No site assigned',
+            ...emptyProgress(),
+          });
         }
-        teamVisitMap.get(stat.teamId)!.set(stat.siteId, {
-          siteName: stat.siteName,
-          pendingVisitCount: Number(stat.pendingVisitCount) || 0,
-          completedVisitCount: Number(stat.completedVisitCount) || 0,
-        });
       }
 
-      // 3. For each member, get sample counts per site
-      const results: any[] = [];
-
-      await Promise.all(
-        paginatedMembers.map(async (member) => {
-          const teamId = memberTeamMap.get(member.id);
-          if (!teamId) return;
-
-          // Get sample counts grouped by site for this member
-          const sampleQuery = this.sampleRepository
-            .createQueryBuilder('sample')
-            .select('sample.siteId', 'siteId')
-            .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus IN (:...collectedStatuses) AND sample.collectedById = :memberId THEN sample.id END)`,
-              'totalCollected',
-            )
-            .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :received AND sample.receivedById = :memberId THEN sample.id END)`,
-              'totalReceived',
-            )
-            .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :extracted AND sample.extractedById = :memberId THEN sample.id END)`,
-              'totalExtracted',
-            )
-            .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :tested AND sample.testedById = :memberId THEN sample.id END)`,
-              'totalTested',
-            )
-            .addSelect(
-              `COUNT(DISTINCT CASE WHEN sample.sampleStatus = :testReportGenerated AND sample.reportGeneratedById = :memberId THEN sample.id END)`,
-              'totalTestReportGenerated',
-            )
-            .where('sample.projectId = :projectId', { projectId })
-            .setParameters({
-              memberId: member.id,
-              collectedStatuses: [SampleStatus.PENDING, SampleStatus.PICKED_UP],
-              received: SampleStatus.RECEIVED,
-              extracted: SampleStatus.EXTRACTED,
-              tested: SampleStatus.TESTED,
-              testReportGenerated: SampleStatus.TEST_REPORT_GENERATED,
-            });
-
-          if (diseaseId) {
-            sampleQuery.innerJoin('sample.diseases', 'disease');
-            sampleQuery.andWhere('disease.id = :diseaseId', {
-              diseaseId,
-            });
-          }
-
-          if (startDate && endDate) {
-            sampleQuery.andWhere(
-              'DATE(sample.createdAt) BETWEEN :startDate AND :endDate',
-              { startDate, endDate },
-            );
-          }
-
-          sampleQuery.groupBy('sample.siteId');
-
-          const sampleStats = await sampleQuery.getRawMany();
-
-          // Build a map: siteId -> sample counts
-          const sampleSiteMap = new Map<
-            string,
-            {
-              totalCollected: number;
-              totalReceived: number;
-              totalExtracted: number;
-              totalTested: number;
-              totalTestReportGenerated: number;
-            }
-          >();
-          for (const stat of sampleStats) {
-            sampleSiteMap.set(stat.siteId, {
-              totalCollected: Number(stat.totalCollected) || 0,
-              totalReceived: Number(stat.totalReceived) || 0,
-              totalExtracted: Number(stat.totalExtracted) || 0,
-              totalTested: Number(stat.totalTested) || 0,
-              totalTestReportGenerated:
-                Number(stat.totalTestReportGenerated) || 0,
-            });
-          }
-
-          // 4. Combine visit stats and sample stats per site
-          const memberSites = teamVisitMap.get(teamId);
-          if (memberSites && memberSites.size > 0) {
-            for (const [siteId, visitInfo] of memberSites.entries()) {
-              const sampleInfo = sampleSiteMap.get(siteId) ?? {
-                totalCollected: 0,
-                totalReceived: 0,
-                totalExtracted: 0,
-                totalTested: 0,
-                totalTestReportGenerated: 0,
-              };
-
-              results.push({
-                userId: member.id,
-                firstName: member.firstName,
-                lastName: member.lastName,
-                siteId,
-                siteName: visitInfo.siteName,
-                pendingVisitCount: visitInfo.pendingVisitCount,
-                completedVisitCount: visitInfo.completedVisitCount,
-                ...sampleInfo,
-              });
-            }
-          } else {
-            // Member has no visits assigned, still show with empty counts
-            results.push({
-              userId: member.id,
-              firstName: member.firstName,
-              lastName: member.lastName,
-              siteId: '',
-              siteName: 'No site assigned',
-              pendingVisitCount: 0,
-              completedVisitCount: 0,
-              totalCollected: 0,
-              totalReceived: 0,
-              totalExtracted: 0,
-              totalTested: 0,
-              totalTestReportGenerated: 0,
-            });
-          }
-        }),
-      );
-
-      // 5. Sort the final array
+      // 6. Explicit column sort, on top of the default order (Array.sort is
+      // stable, so ties keep member/site order).
       if (sort && sortOrder) {
         const direction = sortOrder.toLowerCase() === 'desc' ? -1 : 1;
         results.sort((a, b) => {

@@ -111,10 +111,11 @@ export default function SiteDetails() {
     }
   }, [id]);
 
+  // Always read the site back: siteAtom outlives client-side navigation, so
+  // reusing it when the id matches showed stale visits (e.g. a visit completed
+  // since this site was last opened) until a manual refresh.
   useEffect(() => {
-    if (siteDetail?.id !== siteId) {
-      fetchSiteDetail();
-    }
+    fetchSiteDetail();
   }, [siteId]);
 
   const openMapUrl = () => {
@@ -262,8 +263,8 @@ export default function SiteDetails() {
                   </DetailIcon>
                   <div>
                     <p className="text-xs text-grey-60">Site Ownership</p>
-                    <p className="text-sm font-medium text-grey-90">
-                      Government
+                    <p className="text-sm font-medium capitalize text-grey-90">
+                      {siteDetail?.siteType || "—"}
                     </p>
                   </div>
                 </div>
@@ -435,7 +436,7 @@ export default function SiteDetails() {
                     {siteDetail?.collectionFrequencyInterval === 0
                       ? "1 Visit"
                       : siteDetail?.collectionDuration
-                        ? `${siteDetail?.collectionDuration / 30} Month`
+                        ? `${siteDetail?.collectionDuration / 30} Month${siteDetail?.collectionDuration === 30 ? "" : "s"}`
                         : "--"}
                   </p>
                 </div>
@@ -444,7 +445,9 @@ export default function SiteDetails() {
 
             <div className="flex flex-col gap-4">
               <h3 className="text-sm font-semibold text-grey-90">
-                Assigned Collectors
+                {collectors.length === 1
+                  ? "Assigned Collector"
+                  : "Assigned Collectors"}
               </h3>
               {collectors.length ? (
                 collectors.map((collector) => (

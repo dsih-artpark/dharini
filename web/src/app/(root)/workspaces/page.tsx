@@ -18,12 +18,14 @@ export default function WorkspacePicker() {
   const router = useRouter();
   const setCurrentWorkspace = useSetAtom(currentWorkspaceAtom);
 
-  let redirectTo: string | null = null;
-  if (typeof window !== "undefined") {
-    redirectTo = safeRedirectPath(
+  // Read when leaving, not during render: on a client-side navigation here
+  // (login/signup's router.replace) Next updates the address bar only after
+  // this page first renders, so a render-time read sees the previous URL and
+  // loses redirectTo.
+  const getRedirectTo = () =>
+    safeRedirectPath(
       new URLSearchParams(window.location.search).get("redirectTo"),
     );
-  }
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +33,7 @@ export default function WorkspacePicker() {
 
   const enterWorkspace = (workspace: Workspace) => {
     setCurrentWorkspace(workspace);
-    router.replace(redirectTo || "/home");
+    router.replace(getRedirectTo() || "/home");
   };
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export default function WorkspacePicker() {
           // a previous user on this browser, or a workspace this user no
           // longer belongs to) rather than leaving whatever was persisted.
           setCurrentWorkspace(null);
-          router.replace(redirectTo || "/home");
+          router.replace(getRedirectTo() || "/home");
           return;
         }
         setWorkspaces(data);

@@ -595,6 +595,7 @@ export class ProjectsController {
     exposeDefaultValues: true,
   })
   async getSitesStatisticsByStatus(
+    @Req() req,
     @Param('projectId') projectId: string,
     @Query('disease') diseaseId?: string,
     @Query('startDate') startDate?: string,
@@ -602,6 +603,7 @@ export class ProjectsController {
   ): Promise<ProjectStatisticBySiteResponse> {
     const siteStats = await this.projectsService.getSitesStatisticsByStatus(
       projectId,
+      req.user,
       diseaseId,
       startDate,
       endDate,

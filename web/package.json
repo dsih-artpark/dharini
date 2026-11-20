@@ -15,6 +15,7 @@
     "axios": "^1.7.9",
     "cookies-next": "^5.0.2",
     "d3": "^7.9.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.4.7",
     "jotai": "^2.20.3",
     "jspdf": "^4.2.1",

@@ -576,10 +576,6 @@ class SiteDetails extends HookWidget {
                                               ],
                                             ),
                                           ),
-                                          const Icon(
-                                            Icons.chevron_right,
-                                            color: AppColors.textWeak,
-                                          ),
                                           Padding(
                                             padding: const EdgeInsets.symmetric(
                                                 horizontal: 16),
