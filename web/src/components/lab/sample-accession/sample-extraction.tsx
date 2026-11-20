@@ -287,6 +287,16 @@ export default function SampleExtraction({
     setCommonData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Bulk modal: a row was discarded. Its row drops out with the sample list
+  // (row data is keyed by sample / pool id); close the modal once nothing is
+  // left to process.
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    if (samplesToProcess.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "pre-processed");
+    }
+  };
+
   const handleRowChange = (
     id: string,
     field: keyof RowExtractionData,
@@ -759,6 +769,11 @@ export default function SampleExtraction({
               <th className="px-5 py-4 text-[10px] font-bold text-grey-600 uppercase tracking-widest whitespace-nowrap">
                 Extraction Date
               </th>
+              {isBulkMode && (
+                <th className="px-5 py-4">
+                  <span className="sr-only">Discard</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-grey-10">
@@ -900,6 +915,17 @@ export default function SampleExtraction({
                       }
                     />
                   </td>
+
+                  {isBulkMode && (
+                    <td className="px-4 py-3 text-right">
+                      <DiscardSampleAction
+                        variant="row"
+                        samples={group.samples}
+                        onRowDiscarded={handleRowDiscarded}
+                        disabled={submitting}
+                      />
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -916,12 +942,12 @@ export default function SampleExtraction({
           >
             ← Back
           </button>
-          <DiscardSampleAction
-            samples={samplesToProcess}
-            isBulkMode={isBulkMode}
-            onBulkDiscarded={() => onBulkSuccess?.("exit", "pre-processed")}
-            disabled={submitting}
-          />
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={samplesToProcess}
+              disabled={submitting}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-4">

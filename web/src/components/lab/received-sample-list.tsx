@@ -1092,7 +1092,11 @@ export default function ReceivedSamplesList() {
 
       <BulkProcessModal
         isOpen={showBulkModal}
-        onClose={() => setShowBulkModal(false)}
+        onClose={() => {
+          setShowBulkModal(false);
+          // Rows may have been discarded inside the modal.
+          fetchSampleList();
+        }}
         activeTab={activeTab}
         onTabChange={(nextTab) => {
           setActiveTab(nextTab);

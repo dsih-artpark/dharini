@@ -162,12 +162,18 @@ export default function VirusIsolation({
   );
 
   // ── Initialise per-group state ────────────────────────────────────────────
+  // Rows already on screen keep what was typed when the sample list changes
+  // (e.g. a row discarded from the bulk modal); only new rows start fresh.
   useEffect(() => {
     if (groupedSamples.length > 0) {
-      setStates(
+      setStates((prev) =>
         groupedSamples.map((group) => {
           // Base properties on the first sample within the group
           const s = group.samples[0];
+          const existing = prev.find(
+            (p) => p.id === (group.isPooled ? group.pooledId! : s.id),
+          );
+          if (existing) return { ...existing, samples: group.samples };
           const vi = s.details?.virusIsolation ?? {};
           // A group is AI if any of its individual constituent samples is AI
           const isAI = group.samples.some(
@@ -220,6 +226,15 @@ export default function VirusIsolation({
     },
     [],
   );
+
+  // Bulk modal: a row was discarded. Its row drops out with the sample list;
+  // close the modal once nothing is left to process.
+  const handleRowDiscarded = (ids: string[]) => {
+    const gone = new Set(ids);
+    if (samplesToProcess.every((s) => gone.has(s.id))) {
+      onBulkSuccess?.("exit", "virus-isolation");
+    }
+  };
 
   // ── Validation ────────────────────────────────────────────────────────────
   const isFormValid = useMemo(() => {
@@ -433,6 +448,11 @@ export default function VirusIsolation({
                 <th className="px-5 py-4 text-[10px] font-bold text-grey-600 uppercase tracking-widest">
                   Volume
                 </th>
+                {isBulkMode && (
+                  <th className="px-5 py-4">
+                    <span className="sr-only">Discard</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-grey-10">
@@ -657,6 +677,17 @@ export default function VirusIsolation({
                         placeholder="Vol"
                       />
                     </td>
+
+                    {isBulkMode && (
+                      <td className="px-5 py-4 text-right">
+                        <DiscardSampleAction
+                          variant="row"
+                          samples={s.samples}
+                          onRowDiscarded={handleRowDiscarded}
+                          disabled={submitting}
+                        />
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -692,12 +723,12 @@ export default function VirusIsolation({
           >
             ← Back
           </button>
-          <DiscardSampleAction
-            samples={samplesToProcess}
-            isBulkMode={isBulkMode}
-            onBulkDiscarded={() => onBulkSuccess?.("exit", "virus-isolation")}
-            disabled={submitting}
-          />
+          {!isBulkMode && (
+            <DiscardSampleAction
+              samples={samplesToProcess}
+              disabled={submitting}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-4">

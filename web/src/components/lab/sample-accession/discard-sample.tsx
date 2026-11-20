@@ -393,13 +393,17 @@ export function DiscardSampleModal({
 }
 
 interface DiscardSampleActionProps {
-  // The samples the stage screen is working on.
+  // Footer: the samples the stage screen is working on. Row: that row's
+  // sample, or every sample of a pooled row.
   samples: Sample[];
-  isBulkMode?: boolean;
-  // Bulk modal only: close it and refresh the list.
-  onBulkDiscarded?: () => void;
+  // "footer" is the button on the single-sample page; "row" is the icon
+  // button on one row of the bulk modal.
+  variant?: "footer" | "row";
+  // Row only: the ids actually discarded (a pool is discarded whole), so the
+  // stage screen can drop those rows.
+  onRowDiscarded?: (discardedIds: string[]) => void;
   disabled?: boolean;
-  // Padding / text size, to match the screen's other footer buttons.
+  // Footer only: padding / text size, to match the screen's other buttons.
   sizeClassName?: string;
 }
 
@@ -407,8 +411,8 @@ interface DiscardSampleActionProps {
 // dialog and what happens after a discard.
 export default function DiscardSampleAction({
   samples,
-  isBulkMode,
-  onBulkDiscarded,
+  variant = "footer",
+  onRowDiscarded,
   disabled,
   sizeClassName = "px-5 py-2.5 text-sm font-semibold",
 }: DiscardSampleActionProps) {
@@ -423,12 +427,14 @@ export default function DiscardSampleAction({
   }
 
   const handleDiscarded = (discarded: Sample[]) => {
-    if (isBulkMode) {
-      onBulkDiscarded?.();
+    const ids = new Set(
+      (discarded.length ? discarded : samples).map((s) => s.id),
+    );
+    setSelectedProcessableSamples((prev) => prev.filter((s) => !ids.has(s.id)));
+    if (variant === "row") {
+      onRowDiscarded?.(Array.from(ids));
       return;
     }
-    const ids = new Set(discarded.map((s) => s.id));
-    setSelectedProcessableSamples((prev) => prev.filter((s) => !ids.has(s.id)));
     // The page shows the discarded state once the open sample is discarded.
     setSample((prev) => {
       const match = prev && discarded.find((s) => s.id === prev.id);
@@ -445,15 +451,34 @@ export default function DiscardSampleAction({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        disabled={disabled}
-        className={`inline-flex items-center justify-center gap-2 rounded-xl border border-red-20 bg-white text-red-30 transition-colors hover:border-red-30 hover:bg-red-10 disabled:cursor-not-allowed disabled:opacity-50 ${sizeClassName}`}
-      >
-        <Trash2 size={14} />
-        Discard
-      </button>
+      {variant === "row" ? (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          disabled={disabled}
+          title={
+            samples.length > 1 ? "Discard pooled samples" : "Discard sample"
+          }
+          aria-label={
+            samples.length > 1
+              ? `Discard pooled samples ${samples.map((s) => s.barcode).join(", ")}`
+              : `Discard sample ${samples[0].barcode}`
+          }
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-grey-20 bg-white text-grey-60 transition-colors hover:border-red-20 hover:bg-red-10 hover:text-red-30 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Trash2 size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsOpen(true)}
+          disabled={disabled}
+          className={`inline-flex items-center justify-center gap-2 rounded-xl border border-red-20 bg-white text-red-30 transition-colors hover:border-red-30 hover:bg-red-10 disabled:cursor-not-allowed disabled:opacity-50 ${sizeClassName}`}
+        >
+          <Trash2 size={14} />
+          Discard
+        </button>
+      )}
       <DiscardSampleModal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
