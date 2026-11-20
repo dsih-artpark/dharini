@@ -52,23 +52,7 @@ class SuccessScreen extends HookWidget {
             ),
           );
           break;
-        case SyncStatus.completed:
-          syncBanner = Material(
-            color: Colors.green[400],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.check_circle, color: Colors.white, size: 18),
-                  SizedBox(width: 8),
-                  Text('Visit synced successfully!',
-                      style: TextStyle(color: Colors.white)),
-                ],
-              ),
-            ),
-          );
-          break;
+        // No banner once synced: the screen itself says the visit was saved.
         case SyncStatus.error:
           syncBanner = Material(
             color: Colors.red[400],

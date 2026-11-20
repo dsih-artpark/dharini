@@ -664,8 +664,12 @@ export class SamplesService {
         .filter((barcode) => barcode); // Remove undefined/null values
 
       if (barcodes.length > 0) {
+        // Barcodes are compared ignoring case: "Feedi" and "feedi" are the
+        // same barcode.
+        const lowerBarcodes = barcodes.map((barcode) => barcode.toLowerCase());
+
         // ✅ Step 2: Check for duplicates within the request
-        const duplicateBarcodes = barcodes.filter(
+        const duplicateBarcodes = lowerBarcodes.filter(
           (barcode, index, self) => self.indexOf(barcode) !== index,
         );
         if (duplicateBarcodes.length > 0) {
@@ -675,7 +679,9 @@ export class SamplesService {
         // ✅ Step 3: Check if any barcode already exists in the database
         const existingSamples = await this.sampleRepository.find({
           where: {
-            barcode: In(barcodes),
+            barcode: Raw((alias) => `LOWER(${alias}) IN (:...lowerBarcodes)`, {
+              lowerBarcodes,
+            }),
             project: { id: projectId },
           },
         });

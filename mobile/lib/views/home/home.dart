@@ -18,10 +18,10 @@ import 'package:es_platform_mobile/views/home/admin_activity_overview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:fquery/fquery.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../utils/configs/constants.dart';
+import '../../utils/extensions/go_router.dart';
 import '../../widgets/network_status_indicator.dart';
 import 'action_card.dart';
 import 'past_visit_card.dart';
@@ -171,7 +171,10 @@ class Home extends HookWidget {
     useEffect(() {
       if (syncStatus.data == SyncStatus.completed) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) {
+          // Only while Home is on screen: a visit submit syncs too, and its
+          // success screen is the only message it needs.
+          if (context.mounted &&
+              Uri.parse(GoRouter.of(context).location()).path == '/') {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Sync completed successfully'),

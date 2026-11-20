@@ -7,7 +7,10 @@ import { toast } from "react-toastify";
 import { ChevronDown, Info, Trash2, X } from "lucide-react";
 
 import { discardSamplesApi } from "@/src/app/(dashboard)/lab/[sampleId]/actions";
-import { getTeamMembersApi } from "@/src/app/(dashboard)/lab/[sampleId]/loader";
+import {
+  getSampleApi,
+  getTeamMembersApi,
+} from "@/src/app/(dashboard)/lab/[sampleId]/loader";
 import Spinner from "@/src/components/ui/spinner";
 import { useCurrentProjectResolver } from "@/src/hooks/use-current-project";
 import { sampleAtom } from "@/src/store/sampleAtom";
@@ -92,11 +95,18 @@ export function DiscardSampleModal({
   const [submitting, setSubmitting] = useState(false);
   const [teamMembers, setTeamMembers] = useState<User[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  // One sample: as saved on the server. The page's Back button changes the
+  // status on screen only, and the server records the discard at the saved
+  // step, so the dialog shows that step.
+  const [savedSample, setSavedSample] = useState<Sample | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
 
+  const singleSampleId = samples.length === 1 ? samples[0].id : undefined;
+  const current = savedSample ?? samples[0];
   const teamId = samples[0]?.team?.id;
-  const stage = getDiscardStage(samples[0]?.sampleStatus);
-  const stageLabel = getDiscardStageLabel(stage);
-  const lastCompleted = getLastCompletedStep(samples[0]);
+  const stage = getDiscardStage(current?.sampleStatus);
+  const stageLabel = loadingSample ? "…" : getDiscardStageLabel(stage);
+  const lastCompleted = loadingSample ? "…" : getLastCompletedStep(current);
   const reasons = stage ? DISCARD_REASONS[stage] : [];
 
   const chips = useMemo(
@@ -115,6 +125,7 @@ export function DiscardSampleModal({
     !!discardedById &&
     !!discardedAt &&
     confirmed &&
+    !loadingSample &&
     !submitting;
 
   // Fresh form each time it opens.
@@ -127,6 +138,27 @@ export function DiscardSampleModal({
     setDiscardedAt(toLocalInputValue(new Date()));
     setConfirmed(false);
   }, [isOpen]);
+
+  useEffect(() => {
+    setSavedSample(null);
+    if (!isOpen || !projectId || !singleSampleId) return;
+    let isCurrent = true;
+    setLoadingSample(true);
+    getSampleApi(projectId, singleSampleId)
+      .then((response) => {
+        if (isCurrent) setSavedSample(response.data ?? null);
+      })
+      .catch(() => {
+        if (isCurrent) toast.error("Could not load the sample's saved step.");
+      })
+      .finally(() => {
+        if (isCurrent) setLoadingSample(false);
+      });
+    return () => {
+      isCurrent = false;
+      setLoadingSample(false);
+    };
+  }, [isOpen, projectId, singleSampleId]);
 
   useEffect(() => {
     if (!isOpen || !projectId || !teamId) return;
@@ -269,7 +301,8 @@ export function DiscardSampleModal({
                 id="discard-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                className={`${fieldCls} cursor-pointer appearance-none pr-10 ${
+                disabled={loadingSample}
+                className={`${fieldCls} cursor-pointer appearance-none pr-10 disabled:cursor-wait disabled:bg-grey-10 ${
                   reason ? "" : "text-grey-60"
                 }`}
               >
@@ -435,12 +468,14 @@ export default function DiscardSampleAction({
       onRowDiscarded?.(Array.from(ids));
       return;
     }
-    // The page shows the discarded state once the open sample is discarded.
+    // The page shows the discarded state once the open sample is discarded,
+    // at its saved status (Back may have changed it on screen only).
     setSample((prev) => {
       const match = prev && discarded.find((s) => s.id === prev.id);
       if (!prev || !match) return prev;
       return {
         ...prev,
+        sampleStatus: match.sampleStatus,
         discardReason: match.discardReason,
         discardComment: match.discardComment,
         discardedAt: match.discardedAt,
