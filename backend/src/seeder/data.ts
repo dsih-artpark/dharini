@@ -46,10 +46,14 @@ export const roles = [
       { action: 'delete', subject: 'user' },
       // Global reference data (not workspace-scoped) - left read-only, same
       // as every other non-system role, since "at the workspace level"
-      // doesn't apply to genuinely global taxonomy data.
+      // doesn't apply to genuinely global taxonomy data. Exception: kits can
+      // be created (not edited) so lab results can name a new kit via
+      // "Other / Add custom kit"; workspace-admin, team-admin, lab-admin and
+      // lab-member all have this.
       { action: 'read', subject: 'disease' },
       { action: 'read', subject: 'region' },
       { action: 'read', subject: 'kit' },
+      { action: 'create', subject: 'kit' },
       { action: 'read', subject: 'location' },
       { action: 'create', subject: 'media' },
       { action: 'read', subject: 'media' },
@@ -129,6 +133,7 @@ export const roles = [
       { action: 'read', subject: 'disease' },
       { action: 'read', subject: 'region' },
       { action: 'read', subject: 'kit' },
+      { action: 'create', subject: 'kit' },
       { action: 'read', subject: 'location' },
       { action: 'create', subject: 'media' },
       { action: 'read', subject: 'media' },
@@ -241,6 +246,7 @@ export const roles = [
       { action: 'create', subject: 'sample' },
       { action: 'update', subject: 'sample' },
       { action: 'read', subject: 'sample-test' },
+      { action: 'create', subject: 'sample-test' },
       { action: 'update', subject: 'sample-test' },
       { action: 'read', subject: 'user' },
       { action: 'update', subject: 'user' },
@@ -250,6 +256,7 @@ export const roles = [
       { action: 'read', subject: 'disease' },
       { action: 'read', subject: 'region' },
       { action: 'read', subject: 'kit' },
+      { action: 'create', subject: 'kit' },
       { action: 'read', subject: 'location' },
       { action: 'create', subject: 'media' },
       { action: 'read', subject: 'media' },
@@ -281,12 +288,14 @@ export const roles = [
       { action: 'create', subject: 'sample' },
       { action: 'update', subject: 'sample' },
       { action: 'read', subject: 'sample-test' },
+      { action: 'create', subject: 'sample-test' },
       { action: 'update', subject: 'sample-test' },
       { action: 'read', subject: 'user' },
       { action: 'update', subject: 'user' },
       { action: 'read', subject: 'disease' },
       { action: 'read', subject: 'region' },
       { action: 'read', subject: 'kit' },
+      { action: 'create', subject: 'kit' },
       { action: 'read', subject: 'location' },
       { action: 'create', subject: 'media' },
       { action: 'read', subject: 'media' },
