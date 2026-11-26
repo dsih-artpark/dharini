@@ -6,8 +6,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { NcbiSourceFields, parseNcbiSourceFields } from './ncbi-source.util';
 
-export interface NcbiSummary {
+export interface NcbiSummary extends NcbiSourceFields {
   accession: string;
   title: string;
   organism: string;
@@ -62,6 +63,7 @@ export class NcbiService {
         title: summary.title || 'Unknown title',
         organism: summary.organism || 'Unknown organism',
         length: summary.slen ? parseInt(summary.slen, 10) : 0,
+        ...parseNcbiSourceFields(summary.subtype, summary.subname),
       };
     } catch (error: any) {
       if (error instanceof BadRequestException) throw error;

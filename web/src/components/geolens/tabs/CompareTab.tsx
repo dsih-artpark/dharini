@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Waves } from "lucide-react";
 import type React from "react";
+import { env } from "@/env";
 import { RadiusSlider } from "../RadiusSlider";
 import {
   CompareSites,
@@ -89,27 +90,30 @@ export function CompareTab(props: CompareTabProps) {
         </div>
       </Step>
 
-      {/* Always offered: the forecast is checked for only once picked, and
-          Present is the way back if it turns out to be off */}
-      <Step title="Map shows">
-        <Segmented
-          label="Map shows"
-          value={forecast.mapShows}
-          onChange={forecast.setMapShows}
-          options={[
-            {
-              value: "present",
-              label: "Present",
-              title: "Bird density: eBird sightings from the last 30 days",
-            },
-            {
-              value: "forecast",
-              label: "Forecast",
-              title: "Where species clear the minimum chance",
-            },
-          ]}
-        />
-      </Step>
+      {/* Offered outside production: the forecast is checked for only once
+          picked, and Present is the way back if it turns out to be off.
+          Production stays on Present. */}
+      {env.APP_ENV !== "production" && (
+        <Step title="Map shows">
+          <Segmented
+            label="Map shows"
+            value={forecast.mapShows}
+            onChange={forecast.setMapShows}
+            options={[
+              {
+                value: "present",
+                label: "Present",
+                title: "Bird density: eBird sightings from the last 30 days",
+              },
+              {
+                value: "forecast",
+                label: "Forecast",
+                title: "Where species clear the minimum chance",
+              },
+            ]}
+          />
+        </Step>
+      )}
 
       {/* The week and the minimum chance are the forecast's own settings */}
       {forecast.mapShows === "forecast" && (

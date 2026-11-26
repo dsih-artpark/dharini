@@ -6,6 +6,7 @@ import {
   GEOLENS_HEADER_SLOT_ID,
   GEOLENS_TABS,
   type GeoLensTab,
+  isGeoLensTabShown,
 } from "@/src/app/(dashboard)/geolens/types";
 
 interface GeoLensTopBarProps {
@@ -54,7 +55,7 @@ export function GeoLensTopBar(props: GeoLensTopBarProps) {
           aria-label="GeoLens tools"
           className="flex min-w-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
         >
-          {GEOLENS_TABS.map((t) => {
+          {GEOLENS_TABS.filter((t) => isGeoLensTabShown(t.value)).map((t) => {
             const active = t.value === activeTab;
             return (
               <button

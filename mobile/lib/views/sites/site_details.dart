@@ -249,7 +249,7 @@ class SiteDetails extends HookWidget {
                               iconBgColor: AppColors.background,
                               iconColor: AppColors.textStrong,
                               label: 'Total Workers',
-                              value: site.workerNumber?.toString() ?? '44',
+                              value: site.workerNumber?.toString() ?? '0',
                             ),
                           ),
                         ],

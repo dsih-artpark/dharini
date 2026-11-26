@@ -93,6 +93,24 @@ export class SequencingSubmission {
   @Column({ name: 'ncbi_length', type: 'int', nullable: true })
   ncbiLength: number | null;
 
+  // GenBank "source" details from the same NCBI summary (ncbi-source.util).
+  @Column({ name: 'ncbi_isolate', type: 'varchar', nullable: true })
+  ncbiIsolate: string | null;
+
+  @Column({ name: 'ncbi_strain', type: 'varchar', nullable: true })
+  ncbiStrain: string | null;
+
+  @Column({ name: 'ncbi_host', type: 'varchar', nullable: true })
+  ncbiHost: string | null;
+
+  @Column({ name: 'ncbi_geo_loc_name', type: 'varchar', nullable: true })
+  ncbiGeoLocName: string | null;
+
+  // Full day only (YYYY-MM-DD). NCBI's partial dates (Aug-2023, 2023,
+  // 2021/2022) are left null.
+  @Column({ name: 'ncbi_collection_date', type: 'date', nullable: true })
+  ncbiCollectionDate: string | null;
+
   @Column({ type: 'varchar', default: SubmissionStatus.PENDING })
   status: SubmissionStatus;
 

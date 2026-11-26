@@ -104,6 +104,11 @@ describe('SequencingJobsService.submitJob', () => {
         title: 'Some virus',
         organism: 'Some organism',
         length: 100,
+        isolate: 'NCL-BAIF-LSDV067',
+        strain: null,
+        host: 'Cattle breed HFX',
+        geoLocName: 'India: Padhegaon, Ahmednagar',
+        collectionDate: '2023-08-16',
       })),
       downloadFastaContent: jest.fn(async () => '>seq\nACGT\n'),
     };
@@ -366,6 +371,28 @@ describe('SequencingJobsService.submitJob', () => {
       expect(submittedPayload.inputKey).toContain(`uploads/${USER_ID}/`);
       expect(submittedPayload.inputKey).toContain('NC_000001.fasta');
       expect(result.status).toBe(JobStatus.SUBMITTED);
+    });
+
+    it('saves the NCBI source details on the submission', async () => {
+      const dto: SubmitSequencingJobDto = {
+        sourceType: SourceType.NCBI,
+        ncbiAccession: 'NC_000001',
+        pipelineId: 'ont-lsdv',
+        inputKey: null,
+      } as SubmitSequencingJobDto;
+
+      await service.submitJob(ACTING_USER, dto);
+
+      expect(submissionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ncbiAccession: 'NC_000001',
+          ncbiIsolate: 'NCL-BAIF-LSDV067',
+          ncbiStrain: null,
+          ncbiHost: 'Cattle breed HFX',
+          ncbiGeoLocName: 'India: Padhegaon, Ahmednagar',
+          ncbiCollectionDate: '2023-08-16',
+        }),
+      );
     });
   });
 
