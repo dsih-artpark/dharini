@@ -357,10 +357,6 @@ type Props = {
    *  field (not just blurred ones) shows its error and groups holding an
    *  error auto-expand. */
   showAllErrors?: boolean;
-  /** The pipeline's own stage rail (fetch -> ... -> publish), used only to
-   *  order top-level controls the same way — see `sortByStage`. Omit or
-   *  pass an empty array and every control just falls back to schema order. */
-  stages?: string[];
   /** Extra content (e.g. an upload modal's file picker) a caller wants
    *  rendered inside a specific top-level collapsible section, keyed by that
    *  section's top-level param key — see `SectionExtras` and
@@ -368,41 +364,6 @@ type Props = {
    *  nested groups don't look this up. */
   sectionExtras?: SectionExtras;
 };
-
-/**
- * Orders a list of top-level [key, schema] entries to read in the same
- * fetch -> prepare -> qc -> ... -> publish order as the pipeline's own stage
- * rail, instead of raw schema-declaration order.
- *
- * An entry whose key exactly matches one of `stages`' names (e.g. the "qc"
- * group matching a "qc" stage) is ranked by that stage's position. Anything
- * that doesn't match — including a schema's own detail groups like
- * "bcftools", which are a sub-tool's settings rather than a stage in their
- * own right — falls back to its original position in the schema and always
- * sorts after every matched entry (the comparator's tie-break on
- * `schemaIndex` makes this a stable sort, so unmatched entries keep their
- * relative order). Entirely derived from `stages` and schema order, so an
- * unmatched or unknown pipeline (or one with no `stages` at all) still
- * renders every control, just in schema order.
- */
-function sortByStage<Prop>(
-  entries: [string, Prop][],
-  stages: string[] | undefined,
-): [string, Prop][] {
-  const stageIndex = new Map((stages || []).map((stage, i) => [stage, i]));
-  return entries
-    .map((entry, schemaIndex) => ({
-      entry,
-      schemaIndex,
-      stageRank: stageIndex.get(entry[0]),
-    }))
-    .sort((a, b) => {
-      const aRank = a.stageRank ?? Number.MAX_SAFE_INTEGER;
-      const bRank = b.stageRank ?? Number.MAX_SAFE_INTEGER;
-      return aRank !== bRank ? aRank - bRank : a.schemaIndex - b.schemaIndex;
-    })
-    .map((x) => x.entry);
-}
 
 /**
  * User-facing label overrides for parameters whose schema `title` is
@@ -543,9 +504,8 @@ export function sectionForParamPaths(
  *      "Output options", since a scalar sitting alongside stage-named
  *      groups at the schema root is structurally a run-wide toggle rather
  *      than one stage's analysis setting.
- * Parts 1 and 2 are each ordered via `sortByStage` against the pipeline's
- * own `stages`, so controls read in the same fetch -> ... -> publish order
- * as the stage rail elsewhere on this page.
+ * Every part keeps the schema's own property order, which the pipeline
+ * publishes in run order (e.g. ont-lsdv's fastp, then primer, then bcftools).
  *
  * `sectionExtras` (see that type and `sectionForParamPaths`) lets a caller
  * slot extra content — e.g. the upload modal's primer-file picker — at the
@@ -564,7 +524,6 @@ export default function PipelineParamsForm({
   onChange,
   disabled,
   showAllErrors,
-  stages,
   sectionExtras,
 }: Props) {
   if (!schema?.properties || Object.keys(schema.properties).length === 0)
@@ -580,13 +539,12 @@ export default function PipelineParamsForm({
   );
   if (visibleEntries.length === 0) return null;
 
-  const relevantGroupEntries = sortByStage(
-    visibleEntries.filter(([, prop]) => isGroupSchema(prop)),
-    stages,
-  ).filter(([key]) => isGroupRelevant(pipelineId, key, values));
-  const leafEntries = sortByStage(
-    visibleEntries.filter((entry) => !isGroupSchema(entry[1])),
-    stages,
+  const relevantGroupEntries = visibleEntries.filter(
+    ([key, prop]) =>
+      isGroupSchema(prop) && isGroupRelevant(pipelineId, key, values),
+  );
+  const leafEntries = visibleEntries.filter(
+    (entry) => !isGroupSchema(entry[1]),
   );
 
   const flattenedGroups: FlattenedGroup[] = [];
@@ -731,8 +689,8 @@ function SchemaFields({
     ...(gateOff ? [] : restEntries.filter(([, prop]) => !isGroupSchema(prop))),
   ];
   // SchemaFields only ever renders group *internals* (depth >= 1) — the top
-  // level is PipelineParamsForm's own job now (flattening, stage ordering,
-  // hidden params, Output options). Relevance-hiding is depth-0-only by
+  // level is PipelineParamsForm's own job now (flattening, hidden params,
+  // Output options). Relevance-hiding is depth-0-only by
   // submission-relevance-map's documented scope, so nothing here is ever
   // filtered; the `depth > 0` guard is kept as a defensive no-op in case
   // this is ever reused at depth 0 again.

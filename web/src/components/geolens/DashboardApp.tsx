@@ -61,6 +61,7 @@ import type {
   ViewportBounds,
   Wetland,
 } from "@/src/app/(dashboard)/geolens/types";
+import { isGeoLensTabShown } from "@/src/app/(dashboard)/geolens/types";
 
 import {
   type ExploreSitesPeriod,
@@ -172,11 +173,11 @@ const PANEL_COPY: Record<GeoLensTab, { title: string; subtitle: string }> = {
 const isGeoLensTab = (value: string | null): value is GeoLensTab =>
   value !== null && value in PANEL_COPY;
 
-// GeoLens opens on Layers; ?tab=compare etc. opens that tab instead.
+// GeoLens opens on Layers; ?tab=compare etc. opens that tab instead (unless it's hidden).
 const readTabFromUrl = (): GeoLensTab => {
   if (typeof window === "undefined") return "layers";
   const tab = new URLSearchParams(window.location.search).get("tab");
-  return isGeoLensTab(tab) ? tab : "layers";
+  return isGeoLensTab(tab) && isGeoLensTabShown(tab) ? tab : "layers";
 };
 
 // A single- or multi-select filter value as a list

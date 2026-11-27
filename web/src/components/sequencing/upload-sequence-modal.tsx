@@ -1408,7 +1408,6 @@ export default function UploadSequenceModal({
               onChange={setParamValues}
               disabled={isSubmitting}
               showAllErrors={submitAttempted}
-              stages={selectedPipeline.stages}
               sectionExtras={sectionExtras}
             />
 

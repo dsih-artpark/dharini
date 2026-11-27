@@ -1,5 +1,6 @@
 import type * as Leaflet from "leaflet";
 import type React from "react";
+import { env } from "@/env";
 
 export interface Wetland {
   id: string;
@@ -72,6 +73,10 @@ export const GEOLENS_TABS: { value: GeoLensTab; label: string }[] = [
   { value: "compare", label: "Compare" },
   { value: "risk", label: "Risk Map" },
 ];
+
+/** The Risk Map tab is hidden in production. */
+export const isGeoLensTabShown = (tab: GeoLensTab) =>
+  tab !== "risk" || env.APP_ENV !== "production";
 
 export type BaseMapKey = "osm" | "satellite" | "topo";
 
